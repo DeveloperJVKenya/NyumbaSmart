@@ -1,0 +1,322 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isTechnician() {
+      return request.auth != null && (
+        exists(/databases/$(database)/documents/Technicians/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/Users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == 'Technician')
+      );
+    }
+    
+    function isAdmin() {
+      return request.auth != null && (
+        exists(/databases/$(database)/documents/Admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/Users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == 'Admin')
+      );
+    }
+    
+    function isDeveloper() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/Developers/$(request.auth.uid));
+    }
+    
+    function getUserOrganization() {
+      return exists(/databases/$(database)/documents/Users/$(request.auth.uid)) ?
+        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.organization : '-';
+    }
+    
+    function isJVAlmacisUser() {
+      return getUserOrganization() == 'JV Almacis';
+    }
+    
+    function hasRole(roles) {
+      let userDoc = get(/databases/$(database)/documents/Users/$(request.auth.uid));
+      return userDoc.data.role in roles;
+    }
+
+    // 🔧 UPDATED: SystemNotifications collection rules - Enhanced for system updates
+    match /SystemNotifications/{notificationId} {
+      allow read: if request.auth != null; // All authenticated users can read system notifications
+      allow create: if isDeveloper(); // Only developers can create system notifications
+      allow update: if request.auth != null && (
+        isDeveloper() || // Developers can update any field
+        // Allow system/monitor updates for triggering notifications
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'isTriggered', 'triggeredAt', 'status', 'triggerReason', 'triggeredBy',
+          'sentCount', 'failedCount', 'lastSentAt', 'lastRetryAt', 'lastError', 'lastErrorAt'
+        ]) ||
+        // Allow users to update read status
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readByUsers', 'status', 'lastReadAt'])
+      );
+      allow delete: if isDeveloper(); // Only developers can delete system notifications
+    }
+
+    // 🔧 UPDATED: CustomNotifications collection rules - Enhanced for system updates
+    match /CustomNotifications/{notificationId} {
+      allow read: if request.auth != null && (
+        resource.data.organization == getUserOrganization() ||
+        isDeveloper() ||
+        isAdmin()
+      );
+      allow create: if request.auth != null && (
+        (request.resource.data.organization == getUserOrganization() && request.resource.data.createdBy == request.auth.uid) ||
+        isDeveloper() ||
+        isAdmin()
+      );
+      allow update: if request.auth != null && (
+        (resource.data.organization == getUserOrganization() &&
+          (resource.data.createdBy == request.auth.uid || hasRole(['admin']))) ||
+        isDeveloper() ||
+        isAdmin() ||
+        // 🔧 ENHANCED: Allow system/monitor updates for triggering notifications
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'isTriggered', 'triggeredAt', 'status', 'triggerReason', 'triggeredBy',
+          'sentCount', 'failedCount', 'lastSentAt', 'lastRetryAt', 'lastError', 'lastErrorAt'
+        ]) ||
+        // Allow users to update read status
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readByUsers', 'status', 'lastReadAt'])
+      );
+      allow delete: if request.auth != null && (
+        resource.data.createdBy == request.auth.uid ||
+        isDeveloper() ||
+        isAdmin()
+      );
+    }
+
+    // Organizations collection rules
+    match /Organizations/{organizationId} {
+      allow read: if request.auth != null;
+      allow write, update, delete: if isDeveloper() || isAdmin();
+    }
+
+    // 🔧 UPDATED: Facilities collection rules with organization-based access
+    match /Facilities/{facilityId} {
+      allow read: if request.auth != null && (
+        isDeveloper() || // Developers can read all facilities
+        isJVAlmacisUser() || // JV Almacis users can read all facilities (service providers)
+        (resource.data.organization == getUserOrganization() && getUserOrganization() != '-') || // Users can read facilities from their organization
+        (getUserOrganization() == '-' && exists(/databases/$(database)/documents/Users/$(request.auth.uid))) // Allow read for new users without organization
+      );
+      allow write: if request.auth != null && (
+        isDeveloper() || // Developers can create facilities for any organization
+        (isJVAlmacisUser() && request.resource.data.keys().hasAll(['organization'])) || // JV Almacis users can create facilities with organization
+        (!isJVAlmacisUser() && resource.data.organization == getUserOrganization()) // Other users can only create facilities for their organization
+      );
+      allow update: if request.auth != null && (
+        isDeveloper() || // Developers can update any facility
+        (isJVAlmacisUser()) || // JV Almacis users can update any facility (service providers)
+        resource.data.organization == getUserOrganization() // Users can update facilities from their organization
+      );
+      allow delete: if request.auth != null && (
+        isDeveloper() || // Developers can delete any facility
+        (isAdmin() && (isJVAlmacisUser() || resource.data.organization == getUserOrganization())) // Admins can delete facilities they have access to
+      );
+    }
+
+    // Users: Allow users to manage their own data, Developers to read/write all, Admins to read and update specific fields
+    match /Users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isDeveloper();
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId); // Allow read for the user themselves
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'username', 'email', 'organization', 'createdAt']);
+      allow read: if isTechnician();
+    }
+
+    match /Developers/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if isDeveloper();
+      allow read: if isAdmin() || isTechnician();
+      allow write: if isDeveloper();
+      allow delete: if isDeveloper() &&
+        get(/databases/$(database)/documents/Developers/$(userId)).data.email != 'lubangafabron@gmail.com';
+    }
+
+    match /Admins/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if isDeveloper() || isAdmin();
+      allow read: if isTechnician();
+      allow write: if isDeveloper() || isAdmin();
+    }
+
+    match /Technicians/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (
+        (isAdmin()) ||
+        isDeveloper()
+      );
+    }
+
+    match /admin_logs/{logId} {
+      allow read, write, delete: if isDeveloper() || isAdmin();
+    }
+
+    match /Reports/{reportId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /BillingData/{billingId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus', 'approvalNotes', 'approvedBy', 'approvedAt']) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+      );
+    }
+
+    match /BuildingSurveys/{surveyId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /Documentations/{documentationId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /Drawings/{drawingId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /PriceList/{priceListId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /Schedule_Maintenance/{scheduleId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.createdBy == request.auth.uid
+      );
+      allow update: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.createdBy == request.auth.uid ||
+        isDeveloper() || isAdmin()
+      );
+      allow delete: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.createdBy == request.auth.uid ||
+        isDeveloper() || isAdmin()
+      );
+    }
+
+    match /Work_Requests/{requestId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.createdBy == request.auth.uid;
+      allow update: if request.auth != null && (
+        resource.data.createdBy == request.auth.uid ||
+        isDeveloper() || isAdmin() || isTechnician()
+      );
+      allow delete: if request.auth != null && (
+        resource.data.createdBy == request.auth.uid ||
+        isDeveloper() || isAdmin()
+      );
+    }
+
+    match /Work_Orders/{workOrderId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.createdBy == request.auth.uid;
+      allow update: if request.auth != null && (
+        resource.data.createdBy == request.auth.uid ||
+        isDeveloper() || isAdmin() || isTechnician()
+      );
+      allow delete: if request.auth != null && (
+        resource.data.createdBy == request.auth.uid ||
+        isDeveloper() || isAdmin()
+      );
+    }
+
+    // Legacy nested structure (keeping for backward compatibility)
+    match /facilities/{facilityId}/requests/{requestId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /facilities/{facilityId}/work_orders/{workOrderId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /facilities/{facilityId}/equipment/{equipmentId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /facilities/{facilityId}/inventory/{inventoryId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /facilities/{facilityId}/assets/{assetId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /maintenance_tasks/{taskId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.createdBy == request.auth.uid;
+    }
+
+    match /Maintenance_Tasks/{categoryId} {
+      allow read, write, update, delete: if isDeveloper();
+      allow read: if isTechnician() || isAdmin();
+    }
+
+    // 🔧 EXISTING: SystemSettings collection rules
+    match /SystemSettings/{settingId} {
+      allow read: if request.auth != null; // All authenticated users can read system settings
+      allow write, update: if isDeveloper(); // Only developers can modify system settings
+      allow delete: if isDeveloper();
+    }
+
+    // 🔧 FIXED: Enhanced Notifications rules (legacy collection)
+    match /Notifications/{notificationId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if isDeveloper() || isAdmin();
+    }
+
+    // 🔧 UPDATED: TestNotifications rules - More permissive for testing
+    match /TestNotifications/{testId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null && (
+        resource.data.createdBy == request.auth.uid ||
+        isDeveloper() || isAdmin()
+      );
+    }
+
+    match /Vendors/{vendorId} {
+      allow read: if request.auth != null && (
+        isAdmin() || isDeveloper() ||
+        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.facilities.hasAny([resource.data.facilityId])
+      );
+      allow write: if request.auth != null && (
+        isAdmin() || isDeveloper()
+      ) && request.resource.data.facilityId in get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.facilities;
+    }
+
+    match /TaskProgress/{taskId} {
+      allow read: if request.auth != null;
+      allow write: if isDeveloper() || isTechnician() || isAdmin();
+    }
+
+    match /CategoryProgress/{categoryId} {
+      allow read: if request.auth != null;
+      allow write: if isDeveloper() || isTechnician() || isAdmin();
+    }
+
+    match /EmailNotifications/{emailId} {
+      allow write: if request.auth != null;
+      allow read: if false;
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

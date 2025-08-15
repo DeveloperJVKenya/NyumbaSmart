@@ -1,0 +1,90 @@
+name: cmms
+description: A CMMS Flutter application.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Firebase
+  cloud_firestore: ^5.0.0
+  firebase_auth: ^5.0.0
+  firebase_core: ^3.13.0
+  firebase_storage: ^12.0.0
+  firebase_messaging: ^15.2.5
+  cloud_functions: ^5.5.0
+  
+  # UI & Design
+  responsive_builder: ^0.7.0
+  google_fonts: ^6.2.1
+  cupertino_icons: ^1.0.8
+  
+  # Utilities
+  intl: ^0.19.0
+  logger: ^2.5.0
+  uuid: ^4.5.1
+  shared_preferences: ^2.5.3
+  path_provider: ^2.1.5
+  async: ^2.13.0
+  
+  # HTTP & Networking
+  http: ^1.3.0
+  dio: ^5.8.0+1
+  connectivity_plus: ^6.1.4
+  url_launcher: ^6.2.4
+  
+  # File Handling
+  file_picker: ^8.0.0
+  flutter_pdfview: ^1.3.2
+  open_file: ^3.5.10
+  image_picker: ^1.1.2
+  
+  # Notifications & Background Tasks
+  flutter_local_notifications: ^19.2.1
+  workmanager: ^0.8.0
+  timezone: ^0.10.1
+  rxdart: ^0.28.0
+  
+  # Permissions & Device
+  permission_handler: ^12.0.0+1
+  vibration: ^3.1.3
+  screen_brightness: ^2.1.5
+  device_info_plus: ^11.5.0
+  
+  # Location & Maps
+  geocoding: ^4.0.0
+  google_maps_flutter: ^2.12.2
+  geolocator: ^14.0.1
+  
+  # Audio
+  audioplayers: ^6.5.0
+  
+  # Cryptography & JWT
+  crypto: ^3.0.6
+  pointycastle: ^4.0.0
+  
+  # Web
+  web: ^1.1.1
+  flutter_secure_storage: ^9.2.4
+  googleapis_auth: ^2.0.0
+  carousel_slider: ^5.1.1
+
+flutter:
+  assets:
+    - assets/icons/icon.png
+    - assets/icons/
+    - assets/sounds/
+    - assets/service-account.json
+    - assets/
+  uses-material-design: true
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.3

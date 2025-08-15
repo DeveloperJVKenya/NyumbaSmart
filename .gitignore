@@ -1,0 +1,42 @@
+# Flutter/Dart
+*.iml
+*.idea
+*.ipr
+*.iws
+*.lock
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Generated.xcconfig
+ios/Runner/GeneratedPluginRegistrant.*
+
+# Sensitive
+assets/service-account.json
+lib/firebase_options.dart
+
+# Firebase
+google-services.json
+firebase_options.dart
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
+assets/service-account.json   # ✅ Service account credentials
+lib/firebase_options.dart     # ✅ Firebase auto-generated options
+
+# Other
+.DS_Store
+.vscode/
+*.log
+*.pyc
+*.swp
+*.swo
+.env
+*.key
+*.pem
+*.cert

@@ -1,0 +1,22 @@
+{
+    "env": {
+      "node": true,
+      "es2021": true
+    },
+    "extends": [
+      "airbnb-base"
+    ],
+    "plugins": [
+      "import"
+    ],
+    "rules": {
+      "no-console": "off",
+      "no-await-in-loop": "warn",
+      "no-restricted-syntax": [
+        "error",
+        "ForInStatement",
+        "LabeledStatement",
+        "WithStatement"
+      ]
+    }
+  }
