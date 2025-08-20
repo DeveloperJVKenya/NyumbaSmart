@@ -513,7 +513,7 @@ class CollectionDetailScreenState extends State<CollectionDetailScreen> {
                   const SizedBox(height: 12),
                   // 🔧 CORRECTED: Use ALL organizations INCLUDING JV Almacis
                   DropdownButtonFormField<String>(
-                    value: _selectedOrganization,
+                    initialValue: _selectedOrganization,
                     decoration: InputDecoration(
                       labelText: 'Organization',
                       hintText: currentOrg == '-' ? 'Select Organization' : 'Current: $currentOrg',
@@ -734,7 +734,7 @@ class CollectionDetailScreenState extends State<CollectionDetailScreen> {
                   const SizedBox(height: 12),
                   // 🔧 CORRECTED: Use ALL organizations INCLUDING JV Almacis
                   DropdownButtonFormField<String>(
-                    value: _selectedOrganization,
+                    initialValue: _selectedOrganization,
                     decoration: InputDecoration(
                       labelText: 'Organization',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),

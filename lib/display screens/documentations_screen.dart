@@ -846,7 +846,7 @@ class _DocumentationsScreenState extends State<DocumentationsScreen> {
 
   Widget _buildCategoryDropdown(double fontSize) {
     return DropdownButtonFormField<String>(
-      value: _selectedCategory,
+      initialValue: _selectedCategory,
       decoration: InputDecoration(
         labelText: 'Document Category',
         border: OutlineInputBorder(

@@ -323,7 +323,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                             ),
                             const SizedBox(height: 12),
                             DropdownButtonFormField<String>(
-                              value: _status,
+                              initialValue: _status,
                               items: ['Active', 'Inactive', 'Under Repair', 'Decommissioned']
                                   .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                                   .toList(),

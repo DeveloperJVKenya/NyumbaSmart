@@ -202,7 +202,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             ),
                             const SizedBox(height: 12),
                             DropdownButtonFormField<String>(
-                              value: _category,
+                              initialValue: _category,
                               items: ['General', 'Electrical', 'Mechanical', 'HVAC']
                                   .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                                   .toList(),

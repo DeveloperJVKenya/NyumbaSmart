@@ -240,7 +240,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       value: _notificationsEnabled,
                       onChanged: _updateNotificationSettings,
-                      activeColor: Colors.blueGrey,
+                      activeThumbColor: Colors.blueGrey,
                     ),
                     
                     SwitchListTile(

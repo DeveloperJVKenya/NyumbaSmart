@@ -1722,7 +1722,7 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
     double fontSize,
   ) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: items
           .map((item) => DropdownMenuItem(
                 value: item,

@@ -395,7 +395,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
 
   Widget _buildFilterDropdown(String label, String value, List<String> items, ValueChanged<String?> onChanged, double fontSize) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize)))).toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
@@ -824,7 +824,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
 
   Widget _buildTypeDropdown(double fontSize) {
     return DropdownButtonFormField<String>(
-      value: _typeController.text.isEmpty ? 'Electrical' : _typeController.text,
+      initialValue: _typeController.text.isEmpty ? 'Electrical' : _typeController.text,
       items: ['Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'IT Equipment']
           .map((type) => DropdownMenuItem(value: type, child: Text(type, style: GoogleFonts.poppins(fontSize: fontSize))))
           .toList(),
@@ -853,7 +853,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
 
   Widget _buildStatusDropdown(double fontSize) {
     return DropdownButtonFormField<String>(
-      value: _status,
+      initialValue: _status,
       items: ['Active', 'Inactive', 'Under Repair', 'Decommissioned']
           .map((status) => DropdownMenuItem(value: status, child: Text(status, style: GoogleFonts.poppins(fontSize: fontSize))))
           .toList(),
@@ -894,7 +894,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              value: selectedStatus,
+              initialValue: selectedStatus,
               items: ['Active', 'Inactive', 'Under Repair', 'Decommissioned']
                   .map((status) => DropdownMenuItem(value: status, child: Text(status, style: GoogleFonts.poppins())))
                   .toList(),

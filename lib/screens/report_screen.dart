@@ -54,7 +54,7 @@ class _ReportScreenState extends State<ReportScreen> {
                   children: [
                     const Text('Generate Report', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     DropdownButtonFormField<String>(
-                      value: _reportType,
+                      initialValue: _reportType,
                       items: ['Work Orders', 'Requests', 'Assets', 'Inventory']
                           .map((r) => DropdownMenuItem(value: r, child: Text(r)))
                           .toList(),
@@ -62,7 +62,7 @@ class _ReportScreenState extends State<ReportScreen> {
                       decoration: const InputDecoration(labelText: 'Report Type'),
                     ),
                     DropdownButtonFormField<String>(
-                      value: _statusFilter,
+                      initialValue: _statusFilter,
                       items: ['All', 'Open', 'In Progress', 'Closed']
                           .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                           .toList(),

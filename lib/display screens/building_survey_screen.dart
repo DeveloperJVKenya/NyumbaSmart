@@ -854,7 +854,7 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
 
   Widget _buildCategoryDropdown(double fontSize) {
     return DropdownButtonFormField<String>(
-      value: _selectedCategory,
+      initialValue: _selectedCategory,
       decoration: InputDecoration(
         labelText: 'Survey Category',
         border: OutlineInputBorder(

@@ -73,6 +73,7 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   googleapis_auth: ^2.0.0
   carousel_slider: ^5.1.1
+  font_awesome_flutter: ^10.10.0
 
 flutter:
   assets:

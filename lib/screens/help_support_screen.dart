@@ -198,7 +198,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                   const SizedBox(height: 16),
                   
                   DropdownButtonFormField<String>(
-                    value: _selectedCategory,
+                    initialValue: _selectedCategory,
                     decoration: InputDecoration(
                       labelText: 'Category',
                       border: const OutlineInputBorder(),

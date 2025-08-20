@@ -581,7 +581,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Widget _buildDropdown(String label, String value, List<String> items, ValueChanged<String?> onChanged, double fontSize) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize)))).toList(),
       onChanged: onChanged,
       decoration: InputDecoration(

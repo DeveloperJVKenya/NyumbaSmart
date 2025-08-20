@@ -32,13 +32,13 @@ android {
 
     defaultConfig {
         applicationId = "com.jvalmacis.cmms"
-        minSdk = 23
-        targetSdk = 35
+        minSdk = flutter.minSdkVersion.toInt()
+        targetSdk = flutter.targetSdkVersion.toInt()
         versionCode = 4
         versionName = "1.0.3"
+        multiDexEnabled = true
     }
 
-    // ✅ Release keystore signing configuration
     signingConfigs {
         create("release") {
             storeFile = file(keystoreProperties["storeFile"] as String)
@@ -63,4 +63,5 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    implementation("androidx.multidex:multidex:2.0.1")
 }

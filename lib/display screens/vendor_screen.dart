@@ -354,7 +354,7 @@ class _VendorScreenState extends State<VendorScreen> {
 
   Widget _buildFilterDropdown(String label, String value, List<String> items, ValueChanged<String?> onChanged, double fontSize) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize)))).toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
@@ -783,7 +783,7 @@ class _VendorScreenState extends State<VendorScreen> {
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: DropdownButtonFormField<String>(
-              value: selectedStatus,
+              initialValue: selectedStatus,
               items: ['Active', 'Inactive', 'Suspended']
                   .map((status) => DropdownMenuItem(
                         value: status,
@@ -970,7 +970,7 @@ class _VendorScreenState extends State<VendorScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _category,
+              initialValue: _category,
               items: ['General', 'Electrical', 'Plumbing', 'HVAC', 'Cleaning', 'Security', 'IT Support']
                   .map((category) => DropdownMenuItem(
                         value: category,
@@ -1033,7 +1033,7 @@ class _VendorScreenState extends State<VendorScreen> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _status,
+                    initialValue: _status,
                     items: ['Active', 'Inactive', 'Suspended']
                         .map((status) => DropdownMenuItem(
                               value: status,

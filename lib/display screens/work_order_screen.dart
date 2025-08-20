@@ -2943,7 +2943,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
     double fontSize,
   ) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: items
           .map((item) => DropdownMenuItem(
                 value: item,

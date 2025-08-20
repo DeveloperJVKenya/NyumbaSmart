@@ -481,7 +481,7 @@ class _KpiScreenState extends State<KpiScreen> {
 
   Widget _buildDropdown({required double fontSize}) {
     return DropdownButtonFormField<String>(
-      value: _timeFilter,
+      initialValue: _timeFilter,
       items: ['All Time', 'Last 7 Days', 'Last 30 Days', 'Last 3 Months', 'This Year']
           .map((period) => DropdownMenuItem(
                 value: period,

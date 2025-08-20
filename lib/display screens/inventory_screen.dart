@@ -306,7 +306,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   Widget _buildFilterDropdown(String label, String value, List<String> items, ValueChanged<String?> onChanged, double fontSize) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize)))).toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
@@ -693,7 +693,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   Widget _buildCategoryDropdown(double fontSize) {
     return DropdownButtonFormField<String>(
-      value: _category,
+      initialValue: _category,
       items: ['General', 'Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'Cleaning']
           .map((category) => DropdownMenuItem(value: category, child: Text(category, style: GoogleFonts.poppins(fontSize: fontSize))))
           .toList(),

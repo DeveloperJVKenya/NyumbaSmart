@@ -219,7 +219,7 @@ class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
                                 Switch(
                                   value: _autoNotificationsEnabled,
                                   onChanged: _toggleAutoNotifications,
-                                  activeColor: Colors.green,
+                                  activeThumbColor: Colors.green,
                                 ),
                             ],
                           ),
