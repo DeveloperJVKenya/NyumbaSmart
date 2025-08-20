@@ -6,7 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cmms/models/facility.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart'; 
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class LocationsScreen extends StatefulWidget {
   final String facilityId;
@@ -123,73 +123,88 @@ class _LocationsScreenState extends State<LocationsScreen> {
       return Center(child: Text('Facility details not available', style: GoogleFonts.poppins()));
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _facility!.name,
-            style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Row(
+    return Center( // Center the entire content
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600), 
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(FontAwesomeIcons.mapMarkerAlt, color: Colors.blueGrey),
-              const SizedBox(width: 8),
-              Text(
-                'Location:',
-                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey[700]),
+              Center( // Center the title
+                child: Text(
+                  _facility!.name,
+                  style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                _facility!.location,
-                style: GoogleFonts.poppins(fontSize: 16),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(FontAwesomeIcons.locationDot, color: Colors.blueGrey),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Location:',
+                    style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey[700]),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded( // Use Expanded to fill available space
+                    child: Text(
+                      _facility!.location,
+                      style: GoogleFonts.poppins(fontSize: 16),
+                      overflow: TextOverflow.ellipsis, // Handle overflow
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(FontAwesomeIcons.building, color: Colors.blueGrey),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Organization:',
+                    style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey[700]),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded( // Use Expanded to fill available space
+                    child: Text(
+                      _facility!.organization, // Assuming organization is a field in Facility
+                      style: GoogleFonts.poppins(fontSize: 16),
+                      overflow: TextOverflow.ellipsis, // Handle overflow
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _openDirections,
+                icon: const Icon(Icons.directions),
+                label: Text('Get Directions', style: GoogleFonts.poppins()),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal, // Change button color
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  // Open Google Maps with the facility's location
+                  final String googleMapsUrl = 
+                      'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(_facility!.location)}';
+                  launchUrl(Uri.parse(googleMapsUrl), mode: LaunchMode.externalApplication);
+                },
+                icon: const Icon(Icons.map),
+                label: Text('View on Map', style: GoogleFonts.poppins()),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange, // Change button color
+                  foregroundColor: Colors.white,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(FontAwesomeIcons.building, color: Colors.blueGrey),
-              const SizedBox(width: 8),
-              Text(
-                'Organization:',
-                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey[700]),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _facility!.organization, // Assuming organization is a field in Facility
-                style: GoogleFonts.poppins(fontSize: 16),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _openDirections,
-            icon: const Icon(Icons.directions),
-            label: Text('Get Directions', style: GoogleFonts.poppins()),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.teal, // Change button color
-              foregroundColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () {
-              // Open Google Maps with the facility's location
-              final String googleMapsUrl = 
-                  'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(_facility!.location)}';
-              launchUrl(Uri.parse(googleMapsUrl), mode: LaunchMode.externalApplication);
-            },
-            icon: const Icon(Icons.map),
-            label: Text('View on Map', style: GoogleFonts.poppins()),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange, // Change button color
-              foregroundColor: Colors.white,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
