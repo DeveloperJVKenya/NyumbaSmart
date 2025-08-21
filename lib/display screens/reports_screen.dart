@@ -32,6 +32,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   double? _uploadProgress;
   String _currentRole = 'User';
   String _organization = '-';
+  bool _isUploadVisible = false; // Track visibility of upload card
 
   @override
   void initState() {
@@ -175,41 +176,38 @@ class _ReportsScreenState extends State<ReportsScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => PopScope(
-          canPop: false,
-          child: AlertDialog(
-            title: Text('Uploading $fileName', style: GoogleFonts.poppins()),
-            content: StatefulBuilder(
-              builder: (context, setDialogState) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    LinearProgressIndicator(
-                      value: _uploadProgress,
-                      backgroundColor: Colors.grey[300],
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueGrey),
-                    ),
+        builder: (context) => AlertDialog(
+          title: Text('Uploading $fileName', style: GoogleFonts.poppins()),
+          content: StatefulBuilder(
+            builder: (context, setDialogState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LinearProgressIndicator(
+                    value: _uploadProgress,
+                    backgroundColor: Colors.grey[300],
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueGrey),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _uploadProgress != null
+                        ? '${(_uploadProgress! * 100).toStringAsFixed(0)}%'
+                        : 'Starting upload...',
+                    style: GoogleFonts.poppins(),
+                  ),
+                  if (kIsWeb) ...[
                     const SizedBox(height: 8),
                     Text(
-                      _uploadProgress != null
-                          ? '${(_uploadProgress! * 100).toStringAsFixed(0)}%'
-                          : 'Starting upload...',
-                      style: GoogleFonts.poppins(),
-                    ),
-                    if (kIsWeb) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Web Upload',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: Colors.blue[600],
-                        ),
+                      'Web Upload',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.blue[600],
                       ),
-                    ],
+                    ),
                   ],
-                );
-              },
-            ),
+                ],
+              );
+            },
           ),
         ),
       );
@@ -282,6 +280,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
           SnackBar(content: Text('Report uploaded successfully', style: GoogleFonts.poppins())),
         );
         _titleController.clear();
+        setState(() {
+          _isUploadVisible = false; // Hide upload card after successful upload
+        });
       }
       logger.i('Uploaded report: $fileName, URL: $downloadUrl, facilityId: ${widget.facilityId}');
     } catch (e) {
@@ -527,12 +528,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ResponsiveScreenWrapper(
-      title: 'Reports',
-      facilityId: widget.facilityId,
-      currentRole: _currentRole,
-      organization: _organization,
-      child: _buildBody(),
+    return Scaffold(
+      body: ResponsiveScreenWrapper(
+        title: 'Reports',
+        facilityId: widget.facilityId,
+        currentRole: _currentRole,
+        organization: _organization,
+        child: _buildBody(),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          setState(() {
+            _isUploadVisible = !_isUploadVisible; // Toggle visibility
+          });
+        },
+        backgroundColor: Colors.blueGrey[800],
+        child: const Icon(Icons.upload, color: Colors.white),
+      ),
     );
   }
 
@@ -549,223 +561,224 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: EdgeInsets.all(padding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Upload Report',
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.bold,
-                          fontSize: fontSizeTitle,
-                          color: Colors.blueGrey[900],
-                        ),
+          if (_isUploadVisible) ...[
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: EdgeInsets.all(padding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Upload Report',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: fontSizeTitle,
+                        color: Colors.blueGrey[900],
                       ),
-                      if (kIsWeb) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[100],
-                            borderRadius: BorderRadius.circular(12),
+                    ),
+                    const SizedBox(height: 16),
+                    isMobile
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildTextField(fontSizeSubtitle),
+                              const SizedBox(height: 12),
+                              _buildUploadButton(fontSizeSubtitle),
+                            ],
+                          )
+                        : Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: _buildTextField(fontSizeSubtitle),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 1,
+                                child: _buildUploadButton(fontSizeSubtitle),
+                              ),
+                            ],
                           ),
-                          child: Text(
-                            'WEB',
-                            style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[800],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  isMobile
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _buildTextField(fontSizeSubtitle),
-                            const SizedBox(height: 12),
-                            _buildUploadButton(fontSizeSubtitle),
-                          ],
-                        )
-                      : Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: _buildTextField(fontSizeSubtitle),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 1,
-                              child: _buildUploadButton(fontSizeSubtitle),
-                            ),
-                          ],
-                        ),
-                ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          // Sectional title for reports
+          Center(
+            child: Text(
+              'Uploaded Reports',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.bold,
+                fontSize: fontSizeTitle,
+                color: Colors.black,
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: EdgeInsets.all(padding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Uploaded Reports',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold,
-                      fontSize: fontSizeTitle,
-                      color: Colors.blueGrey[900],
+          const SizedBox(height: 16),
+
+          // Grouping reports by year
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('Reports')
+                .where('facilityId', isEqualTo: widget.facilityId)
+                .orderBy('uploadedAt', descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                logger.e('StreamBuilder error: ${snapshot.error}');
+                return Text('Error: ${snapshot.error}', style: GoogleFonts.poppins());
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final docs = snapshot.data?.docs ?? [];
+              if (docs.isEmpty) {
+                return Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.picture_as_pdf,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No reports uploaded yet',
+                          style: GoogleFonts.poppins(
+                            fontSize: fontSizeSubtitle,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Use the upload button above to add your first report',
+                          style: GoogleFonts.poppins(
+                            fontSize: fontSizeSubtitle - 2,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('Reports')
-                        .where('facilityId', isEqualTo: widget.facilityId)
-                        .orderBy('uploadedAt', descending: true)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        logger.e('StreamBuilder error: ${snapshot.error}');
-                        return Text('Error: ${snapshot.error}', style: GoogleFonts.poppins());
-                      }
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      final docs = snapshot.data?.docs ?? [];
-                      if (docs.isEmpty) {
-                        return Card(
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(32.0),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.picture_as_pdf,
-                                  size: 64,
-                                  color: Colors.grey[400],
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No reports uploaded yet',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: fontSizeSubtitle,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Use the upload form above to add your first report',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: fontSizeSubtitle - 2,
-                                    color: Colors.grey[500],
-                                  ),
-                                ),
-                              ],
+                );
+              }
+
+              // Grouping by year
+              Map<int, List<Report>> groupedReports = {};
+              for (var doc in docs) {
+                final report = Report.fromSnapshot(doc);
+                final year = report.uploadedAt?.year ?? DateTime.now().year;
+
+                if (!groupedReports.containsKey(year)) {
+                  groupedReports[year] = [];
+                }
+                groupedReports[year]!.add(report);
+              }
+
+              // Displaying grouped reports with ExpansionTile
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: groupedReports.entries.map((entry) {
+                  final year = entry.key;
+                  final reports = entry.value;
+
+                  return ExpansionTile(
+                    title: Text(
+                      '$year',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: fontSizeTitle,
+                        color: Colors.blueGrey[900],
+                      ),
+                    ),
+                    children: reports.map((report) {
+                      return Card(
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          leading: Icon(
+                            _getFileIcon(report.fileName),
+                            color: _getFileIconColor(report.fileName),
+                            size: isMobile ? 32 : 36,
+                          ),
+                          title: Text(
+                            report.title,
+                            style: GoogleFonts.poppins(
+                              color: Colors.blueGrey[900],
+                              fontWeight: FontWeight.w500,
+                              fontSize: fontSizeSubtitle,
                             ),
                           ),
-                        );
-                      }
-                      return ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final report = Report.fromSnapshot(docs[index]);
-                          return Card(
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              leading: Icon(
-                                _getFileIcon(report.fileName),
-                                color: _getFileIconColor(report.fileName),
-                                size: isMobile ? 32 : 36,
-                              ),
-                              title: Text(
-                                report.title,
-                                style: GoogleFonts.poppins(
-                                  color: Colors.blueGrey[900],
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: fontSizeSubtitle,
-                                ),
-                              ),
-                              subtitle: Text(
-                                'Uploaded: ${report.uploadedAt != null ? DateFormat('MMM dd, yyyy').format(report.uploadedAt!) : 'Unknown date'}',
-                                style: GoogleFonts.poppins(
-                                  fontSize: isMobile ? 12 : 14,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                              trailing: PopupMenuButton<String>(
-                                onSelected: (value) {
-                                  if (value == 'view') {
-                                    _viewDocument(report.downloadUrl, report.fileName);
-                                  } else if (value == 'download') {
-                                    _downloadDocument(report.downloadUrl, report.fileName);
-                                  } else if (value == 'delete') {
-                                    _deleteDocument(report.downloadUrl, report.fileName, report.id);
-                                  }
-                                },
-                                itemBuilder: (context) => [
-                                  PopupMenuItem(
-                                    value: 'view',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.visibility, color: Colors.blue[700], size: 20),
-                                        const SizedBox(width: 8),
-                                        Text('View', style: GoogleFonts.poppins()),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'download',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.download, color: Colors.green[700], size: 20),
-                                        const SizedBox(width: 8),
-                                        Text('Download', style: GoogleFonts.poppins()),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete, color: Colors.red[700], size: 20),
-                                        const SizedBox(width: 8),
-                                        Text('Delete', style: GoogleFonts.poppins()),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                                icon: const Icon(Icons.more_vert, color: Colors.blueGrey),
-                              ),
+                          subtitle: Text(
+                            'Uploaded: ${report.uploadedAt != null ? DateFormat('MMM dd, yyyy').format(report.uploadedAt!) : 'Unknown date'}',
+                            style: GoogleFonts.poppins(
+                              fontSize: isMobile ? 12 : 14,
+                              color: Colors.grey[600],
                             ),
-                          );
-                        },
+                          ),
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (value) {
+                              if (value == 'view') {
+                                _viewDocument(report.downloadUrl, report.fileName);
+                              } else if (value == 'download') {
+                                _downloadDocument(report.downloadUrl, report.fileName);
+                              } else if (value == 'delete') {
+                                _deleteDocument(report.downloadUrl, report.fileName, report.id);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              PopupMenuItem(
+                                value: 'view',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.visibility, color: Colors.blue[700], size: 20),
+                                    const SizedBox(width: 8),
+                                    Text('View', style: GoogleFonts.poppins()),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'download',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.download, color: Colors.green[700], size: 20),
+                                    const SizedBox(width: 8),
+                                    Text('Download', style: GoogleFonts.poppins()),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete, color: Colors.red[700], size: 20),
+                                    const SizedBox(width: 8),
+                                    Text('Delete', style: GoogleFonts.poppins()),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            icon: const Icon(Icons.more_vert, color: Colors.blueGrey),
+                          ),
+                        ),
                       );
-                    },
-                  ),
-                ],
-              ),
-            ),
+                    }).toList(),
+                  );
+                }).toList(),
+              );
+            },
           ),
         ],
       ),

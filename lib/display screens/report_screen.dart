@@ -20,7 +20,6 @@ class _ReportScreenState extends State<ReportScreen> {
   String _reportType = 'Work Orders';
   String _statusFilter = 'All';
   String _priorityFilter = 'All';
-  String _categoryFilter = 'All';
   DateTime? _startDate;
   DateTime? _endDate;
   bool _isGenerating = false;
@@ -47,14 +46,14 @@ class _ReportScreenState extends State<ReportScreen> {
 
   void _initializeDataStream() {
     if (!mounted) return;
-    
+
     setState(() {
       _isLoading = true;
       _lastError = null;
     });
 
     _dataSubscription?.cancel();
-    
+
     try {
       final stream = _getDataStream();
       _dataSubscription = stream.listen(
@@ -91,33 +90,21 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Stream<QuerySnapshot> _getDataStream() {
     String collection = _getCollectionName();
-    
-    // Use the correct subcollection path under facilities
-    Query query;
-    
-    if (_reportType == 'Vendors') {
-      // Vendors are at root level but need facilityId filter
-      query = FirebaseFirestore.instance
-          .collection('Vendors')
-          .where('facilityId', isEqualTo: widget.facilityId)
-          .limit(100);
-    } else {
-      // Other collections are under facilities subcollection
-      query = FirebaseFirestore.instance
-          .collection('facilities')
-          .doc(widget.facilityId)
-          .collection(collection)
-          .limit(100);
-    }
+
+    // Use the correct collection path
+    Query query = FirebaseFirestore.instance.collection(collection).limit(100);
 
     // Apply filters one at a time to avoid complex composite queries
     if (_statusFilter != 'All') {
       query = query.where('status', isEqualTo: _statusFilter);
     }
 
-    // For date filtering, use a simpler approach
     if (_startDate != null) {
       query = query.where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(_startDate!));
+    }
+
+    if (_endDate != null) {
+      query = query.where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(_endDate!));
     }
 
     return query.orderBy('createdAt', descending: true).snapshots();
@@ -126,17 +113,11 @@ class _ReportScreenState extends State<ReportScreen> {
   String _getCollectionName() {
     switch (_reportType) {
       case 'Work Orders':
-        return 'work_orders';
-      case 'Requests':
-        return 'requests';
-      case 'Equipment':
-        return 'equipment';
-      case 'Inventory':
-        return 'inventory';
-      case 'Vendors':
-        return 'Vendors'; // This will be handled differently in _getDataStream
+        return 'Work_Orders';
+      case 'Work on Request':
+        return 'Work_Requests';
       default:
-        return 'work_orders';
+        return 'Work_Orders'; // Default to Work Orders
     }
   }
 
@@ -147,7 +128,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
     try {
       await Future.delayed(const Duration(milliseconds: 100)); // Prevent UI blocking
-      
+
       if (!mounted) return;
 
       _logger.i('Generating detailed report for ${docs.length} items');
@@ -166,7 +147,7 @@ class _ReportScreenState extends State<ReportScreen> {
             _logger.w('Error processing document ${doc.id}: $e');
           }
         }
-        
+
         // Yield control back to UI thread
         if (i % 20 == 0) {
           await Future.delayed(const Duration(milliseconds: 1));
@@ -180,21 +161,12 @@ class _ReportScreenState extends State<ReportScreen> {
         if (_priorityFilter != 'All' && item['priority'] != _priorityFilter) {
           return false;
         }
-        if (_categoryFilter != 'All' && item['category'] != _categoryFilter) {
-          return false;
-        }
-        if (_endDate != null) {
-          final createdAt = (item['createdAt'] as Timestamp?)?.toDate();
-          if (createdAt != null && createdAt.isAfter(_endDate!)) {
-            return false;
-          }
-        }
         return true;
       }).toList();
 
       // Generate statistics
       final stats = await _generateStatistics(filteredData);
-      
+
       if (!mounted) return;
 
       final report = {
@@ -205,7 +177,6 @@ class _ReportScreenState extends State<ReportScreen> {
         'filters': {
           'status': _statusFilter,
           'priority': _priorityFilter,
-          'category': _categoryFilter,
           'startDate': _startDate?.toIso8601String(),
           'endDate': _endDate?.toIso8601String(),
         },
@@ -236,8 +207,6 @@ class _ReportScreenState extends State<ReportScreen> {
   Future<Map<String, dynamic>> _generateStatistics(List<Map<String, dynamic>> data) async {
     final Map<String, int> statusCounts = {};
     final Map<String, int> priorityCounts = {};
-    final Map<String, int> categoryCounts = {};
-    final Map<String, int> monthlyCounts = {};
     double totalValue = 0;
     int totalQuantity = 0;
 
@@ -250,25 +219,6 @@ class _ReportScreenState extends State<ReportScreen> {
       if (item.containsKey('priority')) {
         final priority = item['priority'] as String? ?? 'Unknown';
         priorityCounts[priority] = (priorityCounts[priority] ?? 0) + 1;
-      }
-
-      // Category distribution
-      if (item.containsKey('category')) {
-        final category = item['category'] as String? ?? 'Unknown';
-        categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
-      }
-
-      // Monthly distribution
-      if (item.containsKey('createdAt')) {
-        try {
-          final createdAt = (item['createdAt'] as Timestamp?)?.toDate();
-          if (createdAt != null) {
-            final monthKey = DateFormat('yyyy-MM').format(createdAt);
-            monthlyCounts[monthKey] = (monthlyCounts[monthKey] ?? 0) + 1;
-          }
-        } catch (e) {
-          _logger.w('Error processing date for item: $e');
-        }
       }
 
       // Value calculations
@@ -284,61 +234,22 @@ class _ReportScreenState extends State<ReportScreen> {
       }
     }
 
-    // Calculate trend
-    final sortedMonths = monthlyCounts.keys.toList()..sort();
-    double trend = 0;
-    if (sortedMonths.length >= 2) {
-      final recent = monthlyCounts[sortedMonths.last] ?? 0;
-      final previous = monthlyCounts[sortedMonths[sortedMonths.length - 2]] ?? 0;
-      trend = previous > 0 ? ((recent - previous) / previous * 100) : 0;
-    }
-
     return {
       'statusDistribution': statusCounts,
       'priorityDistribution': priorityCounts,
-      'categoryDistribution': categoryCounts,
-      'monthlyDistribution': monthlyCounts,
       'totalValue': totalValue,
       'totalQuantity': totalQuantity,
-      'trend': trend,
     };
   }
 
   List<String> _getAvailableFilters() {
-    switch (_reportType) {
-      case 'Work Orders':
-        return ['All', 'Open', 'In Progress', 'Closed'];
-      case 'Requests':
-        return ['All', 'Open', 'In Progress', 'Closed'];
-      case 'Equipment':
-        return ['All', 'Active', 'Inactive', 'Under Repair'];
-      case 'Inventory':
-        return ['All', 'In Stock', 'Low Stock', 'Out of Stock'];
-      case 'Vendors':
-        return ['All', 'Active', 'Inactive', 'Suspended'];
-      default:
-        return ['All'];
-    }
-  }
-
-  List<String> _getAvailableCategories() {
-    switch (_reportType) {
-      case 'Equipment':
-        return ['All', 'HVAC', 'Electrical', 'Plumbing', 'Safety', 'General'];
-      case 'Inventory':
-        return ['All', 'Tools', 'Parts', 'Supplies', 'Safety Equipment'];
-      case 'Vendors':
-        return ['All', 'General', 'Electrical', 'Plumbing', 'HVAC', 'Cleaning', 'Security', 'IT Support'];
-      default:
-        return ['All'];
-    }
+    return ['All', 'Open', 'In Progress', 'Closed'];
   }
 
   void _clearFilters() {
     setState(() {
       _statusFilter = 'All';
       _priorityFilter = 'All';
-      _categoryFilter = 'All';
       _startDate = null;
       _endDate = null;
     });
@@ -369,10 +280,9 @@ class _ReportScreenState extends State<ReportScreen> {
   Widget _buildBody() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth <= 768;
-    final isTablet = screenWidth > 768 && screenWidth <= 1024;
-    final padding = isMobile ? 8.0 : isTablet ? 12.0 : 16.0;
-    final fontSizeTitle = isMobile ? 16.0 : isTablet ? 20.0 : 24.0;
-    final fontSize = isMobile ? 12.0 : isTablet ? 14.0 : 16.0;
+    final padding = isMobile ? 8.0 : 16.0;
+    final fontSizeTitle = isMobile ? 16.0 : 24.0;
+    final fontSize = isMobile ? 12.0 : 16.0;
 
     if (_lastError != null) {
       return Center(
@@ -469,12 +379,11 @@ class _ReportScreenState extends State<ReportScreen> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      _buildDropdown('Report Type', _reportType, ['Work Orders', 'Requests', 'Equipment', 'Inventory', 'Vendors'], (value) {
+                      _buildDropdown('Report Type', _reportType, ['Work Orders', 'Work on Request'], (value) {
                         setState(() {
                           _reportType = value!;
                           _statusFilter = 'All';
                           _priorityFilter = 'All';
-                          _categoryFilter = 'All';
                         });
                         _initializeDataStream();
                       }, fontSize),
@@ -484,20 +393,12 @@ class _ReportScreenState extends State<ReportScreen> {
                         });
                         _initializeDataStream();
                       }, fontSize),
-                      if (_reportType == 'Work Orders' || _reportType == 'Requests')
-                        _buildDropdown('Priority', _priorityFilter, ['All', 'High', 'Medium', 'Low'], (value) {
-                          setState(() {
-                            _priorityFilter = value!;
-                          });
-                          _initializeDataStream();
-                        }, fontSize),
-                      if (_reportType == 'Equipment' || _reportType == 'Inventory' || _reportType == 'Vendors')
-                        _buildDropdown('Category', _categoryFilter, _getAvailableCategories(), (value) {
-                          setState(() {
-                            _categoryFilter = value!;
-                          });
-                          _initializeDataStream();
-                        }, fontSize),
+                      _buildDropdown('Priority', _priorityFilter, ['All', 'High', 'Medium', 'Low'], (value) {
+                        setState(() {
+                          _priorityFilter = value!;
+                        });
+                        _initializeDataStream();
+                      }, fontSize),
                     ],
                   )
                 : Column(
@@ -505,12 +406,11 @@ class _ReportScreenState extends State<ReportScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: _buildDropdown('Report Type', _reportType, ['Work Orders', 'Requests', 'Equipment', 'Inventory', 'Vendors'], (value) {
+                            child: _buildDropdown('Report Type', _reportType, ['Work Orders', 'Work on Request'], (value) {
                               setState(() {
                                 _reportType = value!;
                                 _statusFilter = 'All';
                                 _priorityFilter = 'All';
-                                _categoryFilter = 'All';
                               });
                               _initializeDataStream();
                             }, fontSize),
@@ -529,40 +429,24 @@ class _ReportScreenState extends State<ReportScreen> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          if (_reportType == 'Work Orders' || _reportType == 'Requests')
-                            Expanded(
-                              child: _buildDropdown('Priority', _priorityFilter, ['All', 'High', 'Medium', 'Low'], (value) {
-                                setState(() {
-                                  _priorityFilter = value!;
-                                });
-                                _initializeDataStream();
-                              }, fontSize),
-                            )
-                          else
-                            const Expanded(child: SizedBox()),
-                          const SizedBox(width: 12),
-                          if (_reportType == 'Equipment' || _reportType == 'Inventory' || _reportType == 'Vendors')
-                            Expanded(
-                              child: _buildDropdown('Category', _categoryFilter, _getAvailableCategories(), (value) {
-                                setState(() {
-                                  _categoryFilter = value!;
-                                });
-                                _initializeDataStream();
-                              }, fontSize),
-                            )
-                          else
-                            const Expanded(child: SizedBox()),
+                          Expanded(
+                            child: _buildDropdown('Priority', _priorityFilter, ['All', 'High', 'Medium', 'Low'], (value) {
+                              setState(() {
+                                _priorityFilter = value!;
+                              });
+                              _initializeDataStream();
+                            }, fontSize),
+                          ),
                         ],
                       ),
                     ],
                   ),
             const SizedBox(height: 12),
             isMobile
-                ? Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
+                ? Row(
                     children: [
                       _buildDateButton('Start Date', _startDate, fontSize, true),
+                      const SizedBox(width: 12),
                       _buildDateButton('End Date', _endDate, fontSize, false),
                     ],
                   )
@@ -733,13 +617,6 @@ class _ReportScreenState extends State<ReportScreen> {
                   _buildStatChip('Total Value', '\$${summary['totalValue'].toStringAsFixed(2)}', Colors.green, fontSize: fontSize),
                 if (summary['totalQuantity'] != null && summary['totalQuantity'] > 0)
                   _buildStatChip('Total Quantity', '${summary['totalQuantity']}', Colors.orange, fontSize: fontSize),
-                if (summary['trend'] != null)
-                  _buildStatChip(
-                    'Trend',
-                    '${summary['trend'] > 0 ? '+' : ''}${summary['trend'].toStringAsFixed(1)}%',
-                    summary['trend'] > 0 ? Colors.green : Colors.red,
-                    fontSize: fontSize,
-                  ),
               ],
             ),
           ],
@@ -752,9 +629,9 @@ class _ReportScreenState extends State<ReportScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withValues(alpha: 0.1), // Updated to use withValues
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)), // Updated to use withValues
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -780,6 +657,7 @@ class _ReportScreenState extends State<ReportScreen> {
       ),
     );
   }
+
 
   Widget _buildDataList({required double fontSize, required double padding}) {
     if (_currentData.isEmpty) {
@@ -816,7 +694,7 @@ class _ReportScreenState extends State<ReportScreen> {
         try {
           final item = displayData[index].data() as Map<String, dynamic>?;
           if (item == null) return const SizedBox.shrink();
-          
+
           return _buildDataCard(item, index, fontSize: fontSize, padding: padding);
         } catch (e) {
           _logger.w('Error building item at index $index: $e');
@@ -872,11 +750,6 @@ class _ReportScreenState extends State<ReportScreen> {
                       'Priority: ${item['priority']}',
                       style: GoogleFonts.poppins(fontSize: fontSize - 2, color: Colors.grey[600]),
                     ),
-                  if (item['category'] != null)
-                    Text(
-                      'Category: ${item['category']}',
-                      style: GoogleFonts.poppins(fontSize: fontSize - 2, color: Colors.grey[600]),
-                    ),
                   Text(
                     'Created: ${item['createdAt'] != null ? DateFormat.yMMMd().format((item['createdAt'] as Timestamp).toDate()) : 'N/A'}',
                     style: GoogleFonts.poppins(fontSize: fontSize - 2, color: Colors.grey[600]),
@@ -903,16 +776,6 @@ class _ReportScreenState extends State<ReportScreen> {
         return Colors.orange.shade600;
       case 'closed':
         return Colors.green.shade600;
-      case 'active':
-        return Colors.green.shade600;
-      case 'inactive':
-        return Colors.grey.shade600;
-      case 'under repair':
-        return Colors.red.shade600;
-      case 'low stock':
-        return Colors.orange.shade600;
-      case 'out of stock':
-        return Colors.red.shade600;
       default:
         return Colors.grey.shade600;
     }

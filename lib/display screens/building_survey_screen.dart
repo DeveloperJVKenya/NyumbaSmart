@@ -620,7 +620,7 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _showUploadDialog,
         backgroundColor: Colors.blueGrey[800],
-        child: const Icon(Icons.add, color: Colors.white),
+        child: const Icon(Icons.upload, color: Colors.white),
       ),
       child: _buildBody(),
     );
