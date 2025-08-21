@@ -9,6 +9,7 @@ class BuildingSurvey {
   final DateTime? uploadedAt;
   final String facilityId;
   final String category;
+  final bool isDeleted; // New field for deletion status
 
   BuildingSurvey({
     required this.id,
@@ -19,6 +20,7 @@ class BuildingSurvey {
     this.uploadedAt,
     required this.facilityId,
     required this.category,
+    required this.isDeleted, // Include new field in constructor
   });
 
   Map<String, dynamic> toJson() => {
@@ -29,6 +31,7 @@ class BuildingSurvey {
         'uploadedAt': uploadedAt?.toIso8601String(),
         'facilityId': facilityId,
         'category': category,
+        'isDeleted': isDeleted, // Include new field in JSON
       };
 
   factory BuildingSurvey.fromJson(String id, Map<String, dynamic> json) => BuildingSurvey(
@@ -40,6 +43,7 @@ class BuildingSurvey {
         uploadedAt: json['uploadedAt'] != null ? DateTime.parse(json['uploadedAt'] as String) : null,
         facilityId: json['facilityId'] as String,
         category: json['category'] as String? ?? 'General',
+        isDeleted: json['isDeleted'] as bool? ?? false, // Set default value for new field
       );
 
   factory BuildingSurvey.fromSnapshot(DocumentSnapshot doc) {
@@ -53,6 +57,7 @@ class BuildingSurvey {
       uploadedAt: (data['uploadedAt'] as Timestamp?)?.toDate(),
       facilityId: data['facilityId'] as String,
       category: data['category'] as String? ?? 'General',
+      isDeleted: data['isDeleted'] as bool? ?? false, // Initialize new field
     );
   }
 }

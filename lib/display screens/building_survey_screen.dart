@@ -191,7 +191,7 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
             TextButton(
               onPressed: () => Navigator.pop(context, true),
               child: Text('Upload', style: GoogleFonts.poppins()),
-            ),
+            )
           ],
         ),
       );
@@ -209,31 +209,28 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => PopScope(
-          canPop: false,
-          child: AlertDialog(
-            title: Text('Uploading $fileName', style: GoogleFonts.poppins()),
-            content: StatefulBuilder(
-              builder: (context, setDialogState) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    LinearProgressIndicator(
-                      value: _uploadProgress,
-                      backgroundColor: Colors.grey[300],
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueGrey),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _uploadProgress != null
-                          ? '${(_uploadProgress! * 100).toStringAsFixed(0)}%'
-                          : 'Starting upload...',
-                      style: GoogleFonts.poppins(),
-                    ),
-                  ],
-                );
-              },
-            ),
+        builder: (context) => AlertDialog(
+          title: Text('Uploading $fileName', style: GoogleFonts.poppins()),
+          content: StatefulBuilder(
+            builder: (context, setDialogState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LinearProgressIndicator(
+                    value: _uploadProgress,
+                    backgroundColor: Colors.grey[300],
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueGrey),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _uploadProgress != null
+                        ? '${(_uploadProgress! * 100).toStringAsFixed(0)}%'
+                        : 'Starting upload...',
+                    style: GoogleFonts.poppins(),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       );
@@ -259,6 +256,7 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
             'originalName': fileName,
             'uploadedBy': user.uid,
             'facilityId': widget.facilityId,
+            'isDeleted': 'false', // New field for deletion status
           },
         );
         
@@ -282,6 +280,7 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
             'originalName': fileName,
             'uploadedBy': user.uid,
             'facilityId': widget.facilityId,
+            'isDeleted': 'false', // New field for deletion status
           },
         );
         
@@ -315,6 +314,7 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
         'category': _selectedCategory,
         'fileSize': platformFile.size,
         'platform': kIsWeb ? 'web' : Platform.operatingSystem,
+        'isDeleted': false, // New field for deletion status
       });
 
       if (mounted) {
@@ -453,8 +453,8 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
           return;
         }
 
-        final downloadsDir = await getExternalStorageDirectory();
-        final filePath = '${downloadsDir!.path}/$fileName';
+        final tempDir = await getTemporaryDirectory(); 
+        final filePath = '${tempDir.path}/$fileName';
         
         // Show download progress
         if (mounted) {
@@ -529,15 +529,9 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
       if (!status.isGranted) {
         status = await Permission.storage.request();
       }
-      if (!status.isGranted) {
-        status = await Permission.manageExternalStorage.status;
-        if (!status.isGranted) {
-          status = await Permission.manageExternalStorage.request();
-        }
-      }
       return status.isGranted;
     }
-    return true;
+    return true; // Assume permission is granted for non-Android platforms
   }
 
   Future<void> _deleteDocument(String downloadUrl, String fileName, String docId) async {
@@ -587,8 +581,10 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
       // Delete from Firebase Storage
       await FirebaseStorage.instance.refFromURL(downloadUrl).delete();
       
-      // Delete from Firestore
-      await FirebaseFirestore.instance.collection('BuildingSurveys').doc(docId).delete();
+      // Update Firestore to mark the document as deleted
+      await FirebaseFirestore.instance.collection('BuildingSurveys').doc(docId).update({
+        'isDeleted': true, // Mark document as deleted
+      });
       
       if (mounted) {
         Navigator.pop(context); // Close deletion dialog
@@ -743,8 +739,8 @@ class _BuildingSurveyScreenState extends State<BuildingSurveyScreen> {
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     child: ListTile(
                       leading: Icon(
-                        Icons.assessment,
-                        color: Colors.blueGrey[700],
+                        Icons.picture_as_pdf, // Updated icon for PDF
+                        color: Colors.red, // Red color for PDF icon
                         size: isMobile ? 32 : 36,
                       ),
                       title: Text(
