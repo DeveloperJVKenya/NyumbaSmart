@@ -1,7 +1,8 @@
-//import 'package:cmms/authentication/splashscreen.dart';
+import 'package:cmms/authentication/splashscreen.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:cmms/notifications/services/notification_scheduler_service.dart';
@@ -20,13 +21,12 @@ import 'package:cmms/notifications/services/system_notification_service.dart';
 import 'package:cmms/notifications/widgets/floating_notification_widget.dart';
 import 'package:cmms/screens/dashboard_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'firebase_options.dart';
-import 'package:cmms/authentication/welcome_screen.dart';
 import 'package:cmms/authentication/need_account_screen.dart';
+import 'package:cmms/theme/app_theme.dart';
 
 // Background message handler (must be top-level)
 @pragma('vm:entry-point')
@@ -189,7 +189,7 @@ void main() async {
   // Initialize all notification services
   await _initializeNotificationServicesOptimized();
 
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 /// Initialize all notification services
@@ -341,16 +341,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return MaterialApp(
       title: 'NyumbaSmart',
       navigatorKey: navigatorKey,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-        textTheme: GoogleFonts.poppinsTextTheme(),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blueGrey,
-          brightness: Brightness.light,
-        ),
-      ),
-      home: const WelcomeScreen(),
+      theme: AppTheme.light,
+      home: const SplashScreen(),
       builder: (context, child) {
         return Stack(
           children: [

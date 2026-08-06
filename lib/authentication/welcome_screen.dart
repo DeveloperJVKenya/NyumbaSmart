@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:cmms/theme/app_theme.dart';
+import 'package:cmms/theme/app_widgets.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -52,223 +55,90 @@ class WelcomeScreenState extends State<WelcomeScreen> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 600;
-    final isTablet = screenWidth >= 600 && screenWidth < 1200;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isMobile = AppBreakpoints.isMobile(screenWidth);
+    final isTablet = AppBreakpoints.isTablet(screenWidth);
+    final isDesktop = AppBreakpoints.isDesktop(screenWidth);
+    // On wide screens, cap the carousel width like a hero panel instead of
+    // stretching a mobile-shaped layout full-bleed.
+    final carouselWidth = isDesktop ? screenWidth * 0.7 : screenWidth;
 
     return Scaffold(
       body: Stack(
         children: [
-          CarouselSlider(
-            options: CarouselOptions(
-              height: MediaQuery.of(context).size.height,
-              enlargeCenterPage: true,
-              enableInfiniteScroll: true,
-              autoPlay: false,
-              viewportFraction: 1.0,
-              onPageChanged: (index, reason) {
-                setState(() {
-                  _currentIndex = index;
-                });
-              },
+          const Positioned.fill(child: AppAnimatedBackdrop()),
+          Center(
+            child: SizedBox(
+              width: carouselWidth,
+              height: screenHeight,
+              child: ClipRRect(
+                borderRadius: isDesktop
+                    ? BorderRadius.circular(AppRadius.xl)
+                    : BorderRadius.zero,
+                child: CarouselSlider(
+                  options: CarouselOptions(
+                    height: screenHeight,
+                    enlargeCenterPage: true,
+                    enableInfiniteScroll: true,
+                    autoPlay: true,
+                    autoPlayInterval: const Duration(seconds: 6),
+                    viewportFraction: 1.0,
+                    onPageChanged: (index, reason) {
+                      setState(() => _currentIndex = index);
+                    },
+                  ),
+                  items: slides.map((slide) {
+                    return Builder(
+                      builder: (BuildContext context) {
+                        return SizedBox(
+                          width: carouselWidth,
+                          height: screenHeight,
+                          child: _buildSlide(slide, isMobile, isTablet, carouselWidth, screenHeight),
+                        );
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
             ),
-            items: slides.map((slide) {
-              return Builder(
-                builder: (BuildContext context) {
-                  return SizedBox(
-                    width: MediaQuery.of(context).size.width,
-                    height: MediaQuery.of(context).size.height,
-                    child: slide.image == 'assets/nyumbasmart.jpg'
-                        ? Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Center(
-                                  child: Image.asset(
-                                    slide.image!,
-                                    height: isMobile ? 100.0 : isTablet ? 150.0 : 200.0,
-                                    fit: BoxFit.contain,
-                                  ),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      slide.title,
-                                      style: TextStyle(
-                                        fontSize: isMobile ? 20.0 : isTablet ? 22.0 : 24.0,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      slide.subtitle,
-                                      style: TextStyle(
-                                        fontSize: isMobile ? 14.0 : isTablet ? 15.0 : 16.0,
-                                        color: Colors.black87,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          )
-                        : (slide.images != null && slide.images!.length > 1
-                            ? Stack(
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Image.asset(
-                                          slide.images![0],
-                                          fit: BoxFit.cover,
-                                          height: MediaQuery.of(context).size.height,
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: Image.asset(
-                                          slide.images![1],
-                                          fit: BoxFit.cover,
-                                          height: MediaQuery.of(context).size.height,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  Positioned(
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 150.0,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            slide.title,
-                                            style: TextStyle(
-                                              fontSize: isMobile ? 20.0 : isTablet ? 22.0 : 24.0,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                          const SizedBox(height: 10),
-                                          Text(
-                                            slide.subtitle,
-                                            style: TextStyle(
-                                              fontSize: isMobile ? 14.0 : isTablet ? 15.0 : 16.0,
-                                              color: Colors.white,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : Container(
-                                decoration: BoxDecoration(
-                                  image: DecorationImage(
-                                    image: AssetImage(slide.image!),
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 150.0),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        slide.title,
-                                        style: TextStyle(
-                                          fontSize: isMobile ? 20.0 : isTablet ? 22.0 : 24.0,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        slide.subtitle,
-                                        style: TextStyle(
-                                          fontSize: isMobile ? 14.0 : isTablet ? 15.0 : 16.0,
-                                          color: Colors.white,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )),
-                  );
-                },
-              );
-            }).toList(),
           ),
           Positioned(
             left: 0,
             right: 0,
-            bottom: 50.0,
+            bottom: isMobile ? 32.0 : 48.0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding: EdgeInsets.symmetric(horizontal: isDesktop ? screenWidth * 0.2 : 24.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/login');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(
-                          vertical: isMobile ? 6.0 : isTablet ? 8.0 : 10.0,
-                          horizontal: isMobile ? 12.0 : isTablet ? 15.0 : 18.0,
-                        ),
-                      ),
-                      child: Text(
-                        'Sign In',
-                        style: TextStyle(
-                          fontSize: isMobile ? 14.0 : isTablet ? 16.0 : 18.0,
-                          color: Colors.white,
-                        ),
+                    _GradientCta(
+                      label: 'Sign In',
+                      icon: Icons.login_rounded,
+                      onPressed: () => Navigator.pushNamed(context, '/login'),
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.pushNamed(context, '/needAccount'),
+                      icon: const Icon(Icons.help_outline, size: 18),
+                      label: Text(
+                        'Need an Account?',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/needAccount');
-                      },
-                      child: Text(
-                        'Having Trouble Signing In? Need an Account',
-                        style: TextStyle(
-                          color: Colors.blue,
-                          fontSize: isMobile ? 14.0 : isTablet ? 16.0 : 18.0,
-                          decoration: TextDecoration.underline,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 18),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(slides.length, (index) {
-                        return Container(
+                        final active = _currentIndex == index;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
                           margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                          width: 10.0,
-                          height: 10.0,
+                          width: active ? 22.0 : 8.0,
+                          height: 8.0,
                           decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _currentIndex == index ? Colors.blueGrey : Colors.grey,
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                            color: active ? AppColors.accent : Colors.white.withValues(alpha: 0.45),
                           ),
                         );
                       }),
@@ -279,6 +149,153 @@ class WelcomeScreenState extends State<WelcomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSlide(Slide slide, bool isMobile, bool isTablet, double width, double height) {
+    final titleSize = isMobile ? 22.0 : isTablet ? 26.0 : 30.0;
+    final subtitleSize = isMobile ? 14.0 : isTablet ? 15.5 : 17.0;
+
+    if (slide.image == 'assets/nyumbasmart.jpg') {
+      return DecoratedBox(
+        decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(AppRadius.xl),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 24, offset: const Offset(0, 10)),
+                  ],
+                ),
+                child: Image.asset(
+                  slide.image!,
+                  height: isMobile ? 90.0 : isTablet ? 130.0 : 170.0,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    slide.title,
+                    style: GoogleFonts.poppins(fontSize: titleSize, fontWeight: FontWeight.bold, color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    slide.subtitle,
+                    style: GoogleFonts.poppins(fontSize: subtitleSize, color: Colors.white.withValues(alpha: 0.9)),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget imageLayer;
+    if (slide.images != null && slide.images!.length > 1) {
+      imageLayer = Row(
+        children: [
+          Expanded(child: Image.asset(slide.images![0], fit: BoxFit.cover, height: height)),
+          Expanded(child: Image.asset(slide.images![1], fit: BoxFit.cover, height: height)),
+        ],
+      );
+    } else {
+      imageLayer = Image.asset(slide.image!, fit: BoxFit.cover, width: width, height: height);
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        imageLayer,
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.75)],
+              stops: const [0.4, 1.0],
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 190.0,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  slide.title,
+                  style: GoogleFonts.poppins(fontSize: titleSize, fontWeight: FontWeight.bold, color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  slide.subtitle,
+                  style: GoogleFonts.poppins(fontSize: subtitleSize, color: Colors.white.withValues(alpha: 0.9)),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GradientCta extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _GradientCta({required this.label, required this.icon, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        gradient: const LinearGradient(colors: [AppColors.accent, AppColors.accentLight]),
+        boxShadow: [
+          BoxShadow(color: AppColors.accent.withValues(alpha: 0.4), blurRadius: 18, offset: const Offset(0, 8)),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          onTap: onPressed,
+          child: Container(
+            width: double.infinity,
+            height: 54,
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Text(label, style: GoogleFonts.poppins(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -1,218 +1,48 @@
 import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cmms/screens/dashboard_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cmms/authentication/welcome_screen.dart';
+import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/screens/dashboard_screen.dart';
+import 'package:cmms/theme/app_theme.dart';
 
-class SplashScreen extends StatefulWidget {
+/// App-launch auth gate. Shows the branded splash while resolving
+/// sign-in/role state, then routes straight to the dashboard for an
+/// already-authenticated user, or to the marketing welcome flow otherwise —
+/// closing the previous gap where every launch forced a tap through the
+/// welcome carousel even for signed-in users.
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  SplashScreenState createState() => SplashScreenState();
+  ConsumerState<SplashScreen> createState() => SplashScreenState();
 }
 
-class SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _damageOpacityAnimation;
-  late Animation<double> _repairScaleAnimation;
-  late Animation<double> _textFadeAnimation;
+class SplashScreenState extends ConsumerState<SplashScreen>
+    with TickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _logoScale;
+  late final Animation<double> _textFade;
   final Logger _logger = Logger(printer: PrettyPrinter());
 
-  String? _currentRole;
   bool _navigationCompleted = false;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(seconds: 4),
+      duration: const Duration(milliseconds: 1400),
       vsync: this,
+    )..forward();
+
+    _logoScale = Tween<double>(begin: 0.7, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack)),
     );
-
-    _damageOpacityAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeInOut),
-      ),
+    _textFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.4, 1.0, curve: Curves.easeIn)),
     );
-
-    _repairScaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.4, 0.8, curve: Curves.easeOutBack),
-      ),
-    );
-
-    _textFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.6, 0.9, curve: Curves.easeIn),
-      ),
-    );
-
-    _controller.forward();
-
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      _initializeAuthAndRoleCheck();
-    });
-  }
-
-  Future<void> _initializeAuthAndRoleCheck() async {
-    try {
-      if (kIsWeb) {
-        await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
-      }
-
-      await Future.delayed(const Duration(seconds: 2));
-      
-      User? user = FirebaseAuth.instance.currentUser;
-      _logger.i('Current user: ${user?.uid ?? 'null'}');
-      
-      if (user == null) {
-        _navigateToWelcome('No user logged in');
-        return;
-      }
-
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection('Users')
-          .doc(user.uid)
-          .get();
-      if (!userDoc.exists) {
-        _navigateToWelcome('User not registered');
-        return;
-      }
-
-      try {
-        _logger.i('Initializing FCM token during splash for user: ${user.uid}');
-        await NotificationService().initialize();
-        _logger.i('FCM token successfully initialized during splash for user: ${user.uid}');
-      } catch (fcmError) {
-        _logger.e('Failed to initialize FCM token during splash: $fcmError');
-      }
-
-      await _determineUserRole(user.uid);
-      
-      await Future.delayed(const Duration(seconds: 3));
-      
-      if (!_navigationCompleted) {
-        _navigateBasedOnRole();
-      }
-    } catch (e) {
-      _logger.e('Error in auth initialization: $e');
-      if (!_navigationCompleted) {
-        _navigateToWelcome('Authentication error: $e');
-      }
-    }
-  }
-
-  Future<void> _determineUserRole(String uid) async {
-    try {
-      final adminDoc = await FirebaseFirestore.instance
-          .collection('Admins')
-          .doc(uid)
-          .get();
-      
-      final developerDoc = await FirebaseFirestore.instance
-          .collection('Developers')
-          .doc(uid)
-          .get();
-      
-      final technicianDoc = await FirebaseFirestore.instance
-          .collection('Technicians')
-          .doc(uid)
-          .get();
-      
-      final userDoc = await FirebaseFirestore.instance
-          .collection('Users')
-          .doc(uid)
-          .get();
-
-      if (mounted) {
-        setState(() {
-          if (adminDoc.exists) {
-            _currentRole = 'Admin';
-            _logger.i('User is an Admin');
-          } else if (developerDoc.exists) {
-            _currentRole = 'Technician';
-            _logger.i('User is a Developer (treated as Technician)');
-          } else if (technicianDoc.exists) {
-            _currentRole = 'Technician';
-            _logger.i('User is a Technician');
-          } else if (userDoc.exists && userDoc.data()?['role'] == 'Technician') {
-            _currentRole = 'Technician';
-            _logger.i('User has Technician role in Users collection');
-          } else {
-            _currentRole = 'User';
-            _logger.i('User has default User role');
-          }
-        });
-      }
-
-      _listenToRoleChanges(uid);
-    } catch (e) {
-      _logger.e('Error determining user role: $e');
-      _currentRole = 'User';
-    }
-  }
-
-  void _listenToRoleChanges(String uid) {
-    FirebaseFirestore.instance.collection('Users').doc(uid).snapshots().listen(
-      (DocumentSnapshot snapshot) {
-        if (!mounted || _navigationCompleted) return;
-
-        final newRole = snapshot.exists ? snapshot.get('role') : 'User';
-        if (newRole != _currentRole) {
-          setState(() {
-            _currentRole = newRole;
-            _logger.i('Role updated to: $newRole');
-          });
-          _navigateBasedOnRole();
-        }
-      },
-      onError: (error) {
-        _logger.e('Error listening to role changes: $error');
-      },
-    );
-  }
-
-  void _navigateBasedOnRole() {
-    if (!mounted || _navigationCompleted) return;
-    _navigationCompleted = true;
-
-    _logger.i('Navigating to dashboard with role: ${_currentRole ?? 'User'}');
-    
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => DashboardScreen(
-          facilityId: '',
-          role: _currentRole ?? 'User',
-        ),
-      ),
-    );
-  }
-
-  void _navigateToWelcome(String message) {
-    if (mounted && !_navigationCompleted) {
-      _navigationCompleted = true;
-      _logger.i('Navigating to welcome: $message');
-      
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-      );
-      
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(message)),
-          );
-        }
-      });
-    }
   }
 
   @override
@@ -221,58 +51,117 @@ class SplashScreenState extends State<SplashScreen> with TickerProviderStateMixi
     super.dispose();
   }
 
+  void _navigateToDashboard(UserRoleInfo info) {
+    if (!mounted || _navigationCompleted) return;
+    _navigationCompleted = true;
+    _logger.i('Splash: navigating to dashboard with role ${info.roleLabel}');
+    NotificationService().initialize().catchError((e) {
+      _logger.e('FCM init failed during splash: $e');
+    });
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => DashboardScreen(facilityId: '', role: info.roleLabel),
+      ),
+    );
+  }
+
+  void _navigateToWelcome() {
+    if (!mounted || _navigationCompleted) return;
+    _navigationCompleted = true;
+    _logger.i('Splash: no signed-in user, navigating to welcome');
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authStateProvider);
+
+    return authState.when(
+      data: (user) {
+        if (user == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToWelcome());
+          return _buildSplash();
+        }
+        final roleAsync = ref.watch(currentUserRoleProvider);
+        return roleAsync.when(
+          data: (info) {
+            WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToDashboard(info));
+            return _buildSplash();
+          },
+          loading: () => _buildSplash(),
+          error: (e, st) {
+            WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToWelcome());
+            return _buildSplash();
+          },
+        );
+      },
+      loading: () => _buildSplash(),
+      error: (e, st) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToWelcome());
+        return _buildSplash();
+      },
+    );
+  }
+
+  Widget _buildSplash() {
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                FadeTransition(
-                  opacity: _damageOpacityAnimation,
-                  child: Image.asset(
-                    'assets/damage.png',
-                    width: 200,
-                    height: 200,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ScaleTransition(
+                scale: _logoScale,
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 30,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
                   ),
-                ),
-                ScaleTransition(
-                  scale: _repairScaleAnimation,
-                  child: Image.asset(
-                    'assets/repair.png',
-                    width: 200,
-                    height: 200,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            FadeTransition(
-              opacity: _textFadeAnimation,
-              child: Text(
-                'NyumbaSmart',
-                style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey,
+                  child: Image.asset('assets/icons/icon.png', width: 88, height: 88),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            FadeTransition(
-              opacity: _textFadeAnimation,
-              child: Text(
-                'Facility Management Made Simple',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  color: Colors.blueGrey,
+              const SizedBox(height: AppSpacing.lg),
+              FadeTransition(
+                opacity: _textFade,
+                child: Text(
+                  'NyumbaSmart',
+                  style: GoogleFonts.poppins(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              FadeTransition(
+                opacity: _textFade,
+                child: Text(
+                  'Facility Management Made Simple',
+                  style: GoogleFonts.poppins(fontSize: 15, color: Colors.white.withValues(alpha: 0.85)),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+              FadeTransition(
+                opacity: _textFade,
+                child: const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

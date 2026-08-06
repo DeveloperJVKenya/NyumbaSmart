@@ -1,17 +1,21 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
+import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/theme/app_theme.dart';
+import 'package:cmms/theme/app_widgets.dart';
 
-class RoleAssignmentScreen extends StatefulWidget {
+class RoleAssignmentScreen extends ConsumerStatefulWidget {
   const RoleAssignmentScreen({super.key});
 
   @override
-  State<RoleAssignmentScreen> createState() => _RoleAssignmentScreenState();
+  ConsumerState<RoleAssignmentScreen> createState() => _RoleAssignmentScreenState();
 }
 
-class _RoleAssignmentScreenState extends State<RoleAssignmentScreen> {
+class _RoleAssignmentScreenState extends ConsumerState<RoleAssignmentScreen> {
   final TextEditingController _uidController = TextEditingController();
   final Logger _logger = Logger();
   final GlobalKey<ScaffoldMessengerState> _messengerKey = GlobalKey<ScaffoldMessengerState>();
@@ -20,51 +24,34 @@ class _RoleAssignmentScreenState extends State<RoleAssignmentScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        if (mounted) {
-          _messengerKey.currentState?.showSnackBar(
-            SnackBar(content: Text('No authenticated user', style: GoogleFonts.poppins())),
-          );
-        }
+        _snack('No authenticated user');
         return;
       }
 
-      // Fetch Admin's organization
-      final adminDoc = await FirebaseFirestore.instance.collection('Admins').doc(user.uid).get();
-      if (!adminDoc.exists) {
-        if (mounted) {
-          _messengerKey.currentState?.showSnackBar(
-            SnackBar(content: Text('Only Admins can assign Technician roles', style: GoogleFonts.poppins())),
-          );
-        }
+      // Admin check + organization now go through RoleService, the same
+      // source of truth the rest of the app uses, instead of this screen's
+      // own inline Firestore lookup.
+      final roleService = ref.read(roleServiceProvider);
+      final isAdmin = await roleService.isAdmin(user.uid);
+      if (!isAdmin) {
+        _snack('Only Admins can assign Technician roles');
         return;
       }
-      final adminOrg = adminDoc.data()?['organization'] ?? '-';
+      final adminOrg = await roleService.adminOrganization(user.uid) ?? '-';
       if (adminOrg == '-') {
-        if (mounted) {
-          _messengerKey.currentState?.showSnackBar(
-            SnackBar(content: Text('Admin organization not set', style: GoogleFonts.poppins())),
-          );
-        }
+        _snack('Admin organization not set');
         return;
       }
 
       final userDoc = await FirebaseFirestore.instance.collection('Users').doc(uid).get();
       if (!userDoc.exists) {
-        if (mounted) {
-          _messengerKey.currentState?.showSnackBar(
-            SnackBar(content: Text('User not found', style: GoogleFonts.poppins())),
-          );
-        }
+        _snack('User not found');
         return;
       }
 
       final userData = userDoc.data() as Map<String, dynamic>;
       if (userData['role'] != '-') {
-        if (mounted) {
-          _messengerKey.currentState?.showSnackBar(
-            SnackBar(content: Text('User already has a role: ${userData['role']}', style: GoogleFonts.poppins())),
-          );
-        }
+        _snack('User already has a role: ${userData['role']}');
         return;
       }
 
@@ -79,36 +66,27 @@ class _RoleAssignmentScreenState extends State<RoleAssignmentScreen> {
       _logger.i('Assigning Technician role to Users/$uid with organization: $adminOrg');
       await FirebaseFirestore.instance.collection('Technicians').doc(uid).set(roleData);
       try {
-        _logger.i('Updating Users/$uid/role to Technician');
         await FirebaseFirestore.instance.collection('Users').doc(uid).update({'role': 'Technician'});
       } catch (e) {
         _logger.e('Failed to update role in Users collection: $e');
-        if (mounted) {
-          _messengerKey.currentState?.showSnackBar(
-            SnackBar(
-              content: Text('Technician role assigned, but failed to update user role: $e', style: GoogleFonts.poppins()),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
+        _snack('Technician role assigned, but failed to update user role: $e', color: AppColors.warning);
         return;
       }
 
       await _logActivity('Assigned Technician role to $uid (User: ${userData['username']}, Organization: $adminOrg)');
-      if (mounted) {
-        _messengerKey.currentState?.showSnackBar(
-          SnackBar(content: Text('Technician role assigned successfully!', style: GoogleFonts.poppins())),
-        );
-        _uidController.clear();
-      }
+      _snack('Technician role assigned successfully!', color: AppColors.success);
+      _uidController.clear();
     } catch (e) {
-      if (mounted) {
-        _messengerKey.currentState?.showSnackBar(
-          SnackBar(content: Text('Error assigning role: $e', style: GoogleFonts.poppins())),
-        );
-      }
       _logger.e('Error assigning role to Users/$uid: $e');
+      _snack('Error assigning role: $e');
     }
+  }
+
+  void _snack(String message, {Color? color}) {
+    if (!mounted) return;
+    _messengerKey.currentState?.showSnackBar(
+      SnackBar(content: Text(message, style: GoogleFonts.poppins()), backgroundColor: color),
+    );
   }
 
   Future<void> _logActivity(String action) async {
@@ -131,128 +109,120 @@ class _RoleAssignmentScreenState extends State<RoleAssignmentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width <= 600;
+    final isMobile = AppBreakpoints.isMobile(MediaQuery.of(context).size.width);
 
     return ScaffoldMessenger(
       key: _messengerKey,
       child: Scaffold(
         appBar: AppBar(
           title: Text('Assign Technician Role', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.blueGrey,
+          flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
             onPressed: () => Navigator.pop(context),
           ),
         ),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Select or Enter User to Assign Technician Role',
-                  style: GoogleFonts.poppins(
-                    fontSize: isMobile ? 18 : 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey[800],
+        body: Container(
+          decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Select or Enter User to Assign Technician Role',
+                    style: GoogleFonts.poppins(
+                      fontSize: isMobile ? 18 : 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _uidController,
-                        decoration: InputDecoration(
-                          labelText: 'Enter User UID',
-                          hintText: 'e.g., abc123xyz789',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          labelStyle: GoogleFonts.poppins(),
+                  const SizedBox(height: 16),
+                  AppCard(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: AppTextField(
+                            controller: _uidController,
+                            label: 'User UID',
+                            hint: 'e.g., abc123xyz789',
+                            icon: Icons.badge_outlined,
+                          ),
                         ),
-                        style: GoogleFonts.poppins(),
-                      ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          height: 54,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              if (_uidController.text.isEmpty) {
+                                _snack('Please enter a User UID');
+                                return;
+                              }
+                              _assignRole(_uidController.text);
+                            },
+                            style: ElevatedButton.styleFrom(minimumSize: const Size(110, 54)),
+                            child: const Text('Assign'),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        if (_uidController.text.isEmpty) {
-                          _messengerKey.currentState?.showSnackBar(
-                            SnackBar(content: Text('Please enter a User UID', style: GoogleFonts.poppins())),
-                          );
-                          return;
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Available Users (Unassigned Role)',
+                    style: GoogleFonts.poppins(fontSize: isMobile ? 16 : 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('Users').where('role', isEqualTo: '-').snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator(color: AppColors.primary));
                         }
-                        _assignRole(_uidController.text);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: Text('Assign', style: GoogleFonts.poppins(color: Colors.white)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Available Users (Unassigned Role)',
-                  style: GoogleFonts.poppins(
-                    fontSize: isMobile ? 16 : 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.blueGrey[700],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('Users').snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator(color: Colors.blueGrey));
-                      }
-                      if (snapshot.hasError) {
-                        _logger.e('Firestore error: ${snapshot.error}');
-                        return Center(child: Text('Error: ${snapshot.error}', style: GoogleFonts.poppins(color: Colors.red)));
-                      }
-                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                        return Center(child: Text('No users found.', style: GoogleFonts.poppins()));
-                      }
+                        if (snapshot.hasError) {
+                          _logger.e('Firestore error: ${snapshot.error}');
+                          return Center(child: Text('Error: ${snapshot.error}', style: GoogleFonts.poppins(color: AppColors.error)));
+                        }
+                        final users = snapshot.data?.docs ?? [];
+                        if (users.isEmpty) {
+                          return Center(child: Text('No eligible users found.', style: GoogleFonts.poppins(color: AppColors.textSecondary)));
+                        }
 
-                      final users = snapshot.data!.docs
-                          .where((doc) => (doc.data() as Map<String, dynamic>)['role'] == '-')
-                          .toList();
-
-                      if (users.isEmpty) {
-                        return Center(child: Text('No eligible users found.', style: GoogleFonts.poppins()));
-                      }
-
-                      return ListView.builder(
-                        itemCount: users.length,
-                        itemBuilder: (context, index) {
-                          final user = users[index].data() as Map<String, dynamic>;
-                          final uid = users[index].id;
-                          return Card(
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            margin: const EdgeInsets.symmetric(vertical: 8),
-                            child: ListTile(
-                              title: Text(user['username'] ?? 'No Username', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-                              subtitle: Text('Email: ${user['email'] ?? 'N/A'}', style: GoogleFonts.poppins()),
-                              trailing: ElevatedButton(
-                                onPressed: () => _assignRole(uid),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blueGrey,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        return ListView.builder(
+                          itemCount: users.length,
+                          itemBuilder: (context, index) {
+                            final user = users[index].data() as Map<String, dynamic>;
+                            final uid = users[index].id;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: AppCard(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const CircleAvatar(
+                                    backgroundColor: AppColors.surfaceAlt,
+                                    child: Icon(Icons.person_outline, color: AppColors.primary),
+                                  ),
+                                  title: Text(user['username'] ?? 'No Username', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                                  subtitle: Text('Email: ${user['email'] ?? 'N/A'}', style: GoogleFonts.poppins(fontSize: 12.5)),
+                                  trailing: ElevatedButton(
+                                    onPressed: () => _assignRole(uid),
+                                    style: ElevatedButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 16)),
+                                    child: const Text('Assign', style: TextStyle(fontSize: 13)),
+                                  ),
                                 ),
-                                child: Text('Assign Technician', style: GoogleFonts.poppins(color: Colors.white)),
                               ),
-                            ),
-                          );
-                        },
-                      );
-                    },
+                            );
+                          },
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

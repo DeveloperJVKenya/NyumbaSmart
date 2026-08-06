@@ -142,7 +142,7 @@ class _LocationsScreenState extends State<LocationsScreen> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  const Icon(FontAwesomeIcons.locationDot, color: Colors.blueGrey),
+                  const FaIcon(FontAwesomeIcons.locationDot, color: Colors.blueGrey),
                   const SizedBox(width: 8),
                   Text(
                     'Location:',
@@ -161,7 +161,7 @@ class _LocationsScreenState extends State<LocationsScreen> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(FontAwesomeIcons.building, color: Colors.blueGrey),
+                  const FaIcon(FontAwesomeIcons.building, color: Colors.blueGrey),
                   const SizedBox(width: 8),
                   Text(
                     'Organization:',

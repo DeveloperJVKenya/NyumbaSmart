@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
 import 'package:url_launcher/url_launcher_string.dart';
+import 'package:cmms/theme/app_theme.dart';
 
 class NeedAccountScreen extends StatelessWidget {
   const NeedAccountScreen({super.key});
@@ -40,22 +41,16 @@ class NeedAccountScreen extends StatelessWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: const Color.fromARGB(255, 31, 40, 50),
+        backgroundColor: AppColors.primaryDark,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         elevation: 4,
-        shadowColor: const Color.fromARGB(255, 63, 75, 81).withAlpha(128),
+        shadowColor: AppColors.primary.withAlpha(128),
       ),
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.blueGrey[50]!, Colors.white],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
+        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
         child: SingleChildScrollView(
           child: Center(
             child: ConstrainedBox(
@@ -79,12 +74,12 @@ class NeedAccountScreen extends StatelessWidget {
                             style: GoogleFonts.poppins(
                               fontSize: isMobile ? 24 : isTablet ? 26 : 28,
                               fontWeight: FontWeight.w700,
-                              color: Colors.blueGrey[900],
+                              color: AppColors.textPrimary,
                               letterSpacing: 0.5,
                               shadows: [
                                 Shadow(
                                   blurRadius: 4.0,
-                                  color: Colors.blueGrey.withAlpha(80),
+                                  color: AppColors.primary.withAlpha(80),
                                   offset: const Offset(2.0, 2.0),
                                 ),
                               ],
@@ -186,11 +181,11 @@ class NeedAccountScreen extends StatelessWidget {
       duration: const Duration(milliseconds: 500),
       child: Card(
         elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
         child: Container(
           padding: const EdgeInsets.all(16.0),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             color: Colors.white,
           ),
           child: Column(
@@ -202,7 +197,7 @@ class NeedAccountScreen extends StatelessWidget {
                   style: GoogleFonts.poppins(
                     fontSize: fontSize,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey[800],
+                    color: AppColors.primaryDark,
                     letterSpacing: 0.5,
                   ),
                   textAlign: TextAlign.center,

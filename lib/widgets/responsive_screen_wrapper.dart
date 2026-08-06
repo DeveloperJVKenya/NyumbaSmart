@@ -1,8 +1,7 @@
 import 'package:cmms/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/display%20screens/locations_screen.dart';
 import 'package:cmms/display%20screens/building_survey_screen.dart';
@@ -22,9 +21,16 @@ import 'package:cmms/display%20screens/kpi_screen.dart';
 import 'package:cmms/display%20screens/report_screen.dart';
 import 'package:cmms/screens/settings_screen.dart';
 import 'package:cmms/developer/developer_screen.dart';
-import 'dart:async';
+import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/models/user_model.dart';
+import 'package:cmms/theme/app_theme.dart';
 
-class ResponsiveScreenWrapper extends StatefulWidget {
+/// Dashboard shell (AppBar + drawer/sidebar/rail + content). Role and
+/// organization are sourced live from [currentUserRoleProvider] instead of
+/// this widget's own retry-fetch (previously `_fetchUserRoleWithRetry`),
+/// which duplicated the same Admins/Developers/Technicians/Users cascade
+/// already centralized in lib/providers/auth_providers.dart.
+class ResponsiveScreenWrapper extends ConsumerStatefulWidget {
   final String title;
   final Widget child;
   final String facilityId;
@@ -49,265 +55,37 @@ class ResponsiveScreenWrapper extends StatefulWidget {
   });
 
   @override
-  State<ResponsiveScreenWrapper> createState() =>
-      _ResponsiveScreenWrapperState();
+  ConsumerState<ResponsiveScreenWrapper> createState() => _ResponsiveScreenWrapperState();
 }
 
-class _ResponsiveScreenWrapperState extends State<ResponsiveScreenWrapper> {
+class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrapper> {
   final Logger _logger = Logger(printer: PrettyPrinter());
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  String _currentRole = 'User';
-  String _organization = '-';
-  bool _isDeveloper = false; // 🔧 FIXED: Changed from final to mutable
-  bool _isClient = false;
-  
-  // Static variable to persist expansion state across widget rebuilds
+
+  // Static so the Building Information submenu stays expanded across
+  // rebuilds/navigations, matching the previous behavior.
   static bool _isBuildingInfoExpanded = false;
-  
-  final List<StreamSubscription<DocumentSnapshot>> _organizationSubscriptions = [];
 
-  @override
-  void initState() {
-    super.initState();
-    _currentRole = widget.currentRole ?? 'User';
-    _organization = widget.organization ?? '-';
-    _logger.i(
-        'Initializing ResponsiveScreenWrapper for ${widget.title}, facilityId: ${widget.facilityId}, role: $_currentRole, org: $_organization, selectedOrg: ${widget.selectedOrganizationName}');
-    _fetchUserRoleWithRetry();
-    _setupOrganizationListeners();
-    
-    // Force rebuild after 2 seconds to catch late query results
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {});
-        _logger.d('Forced UI rebuild for ${widget.title} after 2s');
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    for (var subscription in _organizationSubscriptions) {
-      subscription.cancel();
-    }
-    super.dispose();
-  }
-
-  void _setupOrganizationListeners() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    // Clear existing subscriptions
-    for (var subscription in _organizationSubscriptions) {
-      subscription.cancel();
-    }
-    _organizationSubscriptions.clear();
-
-    // Listen to Users collection for organization changes
-    final usersStream = FirebaseFirestore.instance
-        .collection('Users')
-        .doc(user.uid)
-        .snapshots();
-    
-    final usersSubscription = usersStream.listen(
-      (snapshot) {
-        if (snapshot.exists) {
-          _logger.i('Organization update detected in Users collection for ${user.uid}');
-          _checkClientStatus();
-        }
-      },
-      onError: (error) {
-        _logger.e('Error in Users organization listener: $error');
-      },
-    );
-    _organizationSubscriptions.add(usersSubscription);
-
-    // Listen to Technicians collection for organization changes
-    final techniciansStream = FirebaseFirestore.instance
-        .collection('Technicians')
-        .doc(user.uid)
-        .snapshots();
-    
-    final techniciansSubscription = techniciansStream.listen(
-      (snapshot) {
-        if (snapshot.exists) {
-          _logger.i('Organization update detected in Technicians collection for ${user.uid}');
-          _checkClientStatus();
-        }
-      },
-      onError: (error) {
-        _logger.e('Error in Technicians organization listener: $error');
-      },
-    );
-    _organizationSubscriptions.add(techniciansSubscription);
-  }
-
-  Future<void> _checkClientStatus() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      bool isClient = false;
-      String orgFromCheck = '-';
-
-      // First check if user is a Technician
-      final technicianDoc = await FirebaseFirestore.instance
-          .collection('Technicians')
-          .doc(user.uid)
-          .get();
-
-      if (technicianDoc.exists) {
-        orgFromCheck = technicianDoc.data()?['organization'] ?? '-';
-        isClient = orgFromCheck != 'JV Almacis';
-        _logger.i('Technician organization check: $orgFromCheck, isClient: $isClient');
-      } else {
-        // User is not a Technician - check organization from Users collection
-        final userDoc = await FirebaseFirestore.instance
-            .collection('Users')
-            .doc(user.uid)
-            .get();
-
-        if (userDoc.exists) {
-          orgFromCheck = userDoc.data()?['organization'] ?? '-';
-          isClient = orgFromCheck != 'JV Almacis';
-          _logger.i('User organization check: $orgFromCheck, isClient: $isClient');
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _isClient = isClient;
-          _organization = orgFromCheck;
-        });
-        _logger.i('Updated client status: isClient=$isClient, org=$orgFromCheck');
-      }
-    } catch (e) {
-      _logger.e('Error checking client status: $e');
-    }
-  }
-
-  Future<void> _fetchUserRoleWithRetry({int retries = 3, int delayMs = 500}) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      _logger.w('No user logged in, skipping role fetch for ${widget.title}');
-      if (mounted) {
-        setState(() {});
-      }
-      return;
-    }
-
-    _logger.i(
-        'Fetching role for user: ${user.uid} on ${widget.title}, facilityId: ${widget.facilityId}, retries left: $retries');
-    for (int attempt = 1; attempt <= retries; attempt++) {
-      try {
-        final adminDoc = await FirebaseFirestore.instance
-            .collection('Admins')
-            .doc(user.uid)
-            .get();
-        final developerDoc = await FirebaseFirestore.instance
-            .collection('Developers')
-            .doc(user.uid)
-            .get();
-        final technicianDoc = await FirebaseFirestore.instance
-            .collection('Technicians')
-            .doc(user.uid)
-            .get();
-        final userDoc = await FirebaseFirestore.instance
-            .collection('Users')
-            .doc(user.uid)
-            .get();
-
-        _logger.d(
-            'Firestore results for ${widget.title}: Admin=${adminDoc.exists}, Developer=${developerDoc.exists}, Technician=${technicianDoc.exists}, User=${userDoc.exists}');
-
-        String newRole = 'User';
-        String newOrg = '-';
-        bool isDeveloper = false; 
-
-        if (adminDoc.exists) {
-          newRole = 'Admin';
-          final adminData = adminDoc.data();
-          newOrg = adminData?['organization'] ?? '-';
-          _logger.i('User is Admin, org: $newOrg');
-        } else if (developerDoc.exists) {
-          newRole = 'Technician';
-          newOrg = 'JV Almacis';
-          isDeveloper = true; 
-          _logger.i('User is Developer (displayed as Technician), org: $newOrg, isDeveloper: $isDeveloper');
-        } else if (technicianDoc.exists) {
-          newRole = 'Technician';
-          final techData = technicianDoc.data();
-          newOrg = techData?['organization'] ?? '-';
-          _logger.i('User is Technician, org: $newOrg');
-        } else if (userDoc.exists) {
-          final userData = userDoc.data();
-          newRole = userData?['role'] ?? 'User';
-          newOrg = userData?['organization'] ?? '-';
-          _logger.i('User is ${userData?['role'] ?? 'User'}, org: $newOrg');
-        }
-
-        if (mounted) {
-          setState(() {
-            _currentRole = newRole;
-            _organization = newOrg;
-            _isDeveloper = isDeveloper; 
-          });
-          _logger.i('Updated user status: role=$newRole, org=$newOrg, isDeveloper=$isDeveloper');
-        }
-
-        await _checkClientStatus();
-        return;
-      } catch (e, stackTrace) {
-        _logger.e(
-            'Error getting user role and organization on attempt $attempt: $e',
-            stackTrace: stackTrace);
-        if (attempt < retries) {
-          await Future.delayed(Duration(milliseconds: delayMs));
-          delayMs *= 2;
-        } else {
-          if (mounted) {
-            setState(() {});
-          }
-          _logger.e(
-              'Failed to fetch user role and organization after $retries attempts');
-        }
-      }
-    }
-  }
-
-  void _handleDeveloperIconTap() async {
-    if (!_isDeveloper) {
-      _logger.w('App icon tapped but user is not a developer');
-      return;
-    }
-
+  void _handleDeveloperIconTap(bool isMobile) async {
     _logger.i('App icon clicked by developer, navigating to DeveloperScreen');
-
     try {
-      final screenWidth = MediaQuery.of(context).size.width;
-      final isMobile = screenWidth <= 600;
-
       if (isMobile && _scaffoldKey.currentState?.isDrawerOpen == true) {
         Navigator.pop(context);
-        _logger.i('Closed drawer before navigation');
         await Future.delayed(const Duration(milliseconds: 200));
       }
-
       if (mounted) {
         await Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => const DeveloperScreen()),
         );
-        _logger.i('Successfully navigated to DeveloperScreen');
       }
     } catch (e) {
       _logger.e('Error navigating to DeveloperScreen: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error opening developer screen: $e',
-                style: GoogleFonts.poppins()),
-            backgroundColor: Colors.red,
+            content: Text('Error opening developer screen: $e', style: GoogleFonts.poppins()),
+            backgroundColor: AppColors.error,
           ),
         );
       }
@@ -316,38 +94,47 @@ class _ResponsiveScreenWrapperState extends State<ResponsiveScreenWrapper> {
 
   @override
   Widget build(BuildContext context) {
+    final roleInfo = ref.watch(currentUserRoleProvider).valueOrNull ??
+        UserRoleInfo(
+          role: UserRoleX.fromString(widget.currentRole),
+          organization: widget.organization ?? '-',
+        );
+
+    final currentRole = roleInfo.roleLabel;
+    final organization = roleInfo.organization;
+    final isDeveloper = roleInfo.isDeveloper;
+    final isClient = roleInfo.isClient;
+
     final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth <= 600;
-    final String appBarTitle = _organization == '-' ? 'Dashboard' : widget.title;
+    final isMobile = AppBreakpoints.isMobile(screenWidth);
+    final isTablet = AppBreakpoints.isTablet(screenWidth);
+    final String appBarTitle = organization == '-' ? 'Dashboard' : widget.title;
 
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
         title: Text(
           appBarTitle,
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: isMobile ? 18 : 20,
-          ),
+          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: isMobile ? 18 : 20),
         ),
-        backgroundColor: Colors.blueGrey[800],
-        leading: isMobile
+        flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
+        leading: (isMobile || isTablet)
             ? IconButton(
-                icon: const Icon(Icons.menu, color: Colors.white),
+                icon: const Icon(Icons.menu_rounded, color: Colors.white),
                 onPressed: () => _scaffoldKey.currentState?.openDrawer(),
               )
             : IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                 onPressed: () => Navigator.pop(context),
               ),
         actions: widget.actions,
-        elevation: 0,
       ),
-      drawer: isMobile ? _buildDrawer() : null,
+      drawer: (isMobile || isTablet)
+          ? _buildDrawer(currentRole, organization, isDeveloper, isClient, isMobile)
+          : null,
       body: Row(
         children: [
-          if (!isMobile) _buildSidebar(),
+          if (!isMobile && !isTablet) _buildSidebar(currentRole, organization, isDeveloper, isClient, isMobile),
           Expanded(child: widget.child),
         ],
       ),
@@ -355,138 +142,89 @@ class _ResponsiveScreenWrapperState extends State<ResponsiveScreenWrapper> {
     );
   }
 
-  Widget _buildDrawer() {
-    _logger.d('Building drawer for ${widget.title}, isDeveloper: $_isDeveloper, isClient: $_isClient, selectedOrg: ${widget.selectedOrganizationName}');
+  Widget _buildDrawer(String role, String organization, bool isDeveloper, bool isClient, bool isMobile) {
     return Drawer(
+      backgroundColor: AppColors.card,
       child: Column(
         children: [
-          _buildAppIcon(),
-          Expanded(child: ListView(children: _buildMenuItems())),
+          _buildAppIcon(role, organization, isDeveloper, isClient, isMobile),
+          const Divider(height: 1),
+          Expanded(child: ListView(children: _buildMenuItems(role, organization, isMobile))),
         ],
       ),
     );
   }
 
-  Widget _buildSidebar() {
-    _logger.d('Building sidebar for ${widget.title}, isDeveloper: $_isDeveloper, isClient: $_isClient, selectedOrg: ${widget.selectedOrganizationName}');
+  Widget _buildSidebar(String role, String organization, bool isDeveloper, bool isClient, bool isMobile) {
     return Container(
-      width: 250,
-      color: Colors.blueGrey[50],
+      width: 260,
+      decoration: const BoxDecoration(
+        color: AppColors.surfaceAlt,
+        border: Border(right: BorderSide(color: Color(0x14000000))),
+      ),
       child: Column(
         children: [
-          _buildAppIcon(),
-          Expanded(
-            child: ListView(
-              children: _buildMenuItems(),
-            ),
-          ),
+          _buildAppIcon(role, organization, isDeveloper, isClient, isMobile),
+          const Divider(height: 1),
+          Expanded(child: ListView(children: _buildMenuItems(role, organization, isMobile))),
         ],
       ),
     );
   }
 
-  Widget _buildAppIcon() {
-    _logger.d('Building app icon for ${widget.title}, isDeveloper: $_isDeveloper, isClient: $_isClient, selectedOrg: ${widget.selectedOrganizationName}');
-
+  Widget _buildAppIcon(String role, String organization, bool isDeveloper, bool isClient, bool isMobile) {
     return GestureDetector(
-      onTap: _isDeveloper ? _handleDeveloperIconTap : null,
+      onTap: isDeveloper ? () => _handleDeveloperIconTap(isMobile) : null,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.symmetric(vertical: 24),
         width: double.infinity,
         child: Center(
           child: Column(
             children: [
               Stack(
+                clipBehavior: Clip.none,
                 children: [
                   Container(
-                    decoration: _isDeveloper
-                        ? BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: Colors.blueGrey.withValues(alpha: 0.1),
-                            border: Border.all(
-                              color: Colors.blueGrey.withValues(alpha: 0.3),
-                              width: 2,
-                            ),
-                          )
-                        : null,
-                    padding: const EdgeInsets.all(8),
-                    child: Image.asset(
-                      'assets/icons/icon.png',
-                      width: 60,
-                      height: 60,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      boxShadow: [
+                        BoxShadow(color: AppColors.primary.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 8)),
+                      ],
                     ),
+                    child: Image.asset('assets/icons/icon.png', width: 52, height: 52),
                   ),
-                  // 🔧 NEW: Developer indicator badge
-                  if (_isDeveloper)
+                  if (isDeveloper)
                     Positioned(
-                      top: 0,
-                      right: 0,
+                      top: -6,
+                      right: -6,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'DEV',
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (_isClient && _organization != 'JV Almacis')
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.8),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Client',
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                        child: Text('DEV', style: GoogleFonts.poppins(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
                       ),
                     ),
                 ],
               ),
-              // 🔧 NEW: Developer hint text
-              if (_isDeveloper) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Tap for Developer Tools',
-                  style: GoogleFonts.poppins(
-                    color: Colors.blueGrey[600],
-                    fontSize: 10,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
+              const SizedBox(height: 12),
+              Text(
+                role == '-' ? 'Pending Approval' : role,
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary, fontSize: 15),
+              ),
+              if (isDeveloper) ...[
+                const SizedBox(height: 2),
+                Text('Tap for Developer Tools', style: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: 10, fontStyle: FontStyle.italic)),
               ],
-              if (!_isClient && widget.selectedOrganizationName != null && widget.selectedOrganizationName!.isNotEmpty) ...[
+              if (organization != '-') ...[
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.blueGrey[100],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(AppRadius.pill)),
                   child: Text(
-                    'Managing: ${widget.selectedOrganizationName}',
-                    style: GoogleFonts.poppins(
-                      color: Colors.blueGrey[700],
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    isClient ? organization : 'Managing: ${widget.selectedOrganizationName ?? organization}',
+                    style: GoogleFonts.poppins(color: AppColors.primaryDark, fontSize: 11, fontWeight: FontWeight.w500),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -498,187 +236,109 @@ class _ResponsiveScreenWrapperState extends State<ResponsiveScreenWrapper> {
     );
   }
 
-  // UPDATED: Dynamic menu access logic
   List<String> _getMenuItemsForRole(String role, String organization) {
-    // Define menu items for JV Almacis (service provider)
     final Map<String, List<String>> jvAlmacisMenus = {
       'Admin': [
-        'Facilities',
-        'Locations',
-        'Building Information',
-        'Scope of Work', 
-        'Preventive Maintenance',
-        'Reports',
-        //'Price Lists',
-        'Work on Request',
-        'Work Orders',
-        //'Equipment Supplied',
-        //'Inventory and Parts',
-        //'Vendors',
-        //'KPIs',
-        'Billing',
-        'Report',
-        'Settings'
+        'Facilities', 'Locations', 'Building Information', 'Scope of Work',
+        'Preventive Maintenance', 'Reports', 'Work on Request', 'Work Orders',
+        'Billing', 'Report', 'Settings',
       ],
       'Technician': [
-        'Facilities',
-        'Locations',
-        'Building Information',
-        'Preventive Maintenance',
-        'Scope of Work', 
-        'Reports',
-        //'Price Lists',
-        'Work on Request',
-        'Work Orders',
-        //'Equipment Supplied',
-        //'Inventory and Parts',
-        'Billing',
-        'Report',
-        'Settings'
+        'Facilities', 'Locations', 'Building Information', 'Preventive Maintenance',
+        'Scope of Work', 'Reports', 'Work on Request', 'Work Orders', 'Billing',
+        'Report', 'Settings',
       ],
     };
 
-    // Define menu items for all other organizations (client organizations)
     final Map<String, List<String>> clientOrganizationMenus = {
       'Admin': [
-        'Facilities',
-        'Locations',
-        'Building Information',
-        'Scope of Work', 
-        'Preventive Maintenance',
-        'Reports',
-        'Work on Request',
-        'Work Orders',
-        'Billing',
-        'Report',
-        'Settings'
+        'Facilities', 'Locations', 'Building Information', 'Scope of Work',
+        'Preventive Maintenance', 'Reports', 'Work on Request', 'Work Orders',
+        'Billing', 'Report', 'Settings',
       ],
       'Technician': [
-        'Facilities',
-        'Locations',
-        'Building Information',
-        'Preventive Maintenance',
-        'Scope of Work', 
-        'Reports',
-        'Work on Request',
-        'Work Orders',
-        'Billing',
-        'Report',
-        'Settings'
+        'Facilities', 'Locations', 'Building Information', 'Preventive Maintenance',
+        'Scope of Work', 'Reports', 'Work on Request', 'Work Orders', 'Billing',
+        'Report', 'Settings',
       ],
     };
 
-    // User role always gets the same basic access regardless of organization
     final List<String> userMenus = ['Facilities', 'Settings'];
 
-    // Return appropriate menu items based on role and organization
     if (role == 'User' || organization == '-') {
       return userMenus;
     } else if (organization == 'JV Almacis') {
       return jvAlmacisMenus[role] ?? userMenus;
     } else {
-      // All other organizations get the client organization menus
       return clientOrganizationMenus[role] ?? userMenus;
     }
   }
 
-  List<Widget> _buildMenuItems() {
-    final role = _currentRole;
-    final org = _organization;
-
+  List<Widget> _buildMenuItems(String role, String organization, bool isMobile) {
     final menuStructure = [
-      {'title': 'Facilities', 'icon': Icons.business, 'isSubItem': false},
-      {'title': 'Locations', 'icon': Icons.location_on, 'isSubItem': false},
-      {'title': 'Building Information', 'icon': Icons.info, 'isSubItem': false, 'isParent': true},
-      {'title': 'Scope of Work', 'icon': Icons.event, 'isSubItem': false}, 
-      {'title': 'Preventive Maintenance', 'icon': Icons.build_circle, 'isSubItem': false},
-      {'title': 'Reports', 'icon': Icons.bar_chart, 'isSubItem': false},
-      {'title': 'Work on Request', 'icon': Icons.request_page, 'isSubItem': false},
-      {'title': 'Work Orders', 'icon': Icons.work, 'isSubItem': false},
-      {'title': 'Price Lists', 'icon': Icons.attach_money, 'isSubItem': false},
-      {'title': 'Billing', 'icon': Icons.receipt_long, 'isSubItem': false},
-      {'title': 'Equipment Supplied', 'icon': Icons.construction, 'isSubItem': false},
-      {'title': 'Inventory and Parts', 'icon': Icons.inventory, 'isSubItem': false},
-      {'title': 'Vendors', 'icon': Icons.store, 'isSubItem': false},
-      {'title': 'KPIs', 'icon': Icons.trending_up, 'isSubItem': false},
-      {'title': 'Report', 'icon': Icons.bar_chart, 'isSubItem': false},
-      {'title': 'Settings', 'icon': Icons.settings, 'isSubItem': false},
+      {'title': 'Facilities', 'icon': Icons.business_rounded, 'isSubItem': false},
+      {'title': 'Locations', 'icon': Icons.location_on_rounded, 'isSubItem': false},
+      {'title': 'Building Information', 'icon': Icons.info_rounded, 'isSubItem': false, 'isParent': true},
+      {'title': 'Scope of Work', 'icon': Icons.event_rounded, 'isSubItem': false},
+      {'title': 'Preventive Maintenance', 'icon': Icons.build_circle_rounded, 'isSubItem': false},
+      {'title': 'Reports', 'icon': Icons.bar_chart_rounded, 'isSubItem': false},
+      {'title': 'Work on Request', 'icon': Icons.request_page_rounded, 'isSubItem': false},
+      {'title': 'Work Orders', 'icon': Icons.work_rounded, 'isSubItem': false},
+      {'title': 'Price Lists', 'icon': Icons.attach_money_rounded, 'isSubItem': false},
+      {'title': 'Billing', 'icon': Icons.receipt_long_rounded, 'isSubItem': false},
+      {'title': 'Equipment Supplied', 'icon': Icons.construction_rounded, 'isSubItem': false},
+      {'title': 'Inventory and Parts', 'icon': Icons.inventory_rounded, 'isSubItem': false},
+      {'title': 'Vendors', 'icon': Icons.store_rounded, 'isSubItem': false},
+      {'title': 'KPIs', 'icon': Icons.trending_up_rounded, 'isSubItem': false},
+      {'title': 'Report', 'icon': Icons.bar_chart_rounded, 'isSubItem': false},
+      {'title': 'Settings', 'icon': Icons.settings_rounded, 'isSubItem': false},
     ];
 
     final buildingInfoSubItems = [
-      {'title': 'Building Survey', 'icon': Icons.account_balance},
-      {'title': 'Documentations', 'icon': Icons.description},
-      {'title': 'Drawings', 'icon': Icons.brush},
+      {'title': 'Building Survey', 'icon': Icons.account_balance_rounded},
+      {'title': 'Documentations', 'icon': Icons.description_rounded},
+      {'title': 'Drawings', 'icon': Icons.brush_rounded},
     ];
 
-    // Use the new dynamic method to get allowed items
-    final allowedItems = _getMenuItemsForRole(role, org);
+    final allowedItems = _getMenuItemsForRole(role, organization);
     final List<Widget> menuWidgets = [];
-
-    _logger.i('Building menu for role: $role, org: $org, allowed items: $allowedItems');
 
     for (var menuItem in menuStructure) {
       final itemTitle = menuItem['title'] as String;
-      if (!allowedItems.contains(itemTitle)) {
-        continue;
-      }
+      if (!allowedItems.contains(itemTitle)) continue;
       final icon = menuItem['icon'] as IconData;
-      final isSubItem = menuItem['isSubItem'] as bool;
       final isParent = menuItem['isParent'] as bool? ?? false;
 
       if (isParent && itemTitle == 'Building Information') {
-        menuWidgets.add(
-          ListTile(
-            leading: Icon(icon, color: Colors.blueGrey),
-            title: Text(itemTitle, style: GoogleFonts.poppins()),
-            trailing: Icon(
-              _isBuildingInfoExpanded ? Icons.expand_less : Icons.expand_more,
-              color: Colors.blueGrey,
-            ),
-            onTap: () {
-              setState(() {
-                _isBuildingInfoExpanded = !_isBuildingInfoExpanded;
-              });
-              _logger.i('Building Information menu ${_isBuildingInfoExpanded ? 'expanded' : 'collapsed'}');
-            },
+        menuWidgets.add(_menuTile(
+          icon: icon,
+          title: itemTitle,
+          trailing: Icon(
+            _isBuildingInfoExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+            color: AppColors.textSecondary,
           ),
-        );
+          onTap: () => setState(() => _isBuildingInfoExpanded = !_isBuildingInfoExpanded),
+        ));
 
         if (_isBuildingInfoExpanded) {
           for (var subItem in buildingInfoSubItems) {
             final subTitle = subItem['title'] as String;
             final subIcon = subItem['icon'] as IconData;
-            
-            menuWidgets.add(
-              ListTile(
-                contentPadding: const EdgeInsets.only(left: 32.0, right: 16.0),
-                leading: Icon(subIcon, color: Colors.blueGrey[600], size: 20),
-                title: Text(
-                  subTitle, 
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.blueGrey[700],
-                  ),
-                ),
-                onTap: () {
-                  _logger.i('Sub-menu item clicked: $subTitle, expansion state preserved');
-                  _handleSubMenuNavigation(subTitle);
-                },
-              ),
-            );
+            menuWidgets.add(_menuTile(
+              icon: subIcon,
+              title: subTitle,
+              indent: true,
+              onTap: () => _handleSubMenuNavigation(subTitle, isMobile),
+            ));
           }
         }
       } else if (!isParent) {
         if (!['Building Survey', 'Documentations', 'Drawings'].contains(itemTitle)) {
-          menuWidgets.add(
-            ListTile(
-              contentPadding:
-                  isSubItem ? const EdgeInsets.only(left: 32.0, right: 16.0) : null,
-              leading: Icon(icon, color: Colors.blueGrey),
-              title: Text(itemTitle, style: GoogleFonts.poppins()),
-              onTap: () => _handleMenuNavigation(itemTitle),
-            ),
-          );
+          menuWidgets.add(_menuTile(
+            icon: icon,
+            title: itemTitle,
+            onTap: () => _handleMenuNavigation(itemTitle, isMobile),
+          ));
         }
       }
     }
@@ -686,105 +346,102 @@ class _ResponsiveScreenWrapperState extends State<ResponsiveScreenWrapper> {
     return menuWidgets;
   }
 
-  void _handleSubMenuNavigation(String title) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth <= 600;
-    
-    if (isMobile) {
-      Navigator.pop(context);
-      _logger.i('Closed drawer for sub-menu navigation to $title, expansion state preserved');
-    }
+  Widget _menuTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    Widget? trailing,
+    bool indent = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.only(left: indent ? 32 : 12, right: 12, top: 12, bottom: 12),
+            child: Row(
+              children: [
+                Icon(icon, color: indent ? AppColors.textSecondary : AppColors.primary, size: indent ? 19 : 22),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: GoogleFonts.poppins(
+                      fontSize: indent ? 13.5 : 14.5,
+                      color: indent ? AppColors.textSecondary : AppColors.textPrimary,
+                      fontWeight: indent ? FontWeight.w400 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (trailing != null) trailing,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleSubMenuNavigation(String title, bool isMobile) {
+    if (isMobile) Navigator.pop(context);
 
     if (widget.facilityId.isEmpty && !['Settings'].contains(title)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please select a facility first.',
-            style: GoogleFonts.poppins(),
-          ),
-        ),
+        SnackBar(content: Text('Please select a facility first.', style: GoogleFonts.poppins())),
       );
-      _logger.w('Sub-menu navigation blocked: No facility selected for $title, facilityId: ${widget.facilityId}');
       return;
     }
 
     final screenMap = {
-      'Building Survey': () => BuildingSurveyScreen(
-          facilityId: widget.facilityId, selectedSubSection: ''),
-      'Documentations': () =>
-          DocumentationsScreen(facilityId: widget.facilityId),
+      'Building Survey': () => BuildingSurveyScreen(facilityId: widget.facilityId, selectedSubSection: ''),
+      'Documentations': () => DocumentationsScreen(facilityId: widget.facilityId),
       'Drawings': () => DrawingsScreen(facilityId: widget.facilityId),
     };
 
     final screenBuilder = screenMap[title];
     if (screenBuilder != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => screenBuilder()),
-      );
-      _logger.i('Navigated to sub-menu $title screen, facilityId: ${widget.facilityId}');
+      Navigator.push(context, MaterialPageRoute(builder: (context) => screenBuilder()));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$title feature not found', style: GoogleFonts.poppins()),
-        ),
+        SnackBar(content: Text('$title feature not found', style: GoogleFonts.poppins())),
       );
-      _logger.w('Sub-menu navigation failed: $title feature not found');
     }
   }
 
-  void _handleMenuNavigation(String title) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth <= 600;
-    if (isMobile) {
-      Navigator.pop(context);
-      _logger.i('Closed drawer for navigation to $title');
-    }
+  void _handleMenuNavigation(String title, bool isMobile) {
+    if (isMobile) Navigator.pop(context);
 
     if (title == 'Facilities') {
       widget.onFacilityReset?.call();
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(
-          builder: (context) =>
-              const DashboardScreen(facilityId: '', role: 'User'),
-        ),
+        MaterialPageRoute(builder: (context) => const DashboardScreen(facilityId: '', role: 'User')),
         (route) => false,
       );
-      _logger.i(
-          'Navigated to DashboardScreen for facility selection, facilityId: ""');
       return;
     }
 
     if (widget.facilityId.isEmpty && !['Settings'].contains(title)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please select a facility first.',
-            style: GoogleFonts.poppins(),
-          ),
-        ),
+        SnackBar(content: Text('Please select a facility first.', style: GoogleFonts.poppins())),
       );
-      _logger.w('Navigation blocked: No facility selected for $title, facilityId: ${widget.facilityId}');
       return;
     }
 
     final screenMap = {
       'Locations': () => LocationsScreen(facilityId: widget.facilityId),
-      'Scope of Work': () => 
-          ScheduleMaintenanceScreen(facilityId: widget.facilityId),
-      'Preventive Maintenance': () =>
-          PreventiveMaintenanceScreen(facilityId: widget.facilityId),
+      'Scope of Work': () => ScheduleMaintenanceScreen(facilityId: widget.facilityId),
+      'Preventive Maintenance': () => PreventiveMaintenanceScreen(facilityId: widget.facilityId),
       'Reports': () => ReportsScreen(facilityId: widget.facilityId),
       'Work on Request': () => RequestScreen(facilityId: widget.facilityId),
       'Work Orders': () => WorkOrderScreen(facilityId: widget.facilityId),
       'Price Lists': () => PriceListScreen(facilityId: widget.facilityId),
-      'Billing': () =>
-          BillingScreen(facilityId: widget.facilityId),
-      'Equipment Supplied': () =>
-          EquipmentSuppliedScreen(facilityId: widget.facilityId),
-      'Inventory and Parts': () =>
-          InventoryScreen(facilityId: widget.facilityId),
+      'Billing': () => BillingScreen(facilityId: widget.facilityId),
+      'Equipment Supplied': () => EquipmentSuppliedScreen(facilityId: widget.facilityId),
+      'Inventory and Parts': () => InventoryScreen(facilityId: widget.facilityId),
       'Vendors': () => VendorScreen(facilityId: widget.facilityId),
       'KPIs': () => KpiScreen(facilityId: widget.facilityId),
       'Report': () => ReportScreen(facilityId: widget.facilityId),
@@ -793,18 +450,11 @@ class _ResponsiveScreenWrapperState extends State<ResponsiveScreenWrapper> {
 
     final screenBuilder = screenMap[title];
     if (screenBuilder != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => screenBuilder()),
-      );
-      _logger.i('Navigated to $title screen, facilityId: ${widget.facilityId}');
+      Navigator.push(context, MaterialPageRoute(builder: (context) => screenBuilder()));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$title feature not found', style: GoogleFonts.poppins()),
-        ),
+        SnackBar(content: Text('$title feature not found', style: GoogleFonts.poppins())),
       );
-      _logger.w('Navigation failed: $title feature not found');
     }
   }
 }

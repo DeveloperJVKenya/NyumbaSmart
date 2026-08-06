@@ -1,18 +1,24 @@
 import 'package:cmms/display%20screens/role_assignment_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cmms/display%20screens/facility_screen.dart';
 import 'package:cmms/screens/organization_selection_screen.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/authentication/login_screen.dart';
+import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:async';
-import 'package:flutter/services.dart'; // NEW: Import for SystemNavigator
+import 'package:flutter/services.dart';
 
-class DashboardScreen extends StatefulWidget {
+/// First screen shown after a successful login/registration. Role and
+/// organization are no longer fetched/listened to here directly — they
+/// come live from [currentUserRoleProvider] (see
+/// lib/providers/auth_providers.dart), which replaces the 4 manually
+/// managed Firestore listeners this screen used to own. Only the user's
+/// in-session facility/organization *selection* remains local state.
+class DashboardScreen extends ConsumerStatefulWidget {
   final String facilityId;
   final String role;
 
@@ -22,373 +28,155 @@ class DashboardScreen extends StatefulWidget {
   DashboardScreenState createState() => DashboardScreenState();
 }
 
-class DashboardScreenState extends State<DashboardScreen> {
+class DashboardScreenState extends ConsumerState<DashboardScreen> {
   final logger = Logger(printer: PrettyPrinter());
   final GlobalKey<ScaffoldMessengerState> _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  String _currentRole = 'User';
-  String _organization = '-';
-  bool _isClient = false;
+
   String? _selectedFacilityId;
   String? _selectedOrganizationId;
   String? _selectedOrganizationName;
-  bool _isFacilitySelectionActive = true;
-  bool _isOrganizationSelectionActive = false;
-  List<StreamSubscription<DocumentSnapshot>> _roleSubscriptions = [];
-  final List<StreamSubscription<DocumentSnapshot>> _organizationSubscriptions = [];
 
   @override
   void initState() {
     super.initState();
-    _currentRole = widget.role == 'Unknown' ? 'User' : widget.role;
     _selectedFacilityId = widget.facilityId.isNotEmpty ? widget.facilityId : null;
-    _isFacilitySelectionActive = widget.facilityId.isEmpty;
-    _checkUserRole();
-    _setupOrganizationListeners();
-  }
-
-  @override
-  void dispose() {
-    for (var subscription in _roleSubscriptions) {
-      subscription.cancel();
-    }
-    for (var subscription in _organizationSubscriptions) {
-      subscription.cancel();
-    }
-    super.dispose();
-  }
-
-  void _setupOrganizationListeners() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    for (var subscription in _organizationSubscriptions) {
-      subscription.cancel();
-    }
-    _organizationSubscriptions.clear();
-
-    final usersStream = FirebaseFirestore.instance
-        .collection('Users')
-        .doc(user.uid)
-        .snapshots();
-
-    final usersSubscription = usersStream.listen(
-      (snapshot) {
-        if (snapshot.exists) {
-          logger.i('Organization update detected in Users collection for ${user.uid}');
-          _checkClientStatus();
-        }
-      },
-      onError: (error) {
-        logger.e('Error in Users organization listener: $error');
-      },
-    );
-    _organizationSubscriptions.add(usersSubscription);
-
-    final techniciansStream = FirebaseFirestore.instance
-        .collection('Technicians')
-        .doc(user.uid)
-        .snapshots();
-
-    final techniciansSubscription = techniciansStream.listen(
-      (snapshot) {
-        if (snapshot.exists) {
-          logger.i('Organization update detected in Technicians collection for ${user.uid}');
-          _checkClientStatus();
-        }
-      },
-      onError: (error) {
-        logger.e('Error in Technicians organization listener: $error');
-      },
-    );
-    _organizationSubscriptions.add(techniciansSubscription);
-  }
-
-  Future<void> _checkClientStatus() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      bool isClient = false;
-      String orgFromCheck = '-';
-
-      final technicianDoc = await FirebaseFirestore.instance
-          .collection('Technicians')
-          .doc(user.uid)
-          .get();
-
-      if (technicianDoc.exists) {
-        orgFromCheck = technicianDoc.data()?['organization'] ?? '-';
-        isClient = orgFromCheck != 'JV Almacis';
-        logger.i('Technician organization check: $orgFromCheck, isClient: $isClient');
-      } else {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('Users')
-            .doc(user.uid)
-            .get();
-
-        if (userDoc.exists) {
-          orgFromCheck = userDoc.data()?['organization'] ?? '-';
-          isClient = orgFromCheck != 'JV Almacis';
-          logger.i('User organization check: $orgFromCheck, isClient: $isClient');
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _isClient = isClient;
-          if (orgFromCheck != '-') {
-            _organization = orgFromCheck;
-          }
-          if (!isClient && orgFromCheck == 'JV Almacis') {
-            _isOrganizationSelectionActive = _selectedOrganizationId == null;
-            _isFacilitySelectionActive = _selectedOrganizationId != null && _selectedFacilityId == null;
-          } else {
-            _isOrganizationSelectionActive = false;
-            _isFacilitySelectionActive = _selectedFacilityId == null;
-            _selectedOrganizationName = orgFromCheck;
-          }
-        });
-        logger.i('Updated client status: isClient=$isClient, org=$orgFromCheck, orgSelection=$_isOrganizationSelectionActive, facilitySelection=$_isFacilitySelectionActive');
-      }
-    } catch (e) {
-      logger.e('Error checking client status: $e');
-    }
-  }
-
-  Future<void> _checkUserRole() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      _redirectToLogin('No user logged in');
-      return;
-    }
-
-    logger.i('Checking roles and organization for user: ${user.uid}');
-    for (var subscription in _roleSubscriptions) {
-      subscription.cancel();
-    }
-    _roleSubscriptions = [];
-
-    _setupRoleListener('Admins', user.uid);
-    _setupRoleListener('Developers', user.uid);
-    _setupRoleListener('Technicians', user.uid);
-    _setupRoleListener('Users', user.uid);
-
-    await _updateUserRoleAndOrganization(user.uid);
-    await _checkClientStatus();
-  }
-
-  void _setupRoleListener(String collection, String uid) {
-    final stream = FirebaseFirestore.instance
-        .collection(collection)
-        .doc(uid)
-        .snapshots();
-    final subscription = stream.listen(
-      (snapshot) {
-        logger.i('Role update detected in $collection for $uid');
-        _updateUserRoleAndOrganization(uid);
-        _checkClientStatus();
-      },
-      onError: (error) {
-        logger.e('Error in $collection listener: $error');
-      },
-    );
-    _roleSubscriptions.add(subscription);
-  }
-
-  Future<void> _updateUserRoleAndOrganization(String uid) async {
-    try {
-      final adminDoc = await FirebaseFirestore.instance.collection('Admins').doc(uid).get();
-      final developerDoc = await FirebaseFirestore.instance.collection('Developers').doc(uid).get();
-      final technicianDoc = await FirebaseFirestore.instance.collection('Technicians').doc(uid).get();
-      final userDoc = await FirebaseFirestore.instance.collection('Users').doc(uid).get();
-
-      String newRole = 'User';
-      String newOrg = '-';
-
-      logger.i('Role documents: Admin=${adminDoc.exists}, Developer=${developerDoc.exists}, Technician=${technicianDoc.exists}, User=${userDoc.exists}');
-
-      if (adminDoc.exists) {
-        newRole = 'Admin';
-        newOrg = adminDoc.data()?['organization'] ?? '-';
-      } else if (developerDoc.exists) {
-        newRole = 'Technician';
-        newOrg = 'JV Almacis';
-      } else if (technicianDoc.exists) {
-        newRole = 'Technician';
-        newOrg = technicianDoc.data()?['organization'] ?? '-';
-      } else if (userDoc.exists) {
-        final userData = userDoc.data();
-        newRole = userData?['role'] ?? 'User';
-        newOrg = userData?['organization'] ?? '-';
-      }
-
-      if (userDoc.exists) {
-        final userData = userDoc.data() as Map<String, dynamic>;
-        if (userData['organization'] == null || userData['organization'] != newOrg || userData['role'] != newRole) {
-          try {
-            await FirebaseFirestore.instance.collection('Users').doc(uid).set({
-              'id': uid,
-              'username': userData['username'] ?? '',
-              'email': userData['email'] ?? '',
-              'createdAt': userData['createdAt'] ?? Timestamp.now(),
-              'role': newRole,
-              'organization': newOrg,
-            }, SetOptions(merge: true)).then((_) {
-              logger.i('Updated Users collection for $uid: role=$newRole, organization=$newOrg');
-            }).catchError((e) {
-              logger.e('Failed to update Users collection for $uid: $e');
-            });
-          } catch (e) {
-            logger.e('Error updating Users collection for $uid: $e');
-          }
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _currentRole = newRole;
-          _organization = newOrg;
-        });
-        logger.i('Role updated silently: $_currentRole${_organization != '-' ? ' ($_organization)' : ''} - ${_isClient ? 'Client' : 'Service Provider'}');
-      }
-    } catch (e) {
-      logger.e('Error updating user role and organization: $e');
-      if (mounted) {
-        setState(() {
-          _currentRole = 'User';
-          _organization = '-';
-          _isClient = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _redirectToLogin(String message) async {
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
-      _messengerKey.currentState?.showSnackBar(
-        SnackBar(content: Text(message, style: GoogleFonts.poppins())),
-      );
-    }
   }
 
   void _onOrganizationSelected(String organizationId, String organizationName) {
     setState(() {
       _selectedOrganizationId = organizationId;
       _selectedOrganizationName = organizationName;
-      _isOrganizationSelectionActive = false;
-      _isFacilitySelectionActive = true;
     });
     logger.i('Selected organization: $organizationName (ID: $organizationId)');
   }
 
   void _onFacilitySelected(String facilityId) {
-    setState(() {
-      _selectedFacilityId = facilityId;
-      _isFacilitySelectionActive = false;
-    });
+    setState(() => _selectedFacilityId = facilityId);
     logger.i('Selected facility: $facilityId');
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth <= 600;
-    if (isMobile) {
+    if (AppBreakpoints.isMobile(screenWidth)) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted && _scaffoldKey.currentState != null && !_scaffoldKey.currentState!.isDrawerOpen) {
           _scaffoldKey.currentState!.openDrawer();
-          logger.i('Automatically opened drawer after facility selection');
         }
       });
     }
   }
 
   void _refreshFacilitiesView() {
+    final info = ref.read(currentUserRoleProvider).valueOrNull;
     setState(() {
       _selectedFacilityId = null;
-      _isFacilitySelectionActive = true;
-      if (!_isClient && _organization == 'JV Almacis') {
+      if (info != null && info.isServiceProviderOrg) {
         _selectedOrganizationId = null;
         _selectedOrganizationName = null;
-        _isOrganizationSelectionActive = true;
-        _isFacilitySelectionActive = false;
       }
     });
     _messengerKey.currentState?.showSnackBar(
       SnackBar(
         content: Text(
-          _isClient ? 'Facilities refreshed' : 'Selection refreshed',
+          (info?.isClient ?? false) ? 'Facilities refreshed' : 'Selection refreshed',
           style: GoogleFonts.poppins(),
         ),
         duration: const Duration(seconds: 1),
-        backgroundColor: Colors.blueGrey[600],
+        backgroundColor: AppColors.primaryDark,
       ),
     );
-    logger.i('Selection view refreshed - showing ${_isClient ? 'facility' : 'organization'} selection interface');
   }
 
-  void _handleBackNavigation() {
-    if (_isOrganizationSelectionActive) {
-      if (kIsWeb) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
-        logger.i('Web: Navigated to LoginScreen on back press from organization selection');
-      } else {
-        SystemNavigator.pop(); // NEW: Exit app on mobile
-        logger.i('Mobile: Exiting app on back press from organization selection');
-      }
-    } else if (_isFacilitySelectionActive && !_isClient && _selectedOrganizationId != null) {
+  Future<void> _redirectToLogin(String message) async {
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    );
+    _messengerKey.currentState?.showSnackBar(
+      SnackBar(content: Text(message, style: GoogleFonts.poppins())),
+    );
+  }
+
+  void _handleBackNavigation({required bool isOrganizationSelectionActive, required bool isServiceProviderOrg}) {
+    if (isOrganizationSelectionActive) {
+      _exitOrGoToLogin();
+    } else if (_selectedFacilityId == null && isServiceProviderOrg && _selectedOrganizationId != null) {
       setState(() {
         _selectedOrganizationId = null;
         _selectedOrganizationName = null;
-        _isOrganizationSelectionActive = true;
-        _isFacilitySelectionActive = false;
       });
-      logger.i('Navigated back to organization selection');
     } else if (Navigator.canPop(context)) {
       Navigator.pop(context);
-      logger.i('Navigated back to previous screen');
     } else {
-      if (kIsWeb) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
-        logger.i('Web: Navigated to LoginScreen on back press from main dashboard');
-      } else {
-        SystemNavigator.pop(); // NEW: Exit app on mobile
-        logger.i('Mobile: Exiting app on back press from main dashboard');
-      }
+      _exitOrGoToLogin();
+    }
+  }
+
+  void _exitOrGoToLogin() {
+    if (kIsWeb) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+    } else {
+      SystemNavigator.pop();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final displayRole = _currentRole;
+    final authAsync = ref.watch(authStateProvider);
+    if (authAsync.hasValue && authAsync.value == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _redirectToLogin('No user logged in'));
+      return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.primary)));
+    }
+
+    final roleAsync = ref.watch(currentUserRoleProvider);
+
+    return roleAsync.when(
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.primary))),
+      error: (e, st) {
+        logger.e('Error resolving role: $e');
+        return Scaffold(
+          body: Center(
+            child: Text('Something went wrong loading your account.', style: GoogleFonts.poppins()),
+          ),
+        );
+      },
+      data: (info) => _buildWithRole(info),
+    );
+  }
+
+  Widget _buildWithRole(UserRoleInfo info) {
+    final currentRole = info.roleLabel;
+    final organization = info.organization;
+    final isServiceProviderOrg = info.isServiceProviderOrg;
+
+    final isOrganizationSelectionActive = isServiceProviderOrg && _selectedOrganizationId == null;
+    final isFacilitySelectionActive = isServiceProviderOrg
+        ? (_selectedOrganizationId != null && _selectedFacilityId == null)
+        : (_selectedFacilityId == null);
+    final displayOrganizationName = isServiceProviderOrg ? _selectedOrganizationName : organization;
     final isFacilitySelected = _selectedFacilityId != null && _selectedFacilityId!.isNotEmpty;
 
     return PopScope(
-      canPop: true, // UPDATED: Allow system back to exit
+      canPop: true,
       child: ScaffoldMessenger(
         key: _messengerKey,
         child: isFacilitySelected
             ? ResponsiveScreenWrapper(
-                title: displayRole == '-' ? 'Dashboard' : '$displayRole Dashboard',
+                title: currentRole == '-' ? 'Dashboard' : '$currentRole Dashboard',
                 facilityId: _selectedFacilityId!,
-                currentRole: _currentRole,
-                organization: _organization,
-                selectedOrganizationName: _selectedOrganizationName,
+                currentRole: currentRole,
+                organization: organization,
+                selectedOrganizationName: displayOrganizationName,
                 onFacilityReset: _refreshFacilitiesView,
                 actions: [
-                  if (_currentRole == 'Admin')
+                  if (currentRole == 'Admin')
                     Padding(
                       padding: const EdgeInsets.only(right: 8.0),
                       child: IconButton(
-                        icon: const Icon(Icons.person_add, color: Colors.white),
+                        icon: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -399,46 +187,52 @@ class DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                 ],
-                child: _buildMainContent(),
+                child: _buildMainContent(isOrganizationSelectionActive, isFacilitySelectionActive, isServiceProviderOrg, organization),
               )
             : Scaffold(
                 key: _scaffoldKey,
                 appBar: AppBar(
                   title: Text(
-                    _isOrganizationSelectionActive ? 'Select Organization' : 'Select Facility',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      fontSize: 24,
-                    ),
+                    isOrganizationSelectionActive ? 'Select Organization' : 'Select Facility',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 22),
                   ),
-                  backgroundColor: Colors.blueGrey,
+                  flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
                   leading: IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
-                    onPressed: _handleBackNavigation,
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 26),
+                    onPressed: () => _handleBackNavigation(
+                      isOrganizationSelectionActive: isOrganizationSelectionActive,
+                      isServiceProviderOrg: isServiceProviderOrg,
+                    ),
                     tooltip: 'Back',
                   ),
-                  elevation: 0,
                 ),
-                body: _buildMainContent(),
+                body: DecoratedBox(
+                  decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+                  child: _buildMainContent(isOrganizationSelectionActive, isFacilitySelectionActive, isServiceProviderOrg, organization),
+                ),
               ),
       ),
     );
   }
 
-  Widget _buildMainContent() {
-    if (_isOrganizationSelectionActive) {
+  Widget _buildMainContent(
+    bool isOrganizationSelectionActive,
+    bool isFacilitySelectionActive,
+    bool isServiceProviderOrg,
+    String organization,
+  ) {
+    if (isOrganizationSelectionActive) {
       return OrganizationSelectionScreen(
         onOrganizationSelected: _onOrganizationSelected,
       );
     }
-    
+
     return FacilityScreen(
       selectedFacilityId: _selectedFacilityId,
       onFacilitySelected: _onFacilitySelected,
-      isSelectionActive: _isFacilitySelectionActive,
-      userOrganization: _isClient ? _organization : _selectedOrganizationName,
-      isServiceProvider: !_isClient,
+      isSelectionActive: isFacilitySelectionActive,
+      userOrganization: isServiceProviderOrg ? _selectedOrganizationName : organization,
+      isServiceProvider: isServiceProviderOrg,
     );
   }
 }

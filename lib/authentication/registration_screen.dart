@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/authentication/login_screen.dart';
 import 'package:cmms/screens/dashboard_screen.dart';
 import 'package:cmms/models/user_model.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
+import 'package:cmms/theme/app_theme.dart';
+import 'package:cmms/theme/app_widgets.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -25,6 +28,7 @@ class RegistrationScreenState extends State<RegistrationScreen> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -37,26 +41,26 @@ class RegistrationScreenState extends State<RegistrationScreen> {
   Future<void> _signUp() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
-      // Create user with email and password
       final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      // Create UserModel instance
       final userModel = UserModel(
         id: userCredential.user!.uid,
         username: _usernameController.text.trim(),
         email: _emailController.text.trim(),
         createdAt: DateTime.now(),
-        role: '-',
+        role: UserRole.unassigned.label,
         organization: '-',
       );
 
-      // Save to Firestore with detailed logging
       await _firestore.collection('Users').doc(userModel.id).set(userModel.toMap()).then((_) {
         _logger.i('Successfully created user ${userModel.id} with fields: ${userModel.toMap()}');
       }).catchError((e) {
@@ -64,27 +68,24 @@ class RegistrationScreenState extends State<RegistrationScreen> {
         throw e;
       });
 
-      // 🔧 NEW: Initialize FCM token after successful registration
       try {
-        _logger.i('Initializing FCM token for new user: ${userModel.id}');
         await NotificationService().initialize();
-        _logger.i('FCM token successfully initialized for new user: ${userModel.id}');
       } catch (fcmError) {
         _logger.e('Failed to initialize FCM token for new user: $fcmError');
-        // Don't throw error - registration should still succeed even if FCM fails
       }
 
       if (!mounted) return;
 
-      // Success message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Registration successful! Please wait for Admin approval.')),
       );
 
-      // Navigate to DashboardScreen with User role
+      // Consistent with login: empty facilityId triggers facility selection
+      // once an admin assigns an organization/role (previously hardcoded to
+      // 'facility1' here, inconsistent with login_screen.dart's '').
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => const DashboardScreen(facilityId: 'facility1', role: 'User'),
+          builder: (context) => DashboardScreen(facilityId: '', role: UserRole.user.label),
         ),
       );
     } catch (e) {
@@ -106,146 +107,124 @@ class RegistrationScreenState extends State<RegistrationScreen> {
       } else if (e is FirebaseException) {
         errorMessage = 'Firestore error: ${e.message}';
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
-      );
+      setState(() => _errorMessage = errorMessage);
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final fieldWidth = screenWidth > 800 ? screenWidth * 0.5 : screenWidth * 0.9;
+    final isDesktop = AppBreakpoints.isDesktop(screenWidth);
+    final cardWidth = isDesktop ? 460.0 : (AppBreakpoints.isTablet(screenWidth) ? screenWidth * 0.6 : screenWidth * 0.9);
 
     return Scaffold(
-      backgroundColor: Colors.blueGrey[50],
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            child: Container(
-              constraints: BoxConstraints(maxWidth: fieldWidth),
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Join CMMS',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueGrey,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Register to manage facilities.',
-                      style: TextStyle(fontSize: 16, color: Colors.blueGrey),
-                    ),
-                    const SizedBox(height: 30),
-                    TextFormField(
-                      controller: _usernameController,
-                      decoration: InputDecoration(
-                        labelText: 'Username',
-                        hintText: 'Enter your username',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Please enter a username';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    TextFormField(
-                      controller: _emailController,
-                      decoration: InputDecoration(
-                        labelText: 'Email',
-                        hintText: 'Enter your email address',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: (value) {
-                        if (value == null || value.isEmpty || !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-                          return 'Please enter a valid email address';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        hintText: 'Enter your password',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: Colors.white,
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                            color: Colors.blueGrey,
-                          ),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty || value.length < 6) {
-                          return 'Password must be at least 6 characters';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 30),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _signUp,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueGrey,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: _isLoading
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : const Text(
-                                'Sign Up',
-                                style: TextStyle(fontSize: 18, color: Colors.white),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Center(
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const LoginScreen()),
-                          );
-                        },
-                        child: const Text(
-                          'Already have an account? Log In',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.blueGrey,
-                            decoration: TextDecoration.underline,
+      body: AppAuthBackground(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: cardWidth),
+                child: AppCard(
+                  padding: const EdgeInsets.all(28),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              gradient: AppColors.primaryGradient,
+                              borderRadius: BorderRadius.circular(AppRadius.lg),
+                            ),
+                            child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 30),
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Join NyumbaSmart',
+                          style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Register to manage facilities.',
+                          style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textSecondary),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 28),
+                        AppTextField(
+                          controller: _usernameController,
+                          label: 'Username',
+                          icon: Icons.person_outline,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) return 'Please enter a username';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        AppTextField(
+                          controller: _emailController,
+                          label: 'Email',
+                          icon: Icons.email_outlined,
+                          keyboardType: TextInputType.emailAddress,
+                          validator: (value) {
+                            if (value == null || value.isEmpty || !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+                              return 'Please enter a valid email address';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        AppTextField(
+                          controller: _passwordController,
+                          label: 'Password',
+                          icon: Icons.lock_outline,
+                          obscureText: _obscurePassword,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              color: AppColors.textSecondary,
+                            ),
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty || value.length < 6) {
+                              return 'Password must be at least 6 characters';
+                            }
+                            return null;
+                          },
+                        ),
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 16),
+                          AppErrorBanner(message: _errorMessage!),
+                        ],
+                        const SizedBox(height: 24),
+                        AppGradientButton(
+                          label: 'Sign Up',
+                          isLoading: _isLoading,
+                          onPressed: _isLoading ? null : _signUp,
+                        ),
+                        const SizedBox(height: 16),
+                        Center(
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                              );
+                            },
+                            child: const Text('Already have an account? Log In'),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

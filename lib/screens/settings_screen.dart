@@ -1,42 +1,39 @@
 import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cmms/screens/profile_screen.dart';
 import 'package:cmms/screens/about_screen.dart';
 import 'package:cmms/screens/help_support_screen.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
-//import 'package:cmms/services/notification_service.dart';
+import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:logger/logger.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   final String facilityId;
-  
+
   const SettingsScreen({super.key, required this.facilityId});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final Logger _logger = Logger(printer: PrettyPrinter());
   final NotificationService _notificationService = NotificationService();
-  
+
   bool _notificationsEnabled = true;
   bool _emailNotifications = true;
   bool _pushNotifications = true;
   String _selectedTheme = 'System';
   String _selectedLanguage = 'English';
   bool _isLoadingNotifications = true;
-  
-  String _currentRole = 'User';
-  String _organization = '-';
 
   @override
   void initState() {
     super.initState();
-    _getCurrentUserRole();
     _loadNotificationSettings();
   }
 
@@ -65,16 +62,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           _notificationsEnabled = enabled;
         });
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              enabled 
-                  ? 'Notifications enabled successfully' 
-                  : 'Notifications disabled successfully',
+              enabled ? 'Notifications enabled successfully' : 'Notifications disabled successfully',
               style: GoogleFonts.poppins(),
             ),
-            backgroundColor: enabled ? Colors.green : Colors.orange,
+            backgroundColor: enabled ? AppColors.success : AppColors.warning,
           ),
         );
       }
@@ -82,318 +77,199 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Error updating notification settings: $e',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.red,
+            content: Text('Error updating notification settings: $e', style: GoogleFonts.poppins()),
+            backgroundColor: AppColors.error,
           ),
         );
       }
-    }
-  }
-
-  Future<void> _getCurrentUserRole() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      final adminDoc = await FirebaseFirestore.instance.collection('Admins').doc(user.uid).get();
-      final developerDoc = await FirebaseFirestore.instance.collection('Developers').doc(user.uid).get();
-      final technicianDoc = await FirebaseFirestore.instance.collection('Technicians').doc(user.uid).get();
-      final userDoc = await FirebaseFirestore.instance.collection('Users').doc(user.uid).get();
-      
-      String newRole = 'User';
-      String newOrg = '-';
-      
-      if (adminDoc.exists) {
-        newRole = 'Admin';
-        final adminData = adminDoc.data();
-        newOrg = adminData?['organization'] ?? '-';
-      } 
-      else if (developerDoc.exists) {
-        newRole = 'Technician';
-        newOrg = 'JV Almacis';
-      }
-      else if (technicianDoc.exists) {
-        newRole = 'Technician';
-        final techData = technicianDoc.data();
-        newOrg = techData?['organization'] ?? '-';
-      }
-      else if (userDoc.exists) {
-        final userData = userDoc.data();
-        if (userData != null && userData['role'] == 'Technician') {
-          newRole = 'Technician';
-          newOrg = '-';
-        } else {
-          newRole = 'User';
-          newOrg = '-';
-        }
-      }
-      
-      if (mounted) {
-        setState(() {
-          _currentRole = newRole;
-          _organization = newOrg;
-        });
-      }
-    } catch (e) {
-      _logger.e('Error getting user role: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Role/organization now come from the same provider the rest of the app
+    // uses, instead of this screen's own copy of the
+    // Admins/Developers/Technicians/Users lookup cascade.
+    final roleInfo = ref.watch(currentUserRoleProvider).valueOrNull;
+
     return ResponsiveScreenWrapper(
       title: 'Settings',
       facilityId: widget.facilityId,
-      currentRole: _currentRole,
-      organization: _organization,
+      currentRole: roleInfo?.roleLabel ?? 'User',
+      organization: roleInfo?.organization ?? '-',
       child: _buildBody(),
     );
   }
 
   Widget _buildBody() {
     final user = FirebaseAuth.instance.currentUser;
-    
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          // User Profile Section
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'User Profile',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
+
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _sectionCard(
+              title: 'User Profile',
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const CircleAvatar(
+                    backgroundColor: AppColors.surfaceAlt,
+                    child: Icon(Icons.person_rounded, color: AppColors.primary),
                   ),
-                  const SizedBox(height: 16),
-                  
-                  ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blueGrey[100],
-                      child: Icon(Icons.person, color: Colors.blueGrey[700]),
-                    ),
-                    title: Text(
-                      user?.email ?? 'User',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-                    ),
+                  title: Text(user?.email ?? 'User', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                  subtitle: Text('Tap to manage your profile', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textSecondary),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            _sectionCard(
+              title: 'Notifications',
+              children: [
+                if (_isLoadingNotifications)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                  )
+                else ...[
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Enable Notifications', style: GoogleFonts.poppins()),
                     subtitle: Text(
-                      'Tap to manage your profile',
-                      style: GoogleFonts.poppins(fontSize: 12),
+                      _notificationsEnabled ? 'Receive maintenance reminders' : 'Notifications are disabled',
+                      style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary),
                     ),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const ProfileScreen()),
-                    ),
+                    value: _notificationsEnabled,
+                    onChanged: _updateNotificationSettings,
+                    activeThumbColor: AppColors.primary,
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Email Notifications', style: GoogleFonts.poppins()),
+                    subtitle: Text('Receive notifications via email', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                    value: _emailNotifications,
+                    activeThumbColor: AppColors.primary,
+                    onChanged: _notificationsEnabled
+                        ? (value) => setState(() => _emailNotifications = value)
+                        : null,
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Push Notifications', style: GoogleFonts.poppins()),
+                    subtitle: Text('Receive push notifications on device', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                    value: _pushNotifications,
+                    activeThumbColor: AppColors.primary,
+                    onChanged: _notificationsEnabled
+                        ? (value) => setState(() => _pushNotifications = value)
+                        : null,
                   ),
                 ],
-              ),
+              ],
             ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Notification Settings
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Notifications',
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blueGrey[800],
-                        ),
-                      ),
-                      const Spacer(),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  if (_isLoadingNotifications)
-                    const Center(child: CircularProgressIndicator())
-                  else ...[
-                    SwitchListTile(
-                      title: Text('Enable Notifications', style: GoogleFonts.poppins()),
-                      subtitle: Text(
-                        _notificationsEnabled 
-                            ? 'Receive maintenance reminders' 
-                            : 'Notifications are disabled',
-                        style: GoogleFonts.poppins(fontSize: 12),
-                      ),
-                      value: _notificationsEnabled,
-                      onChanged: _updateNotificationSettings,
-                      activeThumbColor: Colors.blueGrey,
-                    ),
-                    
-                    SwitchListTile(
-                      title: Text('Email Notifications', style: GoogleFonts.poppins()),
-                      subtitle: Text('Receive notifications via email', style: GoogleFonts.poppins(fontSize: 12)),
-                      value: _emailNotifications,
-                      onChanged: _notificationsEnabled ? (value) {
-                        setState(() {
-                          _emailNotifications = value;
-                        });
-                      } : null,
-                    ),
-                    
-                    SwitchListTile(
-                      title: Text('Push Notifications', style: GoogleFonts.poppins()),
-                      subtitle: Text('Receive push notifications on device', style: GoogleFonts.poppins(fontSize: 12)),
-                      value: _pushNotifications,
-                      onChanged: _notificationsEnabled ? (value) {
-                        setState(() {
-                          _pushNotifications = value;
-                        });
-                      } : null,
-                    ),
-                  ],
-                ],
-              ),
+            const SizedBox(height: AppSpacing.md),
+            _sectionCard(
+              title: 'App Preferences',
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.palette_rounded, color: AppColors.primary),
+                  title: Text('Theme', style: GoogleFonts.poppins()),
+                  subtitle: Text(_selectedTheme, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textSecondary),
+                  onTap: () => _showThemeDialog(),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.language_rounded, color: AppColors.primary),
+                  title: Text('Language', style: GoogleFonts.poppins()),
+                  subtitle: Text(_selectedLanguage, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textSecondary),
+                  onTap: () => _showLanguageDialog(),
+                ),
+              ],
             ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // App Preferences
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'App Preferences',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
+            const SizedBox(height: AppSpacing.md),
+            _sectionCard(
+              title: 'Support & Information',
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.help_rounded, color: AppColors.primary),
+                  title: Text('Help & Support', style: GoogleFonts.poppins()),
+                  subtitle: Text('Get help and contact support', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textSecondary),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
                   ),
-                  const SizedBox(height: 16),
-                  
-                  ListTile(
-                    leading: Icon(Icons.palette, color: Colors.blueGrey[700]),
-                    title: Text('Theme', style: GoogleFonts.poppins()),
-                    subtitle: Text(_selectedTheme, style: GoogleFonts.poppins(fontSize: 12)),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => _showThemeDialog(),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.info_rounded, color: AppColors.primary),
+                  title: Text('About', style: GoogleFonts.poppins()),
+                  subtitle: Text('App information and version', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textSecondary),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AboutScreen()),
                   ),
-                  
-                  ListTile(
-                    leading: Icon(Icons.language, color: Colors.blueGrey[700]),
-                    title: Text('Language', style: GoogleFonts.poppins()),
-                    subtitle: Text(_selectedLanguage, style: GoogleFonts.poppins(fontSize: 12)),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => _showLanguageDialog(),
-                  ),
-                ],
-              ),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.privacy_tip_rounded, color: AppColors.primary),
+                  title: Text('Privacy Policy', style: GoogleFonts.poppins()),
+                  subtitle: Text('View privacy policy', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textSecondary),
+                  onTap: () => _showPrivacyPolicy(),
+                ),
+              ],
             ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Support & Information
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Support & Information',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  ListTile(
-                    leading: Icon(Icons.help, color: Colors.blueGrey[700]),
-                    title: Text('Help & Support', style: GoogleFonts.poppins()),
-                    subtitle: Text('Get help and contact support', style: GoogleFonts.poppins(fontSize: 12)),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
-                    ),
-                  ),
-                  
-                  ListTile(
-                    leading: Icon(Icons.info, color: Colors.blueGrey[700]),
-                    title: Text('About', style: GoogleFonts.poppins()),
-                    subtitle: Text('App information and version', style: GoogleFonts.poppins(fontSize: 12)),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const AboutScreen()),
-                    ),
-                  ),
-                  
-                  ListTile(
-                    leading: Icon(Icons.privacy_tip, color: Colors.blueGrey[700]),
-                    title: Text('Privacy Policy', style: GoogleFonts.poppins()),
-                    subtitle: Text('View privacy policy', style: GoogleFonts.poppins(fontSize: 12)),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => _showPrivacyPolicy(),
-                  ),
-                ],
-              ),
+            const SizedBox(height: AppSpacing.md),
+            _sectionCard(
+              title: 'Account',
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.logout_rounded, color: AppColors.error),
+                  title: Text('Sign Out', style: GoogleFonts.poppins(color: AppColors.error, fontWeight: FontWeight.w600)),
+                  subtitle: Text('Sign out of your account', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                  onTap: () => _showSignOutDialog(),
+                ),
+              ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionCard({required String title, required List<Widget> children}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: [
+          BoxShadow(color: AppColors.primary.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 10)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
           ),
-          
-          const SizedBox(height: 16),
-          
-          // Account Actions
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Account',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  ListTile(
-                    leading: Icon(Icons.logout, color: Colors.red[700]),
-                    title: Text('Sign Out', style: GoogleFonts.poppins(color: Colors.red[700])),
-                    subtitle: Text('Sign out of your account', style: GoogleFonts.poppins(fontSize: 12)),
-                    onTap: () => _showSignOutDialog(),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const SizedBox(height: 8),
+          ...children,
         ],
       ),
     );
@@ -403,22 +279,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Select Theme', style: GoogleFonts.poppins()),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: ['System', 'Light', 'Dark'].map((theme) {
-            return RadioListTile<String>(
-              title: Text(theme, style: GoogleFonts.poppins()),
-              value: theme,
-              groupValue: _selectedTheme,
-              onChanged: (value) {
-                setState(() {
-                  _selectedTheme = value!;
-                });
-                Navigator.pop(context);
-              },
-            );
-          }).toList(),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+        title: Text('Select Theme', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        content: RadioGroup<String>(
+          groupValue: _selectedTheme,
+          onChanged: (value) {
+            setState(() => _selectedTheme = value!);
+            Navigator.pop(context);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: ['System', 'Light', 'Dark'].map((theme) {
+              return RadioListTile<String>(
+                title: Text(theme, style: GoogleFonts.poppins()),
+                value: theme,
+                activeColor: AppColors.primary,
+              );
+            }).toList(),
+          ),
         ),
       ),
     );
@@ -428,22 +306,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Select Language', style: GoogleFonts.poppins()),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: ['English', 'Swahili'].map((language) {
-            return RadioListTile<String>(
-              title: Text(language, style: GoogleFonts.poppins()),
-              value: language,
-              groupValue: _selectedLanguage,
-              onChanged: (value) {
-                setState(() {
-                  _selectedLanguage = value!;
-                });
-                Navigator.pop(context);
-              },
-            );
-          }).toList(),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+        title: Text('Select Language', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        content: RadioGroup<String>(
+          groupValue: _selectedLanguage,
+          onChanged: (value) {
+            setState(() => _selectedLanguage = value!);
+            Navigator.pop(context);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: ['English', 'Swahili'].map((language) {
+              return RadioListTile<String>(
+                title: Text(language, style: GoogleFonts.poppins()),
+                value: language,
+                activeColor: AppColors.primary,
+              );
+            }).toList(),
+          ),
         ),
       ),
     );
@@ -453,7 +333,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Privacy Policy', style: GoogleFonts.poppins()),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+        title: Text('Privacy Policy', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
         content: SingleChildScrollView(
           child: Text(
             'This CMMS application collects and processes data necessary for maintenance management operations. Your data is securely stored and processed in accordance with applicable data protection regulations.',
@@ -463,7 +344,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Close', style: GoogleFonts.poppins()),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -474,22 +355,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Sign Out', style: GoogleFonts.poppins()),
-        content: Text(
-          'Are you sure you want to sign out?',
-          style: GoogleFonts.poppins(),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+        title: Text('Sign Out', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        content: Text('Are you sure you want to sign out?', style: GoogleFonts.poppins()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: GoogleFonts.poppins()),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               _performSignOut();
             },
-            child: Text('Sign Out', style: GoogleFonts.poppins(color: Colors.red)),
+            child: Text('Sign Out', style: GoogleFonts.poppins(color: AppColors.error, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -500,17 +379,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await FirebaseAuth.instance.signOut();
       if (mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/login',
-          (route) => false,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
       }
     } catch (e) {
+      _logger.e('Error signing out: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error signing out: $e', style: GoogleFonts.poppins()),
-          ),
+          SnackBar(content: Text('Error signing out: $e', style: GoogleFonts.poppins())),
         );
       }
     }
