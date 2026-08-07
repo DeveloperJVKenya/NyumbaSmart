@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/models/facility.dart';
 import 'package:cmms/services/geocoding_service.dart';
+import 'package:cmms/widgets/location_picker_map.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/theme/app_widgets.dart';
 
@@ -37,6 +38,7 @@ class FacilityScreenState extends State<FacilityScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final ScrollController _scrollController = ScrollController();
   bool _isAddingFacility = false;
+  LocationPickResult? _pickedLocation;
 
   late Stream<QuerySnapshot<Map<String, dynamic>>> _facilitiesStream;
 
@@ -121,13 +123,14 @@ class FacilityScreenState extends State<FacilityScreen> {
         logger.i('Creating facility with organization: $organizationForFacility');
 
         final locationText = _locationController.text.trim();
-        final addressText = _addressController.text.trim();
-        // Geocode transparently on save so the Locations screen has real
-        // coordinates immediately; falls back to lazy on-the-fly geocoding
-        // there if this fails (e.g. offline, ambiguous address).
-        final coordinates = await GeocodingService().geocode(
-          addressText.isNotEmpty ? addressText : locationText,
-        );
+        final addressText = _pickedLocation?.address ?? _addressController.text.trim();
+
+        // Prefer the map-picker's confirmed coordinates. Only fall back to
+        // blind geocoding-from-text if the user skipped the picker
+        // entirely, so the form still works without forcing map use.
+        final coordinates = _pickedLocation != null
+            ? GeoCoordinates(_pickedLocation!.latitude, _pickedLocation!.longitude)
+            : await GeocodingService().geocode(addressText.isNotEmpty ? addressText : locationText);
 
         final facility = Facility(
           id: '',
@@ -148,6 +151,7 @@ class FacilityScreenState extends State<FacilityScreen> {
         _addressController.clear();
         setState(() {
           _isAddingFacility = false;
+          _pickedLocation = null;
         });
         logger.i('Facility added: ${ref.id} with organization: $organizationForFacility');
         if (mounted) {
@@ -169,10 +173,27 @@ class FacilityScreenState extends State<FacilityScreen> {
   void _cancelAddingFacility() {
     setState(() {
       _isAddingFacility = false;
+      _pickedLocation = null;
     });
     _nameController.clear();
     _locationController.clear();
     _addressController.clear();
+  }
+
+  Future<void> _pickLocation() async {
+    final result = await LocationPickerMap.show(
+      context,
+      initialLatitude: _pickedLocation?.latitude,
+      initialLongitude: _pickedLocation?.longitude,
+      initialAddress: _pickedLocation?.address ?? _addressController.text.trim(),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _pickedLocation = result;
+      if (result.address != null && result.address!.isNotEmpty) {
+        _addressController.text = result.address!;
+      }
+    });
   }
 
   // Build query based on user type and organization
@@ -243,7 +264,43 @@ class FacilityScreenState extends State<FacilityScreen> {
               const SizedBox(height: 16),
               AppTextField(controller: _locationController, label: 'Location', icon: Icons.location_on_rounded),
               const SizedBox(height: 16),
-              AppTextField(controller: _addressController, label: 'Address', icon: Icons.home_rounded),
+              Text('Address', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textSecondary)),
+              const SizedBox(height: 8),
+              if (_pickedLocation != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.place_rounded, color: AppColors.primary, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _addressController.text.isNotEmpty
+                              ? _addressController.text
+                              : '${_pickedLocation!.latitude}, ${_pickedLocation!.longitude}',
+                          style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textPrimary),
+                        ),
+                      ),
+                      TextButton(onPressed: _pickLocation, child: const Text('Change')),
+                    ],
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: _pickLocation,
+                  icon: const Icon(Icons.map_rounded, size: 18),
+                  label: const Text('Pick Location on Map'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                ),
               const SizedBox(height: 32),
               Row(
                 children: [

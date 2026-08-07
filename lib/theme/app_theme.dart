@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -70,6 +71,16 @@ class AppSpacing {
   static const double lg = 24;
   static const double xl = 32;
   static const double xxl = 48;
+}
+
+class AppPlatform {
+  AppPlatform._();
+
+  /// `google_maps_flutter` only ships Android/iOS/Web implementations — no
+  /// desktop (Windows/macOS/Linux) backend exists. `defaultTargetPlatform`
+  /// reflects the host OS even on web, so the `kIsWeb` check must come first.
+  static bool get mapsSupported =>
+      kIsWeb || defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
 }
 
 /// Responsive breakpoints used across the auth/dashboard shell.

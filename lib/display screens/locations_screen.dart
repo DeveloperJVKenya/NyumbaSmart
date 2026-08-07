@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,30 +7,24 @@ import 'package:logger/logger.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cmms/models/facility.dart';
+import 'package:cmms/models/user_model.dart';
+import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/services/geocoding_service.dart';
+import 'package:cmms/widgets/location_picker_map.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/theme/app_widgets.dart';
 
-/// `google_maps_flutter` only ships Android/iOS/Web implementations — no
-/// desktop (Windows/macOS/Linux) backend exists. Rather than let the plugin
-/// fail unpredictably there, the screen deliberately checks this and shows
-/// an address-details + "open externally" fallback on unsupported platforms.
-/// `defaultTargetPlatform` reflects the host OS even on web, so the `kIsWeb`
-/// check must come first.
-bool get _mapsSupportedOnThisPlatform =>
-    kIsWeb || defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
-
-class LocationsScreen extends StatefulWidget {
+class LocationsScreen extends ConsumerStatefulWidget {
   final String facilityId;
 
   const LocationsScreen({super.key, required this.facilityId});
 
   @override
-  State<LocationsScreen> createState() => _LocationsScreenState();
+  ConsumerState<LocationsScreen> createState() => _LocationsScreenState();
 }
 
-class _LocationsScreenState extends State<LocationsScreen> {
+class _LocationsScreenState extends ConsumerState<LocationsScreen> {
   final Logger _logger = Logger(printer: PrettyPrinter());
   final GeocodingService _geocodingService = GeocodingService();
 
@@ -156,11 +150,70 @@ class _LocationsScreenState extends State<LocationsScreen> {
     }
   }
 
+  /// Only Developers (fixing legacy/mis-geocoded facilities) or Admins
+  /// belonging to the JV Almacis service-provider org (the contractor side
+  /// that manages client facilities day to day) may correct a location.
+  bool _canEditLocation(UserRoleInfo? roleInfo) {
+    if (roleInfo == null) return false;
+    return roleInfo.isDeveloper || (roleInfo.role == UserRole.admin && roleInfo.isServiceProviderOrg);
+  }
+
+  Future<void> _editLocation() async {
+    final facility = _facility;
+    if (facility == null) return;
+
+    final result = await LocationPickerMap.show(
+      context,
+      initialLatitude: _facilityLatLng?.latitude,
+      initialLongitude: _facilityLatLng?.longitude,
+      initialAddress: facility.address,
+    );
+    if (result == null || !mounted) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('Facilities').doc(widget.facilityId).update({
+        'geoLocation': GeoPoint(result.latitude, result.longitude),
+        if (result.address != null && result.address!.isNotEmpty) 'address': result.address,
+      });
+      if (!mounted) return;
+      setState(() {
+        _facilityLatLng = LatLng(result.latitude, result.longitude);
+        _facility = Facility(
+          id: facility.id,
+          name: facility.name,
+          location: facility.location,
+          address: result.address ?? facility.address,
+          organization: facility.organization,
+          createdAt: facility.createdAt,
+          createdBy: facility.createdBy,
+          latitude: result.latitude,
+          longitude: result.longitude,
+        );
+      });
+      _showSnackBar('Location updated');
+    } catch (e) {
+      _logger.e('Error updating location: $e');
+      _showSnackBar('Error updating location: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final roleInfo = ref.watch(currentUserRoleProvider).valueOrNull;
+    final canEdit = _canEditLocation(roleInfo);
+
     return ResponsiveScreenWrapper(
       title: 'Facility Location',
       facilityId: '',
+      actions: canEdit && !_isLoading && _loadError == null
+          ? [
+              IconButton(
+                icon: const Icon(Icons.edit_location_alt_rounded, color: Colors.white),
+                tooltip: 'Edit Location',
+                onPressed: _editLocation,
+              ),
+            ]
+          : null,
       child: Container(
         decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
         child: _isLoading
@@ -219,7 +272,7 @@ class _LocationsScreenState extends State<LocationsScreen> {
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            if (_mapsSupportedOnThisPlatform) _buildMapPanel() else _buildDesktopFallback(),
+            if (AppPlatform.mapsSupported) _buildMapPanel() else _buildDesktopFallback(),
             const SizedBox(height: AppSpacing.lg),
             Row(
               children: [

@@ -33,4 +33,21 @@ class GeocodingService {
       return null;
     }
   }
+
+  /// Coordinates → human-readable address, used by the map picker to show
+  /// what a dropped/dragged pin resolves to.
+  Future<String?> reverseGeocode(double latitude, double longitude) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(latitude, longitude);
+      if (placemarks.isEmpty) return null;
+      final p = placemarks.first;
+      final parts = [p.street, p.subLocality, p.locality, p.administrativeArea, p.country]
+          .where((part) => part != null && part.trim().isNotEmpty)
+          .toList();
+      return parts.isEmpty ? null : parts.join(', ');
+    } catch (e) {
+      _logger.w('Reverse geocoding failed for ($latitude, $longitude): $e');
+      return null;
+    }
+  }
 }
