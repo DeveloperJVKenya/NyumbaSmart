@@ -17,6 +17,22 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <!-- Google Maps JS API — key loaded from the gitignored maps_config.js
+       so the literal key never lands in tracked index.html. -->
+  <script src="maps_config.js"></script>
+  <script>
+    (function () {
+      if (!window.mapsApiKey) {
+        console.warn('maps_config.js missing or window.mapsApiKey not set — Google Maps will not load.');
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://maps.googleapis.com/maps/api/js?key=' + window.mapsApiKey;
+      script.async = true;
+      document.head.appendChild(script);
+    })();
+  </script>
+
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js"></script>

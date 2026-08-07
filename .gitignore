@@ -40,3 +40,7 @@ lib/firebase_options.dart     # ✅ Firebase auto-generated options
 *.key
 *.pem
 *.cert
+
+# Google Maps API key config (see the matching *.example files)
+ios/Runner/Maps.xcconfig
+web/maps_config.js

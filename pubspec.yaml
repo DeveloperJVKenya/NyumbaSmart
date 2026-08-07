@@ -75,7 +75,6 @@ dependencies:
   web: ^1.1.1
   flutter_secure_storage: ^9.2.4
   googleapis_auth: ^2.0.0
-  carousel_slider: ^5.1.1
   font_awesome_flutter: ^11.0.0
 
 flutter:

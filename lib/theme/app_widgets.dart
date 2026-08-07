@@ -267,3 +267,75 @@ class _AppAnimatedBackdropState extends State<AppAnimatedBackdrop> with SingleTi
     );
   }
 }
+
+/// Shimmer-style placeholder card used while a Firestore snapshot is still
+/// loading (facility/organization pickers, etc.) — reads as "content is
+/// coming" rather than a bare spinner, so pages feel faster even before
+/// data arrives.
+class AppSkeletonCard extends StatefulWidget {
+  final double height;
+
+  const AppSkeletonCard({super.key, this.height = 96});
+
+  @override
+  State<AppSkeletonCard> createState() => _AppSkeletonCardState();
+}
+
+class _AppSkeletonCardState extends State<AppSkeletonCard> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = _controller.value;
+        return Container(
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            gradient: LinearGradient(
+              begin: Alignment(-1 + t * 3, 0),
+              end: Alignment(0 + t * 3, 0),
+              colors: const [
+                AppColors.surfaceAlt,
+                Colors.white,
+                AppColors.surfaceAlt,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A short column of [AppSkeletonCard]s for list/grid loading states.
+class AppSkeletonList extends StatelessWidget {
+  final int count;
+  final double itemHeight;
+
+  const AppSkeletonList({super.key, this.count = 4, this.itemHeight = 96});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      itemCount: count,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) => AppSkeletonCard(height: itemHeight),
+    );
+  }
+}

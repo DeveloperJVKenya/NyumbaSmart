@@ -15,6 +15,15 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// Load the Maps API key from local.properties (gitignored) so it never
+// gets committed to the tracked AndroidManifest.xml.
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(FileInputStream(localPropertiesFile))
+}
+val mapsApiKey: String = localProperties.getProperty("mapsApiKey") ?: ""
+
 android {
     namespace = "com.jvalmacis.cmms"
     compileSdk = flutter.compileSdkVersion
@@ -37,6 +46,7 @@ android {
         versionCode = 4
         versionName = "1.0.3"
         multiDexEnabled = true
+        manifestPlaceholders["mapsApiKey"] = mapsApiKey
     }
 
     signingConfigs {

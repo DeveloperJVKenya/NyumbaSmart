@@ -1,8 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:carousel_slider/carousel_slider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/theme/app_theme.dart';
-import 'package:cmms/theme/app_widgets.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -13,6 +12,8 @@ class WelcomeScreen extends StatefulWidget {
 
 class WelcomeScreenState extends State<WelcomeScreen> {
   int _currentIndex = 0;
+  Timer? _autoPlayTimer;
+  double _dragStartX = 0;
 
   final List<Slide> slides = [
     Slide(
@@ -53,6 +54,29 @@ class WelcomeScreenState extends State<WelcomeScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _startAutoPlay();
+  }
+
+  void _startAutoPlay() {
+    _autoPlayTimer?.cancel();
+    _autoPlayTimer = Timer.periodic(const Duration(seconds: 6), (_) => _goTo(_currentIndex + 1));
+  }
+
+  void _goTo(int index) {
+    if (!mounted) return;
+    setState(() => _currentIndex = index % slides.length);
+    _startAutoPlay(); // reset the auto-play clock on manual navigation too
+  }
+
+  @override
+  void dispose() {
+    _autoPlayTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
@@ -62,42 +86,44 @@ class WelcomeScreenState extends State<WelcomeScreen> {
     // On wide screens, cap the carousel width like a hero panel instead of
     // stretching a mobile-shaped layout full-bleed.
     final carouselWidth = isDesktop ? screenWidth * 0.7 : screenWidth;
+    final slide = slides[_currentIndex];
 
     return Scaffold(
+      // Solid, static backdrop — no gradient/animation here. That treatment
+      // is reserved for the login/registration cards (AppAuthBackground);
+      // this screen should just be the carousel imagery filling the device.
+      backgroundColor: AppColors.primaryDark,
       body: Stack(
         children: [
-          const Positioned.fill(child: AppAnimatedBackdrop()),
           Center(
-            child: SizedBox(
-              width: carouselWidth,
-              height: screenHeight,
-              child: ClipRRect(
-                borderRadius: isDesktop
-                    ? BorderRadius.circular(AppRadius.xl)
-                    : BorderRadius.zero,
-                child: CarouselSlider(
-                  options: CarouselOptions(
-                    height: screenHeight,
-                    enlargeCenterPage: true,
-                    enableInfiniteScroll: true,
-                    autoPlay: true,
-                    autoPlayInterval: const Duration(seconds: 6),
-                    viewportFraction: 1.0,
-                    onPageChanged: (index, reason) {
-                      setState(() => _currentIndex = index);
-                    },
+            child: GestureDetector(
+              onHorizontalDragStart: (details) => _dragStartX = details.localPosition.dx,
+              onHorizontalDragEnd: (details) {
+                final delta = details.localPosition.dx - _dragStartX;
+                if (delta.abs() < 40) return;
+                _goTo(delta < 0 ? _currentIndex + 1 : _currentIndex - 1 + slides.length);
+              },
+              child: SizedBox(
+                width: carouselWidth,
+                height: screenHeight,
+                child: ClipRRect(
+                  borderRadius: isDesktop ? BorderRadius.circular(AppRadius.xl) : BorderRadius.zero,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 700),
+                    switchInCurve: Curves.easeInOut,
+                    switchOutCurve: Curves.easeInOut,
+                    transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+                    layoutBuilder: (currentChild, previousChildren) => Stack(
+                      fit: StackFit.expand,
+                      children: [...previousChildren, if (currentChild != null) currentChild],
+                    ),
+                    child: SizedBox(
+                      key: ValueKey(_currentIndex),
+                      width: carouselWidth,
+                      height: screenHeight,
+                      child: _buildSlide(slide, isMobile, isTablet, carouselWidth, screenHeight),
+                    ),
                   ),
-                  items: slides.map((slide) {
-                    return Builder(
-                      builder: (BuildContext context) {
-                        return SizedBox(
-                          width: carouselWidth,
-                          height: screenHeight,
-                          child: _buildSlide(slide, isMobile, isTablet, carouselWidth, screenHeight),
-                        );
-                      },
-                    );
-                  }).toList(),
                 ),
               ),
             ),
@@ -112,18 +138,23 @@ class WelcomeScreenState extends State<WelcomeScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _GradientCta(
-                      label: 'Sign In',
-                      icon: Icons.login_rounded,
-                      onPressed: () => Navigator.pushNamed(context, '/login'),
+                    Center(
+                      child: _GradientCta(
+                        label: 'Sign In',
+                        icon: Icons.login_rounded,
+                        onPressed: () => Navigator.pushNamed(context, '/login'),
+                      ),
                     ),
                     const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: () => Navigator.pushNamed(context, '/needAccount'),
-                      icon: const Icon(Icons.help_outline, size: 18),
-                      label: Text(
-                        'Need an Account?',
-                        style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+                    Center(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.pushNamed(context, '/needAccount'),
+                        style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                        icon: const Icon(Icons.help_outline, size: 18),
+                        label: Text(
+                          'Need an Account?',
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -131,14 +162,17 @@ class WelcomeScreenState extends State<WelcomeScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(slides.length, (index) {
                         final active = _currentIndex == index;
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                          width: active ? 22.0 : 8.0,
-                          height: 8.0,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(AppRadius.pill),
-                            color: active ? AppColors.accent : Colors.white.withValues(alpha: 0.45),
+                        return GestureDetector(
+                          onTap: () => _goTo(index),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                            width: active ? 22.0 : 8.0,
+                            height: 8.0,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(AppRadius.pill),
+                              color: active ? AppColors.accent : Colors.white.withValues(alpha: 0.45),
+                            ),
                           ),
                         );
                       }),
@@ -158,8 +192,10 @@ class WelcomeScreenState extends State<WelcomeScreen> {
     final subtitleSize = isMobile ? 14.0 : isTablet ? 15.5 : 17.0;
 
     if (slide.image == 'assets/nyumbasmart.jpg') {
-      return DecoratedBox(
-        decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+      // Same solid backdrop as the Scaffold — deliberately static, no
+      // gradient wash behind the logo slide.
+      return ColoredBox(
+        color: AppColors.primaryDark,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -283,11 +319,11 @@ class _GradientCta extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.pill),
           onTap: onPressed,
           child: Container(
-            width: double.infinity,
             height: 54,
+            padding: const EdgeInsets.symmetric(horizontal: 28),
             alignment: Alignment.center,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icon, color: Colors.white, size: 20),
                 const SizedBox(width: 8),

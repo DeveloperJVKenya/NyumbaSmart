@@ -21,6 +21,11 @@
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         
+        <!-- Google Maps SDK -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}"/>
+
         <!-- FCM Configuration -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

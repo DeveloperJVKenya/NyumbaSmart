@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>GMSApiKey</key>
+	<string>$(MAPS_API_KEY)</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>NyumbaSmart uses your location to show your position relative to facilities on the map and to give directions.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>NyumbaSmart uses your location to show your position relative to facilities on the map and to give directions.</string>
 </dict>
 </plist>

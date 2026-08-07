@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/models/organization.dart';
+import 'package:cmms/theme/app_theme.dart';
+import 'package:cmms/theme/app_widgets.dart';
 
 class OrganizationSelectionScreen extends StatefulWidget {
   final Function(String organizationId, String organizationName) onOrganizationSelected;
@@ -19,203 +21,184 @@ class OrganizationSelectionScreen extends StatefulWidget {
 class OrganizationSelectionScreenState extends State<OrganizationSelectionScreen> {
   final Logger logger = Logger(printer: PrettyPrinter());
 
+  // Built once and reused so a parent rebuild doesn't tear down and
+  // re-attach the Firestore listener (StreamBuilder tears down its
+  // subscription whenever it's handed a *new* Stream instance).
+  late final Stream<QuerySnapshot> _organizationsStream = FirebaseFirestore.instance
+      .collection('Organizations')
+      .where('isActive', isEqualTo: true)
+      .snapshots();
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth <= 600;
-    final isDesktop = screenWidth > 1200;
-    
-    // Calculate content width - 60% for desktop, full width for mobile/tablet
-    final contentWidth = isDesktop ? screenWidth * 0.6 : screenWidth;
+    final isMobile = AppBreakpoints.isMobile(screenWidth);
+    final isDesktop = AppBreakpoints.isDesktop(screenWidth);
+    final contentWidth = isDesktop ? screenWidth * 0.7 : screenWidth;
 
-    return SafeArea(
-      child: Center(
-        child: Container(
-          width: contentWidth,
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header section
-              Text(
-                'Select Client Organization',
-                style: GoogleFonts.poppins(
-                  fontSize: isMobile ? 20 : 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey[800],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Choose a client organization to manage its facilities',
-                style: GoogleFonts.poppins(
-                  fontSize: isMobile ? 14 : 16,
-                  color: Colors.blueGrey[600],
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // Organizations list
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('Organizations')
-                      .where('isActive', isEqualTo: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: CircularProgressIndicator(color: Colors.blueGrey),
-                      );
-                    }
-                    
-                    if (snapshot.hasError) {
-                      logger.e('Firestore error: ${snapshot.error}');
-                      return Center(
-                        child: Text(
-                          'Error: ${snapshot.error}',
-                          style: GoogleFonts.poppins(color: Colors.red),
-                        ),
-                      );
-                    }
-                    
-                    final docs = snapshot.data?.docs ?? [];
-                    
-                    // 🔧 UPDATED: Filter out JV Almacis ONLY from app launch selection
-                    final clientOrganizations = docs
-                        .map((doc) => Organization.fromFirestore(doc))
-                        .where((org) => org.name != 'JV Almacis') // Exclude JV Almacis from app launch selection only
-                        .toList();
-                    
-                    if (clientOrganizations.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.business,
-                              size: 64,
-                              color: Colors.blueGrey[300],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No client organizations available',
-                              style: GoogleFonts.poppins(
-                                fontSize: isMobile ? 16 : 18,
-                                color: Colors.blueGrey[600],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Contact your administrator to add client organizations',
-                              style: GoogleFonts.poppins(
-                                fontSize: isMobile ? 14 : 16,
-                                color: Colors.blueGrey[400],
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                    
-                    // Sort organizations alphabetically
-                    clientOrganizations.sort((a, b) => a.name.compareTo(b.name));
-                    
-                    logger.i('Fetched ${clientOrganizations.length} client organizations for app launch selection (excluding JV Almacis)');
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+      child: SafeArea(
+        child: Center(
+          child: SizedBox(
+            width: contentWidth,
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Select Client Organization',
+                    style: GoogleFonts.poppins(
+                      fontSize: isMobile ? 20 : 26,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Choose a client organization to manage its facilities',
+                    style: GoogleFonts.poppins(fontSize: isMobile ? 13 : 15, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: _organizationsStream,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const AppSkeletonList(count: 5, itemHeight: 108);
+                        }
 
-                    return ListView.builder(
-                      itemCount: clientOrganizations.length,
-                      itemBuilder: (context, index) {
-                        final organization = clientOrganizations[index];
+                        if (snapshot.hasError) {
+                          logger.e('Firestore error: ${snapshot.error}');
+                          return Center(
+                            child: Text('Error: ${snapshot.error}', style: GoogleFonts.poppins(color: AppColors.error)),
+                          );
+                        }
 
-                        return GestureDetector(
-                          onTap: () {
-                            widget.onOrganizationSelected(organization.id, organization.name);
-                            logger.i('Selected client organization: ${organization.name}, ID: ${organization.id}');
-                          },
-                          child: Card(
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        final docs = snapshot.data?.docs ?? [];
+
+                        // Excludes JV Almacis (the internal service-provider
+                        // org) from this app-launch selection only.
+                        final clientOrganizations = docs
+                            .map((doc) => Organization.fromFirestore(doc))
+                            .where((org) => org.name != 'JV Almacis')
+                            .toList()
+                          ..sort((a, b) => a.name.compareTo(b.name));
+
+                        if (clientOrganizations.isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.business_rounded, size: 64, color: AppColors.textSecondary.withValues(alpha: 0.4)),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No client organizations available',
+                                  style: GoogleFonts.poppins(fontSize: isMobile ? 16 : 18, color: AppColors.textSecondary),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Contact your administrator to add client organizations',
+                                  style: GoogleFonts.poppins(fontSize: isMobile ? 13 : 15, color: AppColors.textSecondary.withValues(alpha: 0.8)),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
                             ),
-                            color: Colors.white,
-                            margin: const EdgeInsets.symmetric(vertical: 8),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.business,
-                                        color: Colors.blueGrey[600],
-                                        size: isMobile ? 20 : 24,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Text(
-                                          organization.name,
-                                          style: GoogleFonts.poppins(
-                                            fontSize: isMobile ? 16 : 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.blueGrey[800],
-                                          ),
-                                        ),
-                                      ),
-                                      // Client indicator for all organizations in this selection
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green[100],
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          'Client',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: isMobile ? 10 : 12,
-                                            fontWeight: FontWeight.w500,
-                                            color: Colors.green[700],
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Icon(
-                                        Icons.arrow_forward_ios,
-                                        color: Colors.blueGrey[400],
-                                        size: 16,
-                                      ),
-                                    ],
-                                  ),
-                                  if (organization.description != null && organization.description!.isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      organization.description!,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: isMobile ? 14 : 16,
-                                        color: Colors.blueGrey[600],
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Added: ${organization.createdAt.toLocal().toString().split(' ')[0]}',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: isMobile ? 12 : 14,
-                                      color: Colors.blueGrey[400],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                          );
+                        }
+
+                        logger.i('Fetched ${clientOrganizations.length} client organizations for app launch selection (excluding JV Almacis)');
+
+                        return GridView.builder(
+                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 420,
+                            mainAxisSpacing: 14,
+                            crossAxisSpacing: 14,
+                            mainAxisExtent: 118,
                           ),
+                          itemCount: clientOrganizations.length,
+                          itemBuilder: (context, index) {
+                            final organization = clientOrganizations[index];
+                            return _OrganizationCard(
+                              organization: organization,
+                              isMobile: isMobile,
+                              onTap: () {
+                                widget.onOrganizationSelected(organization.id, organization.name);
+                                logger.i('Selected client organization: ${organization.name}, ID: ${organization.id}');
+                              },
+                            );
+                          },
                         );
                       },
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OrganizationCard extends StatelessWidget {
+  final Organization organization;
+  final bool isMobile;
+  final VoidCallback onTap;
+
+  const _OrganizationCard({required this.organization, required this.isMobile, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        onTap: onTap,
+        child: AppCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    child: const Icon(Icons.business_rounded, color: AppColors.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      organization.name,
+                      style: GoogleFonts.poppins(fontSize: isMobile ? 15 : 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    child: Text('Client', style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.success)),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textSecondary, size: 14),
+                ],
+              ),
+              if (organization.description != null && organization.description!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  organization.description!,
+                  style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ],
           ),
         ),

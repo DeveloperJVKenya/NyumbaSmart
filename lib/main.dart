@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cmms/authentication/splashscreen.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -20,7 +21,6 @@ import 'package:cmms/notifications/services/fcm_http_service.dart';
 import 'package:cmms/notifications/services/system_notification_service.dart';
 import 'package:cmms/notifications/widgets/floating_notification_widget.dart';
 import 'package:cmms/screens/dashboard_screen.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
@@ -132,14 +132,6 @@ void main() async {
 
   final logger = Logger();
 
-  // Clear Firestore persistence before any Firestore operations
-  try {
-    await FirebaseFirestore.instance.clearPersistence();
-    logger.i('Firestore cache cleared on app start');
-  } catch (e, stackTrace) {
-    logger.e('Error clearing Firestore cache: $e', stackTrace: stackTrace);
-  }
-
   // Set up background message handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -186,10 +178,12 @@ void main() async {
     );
   }
 
-  // Initialize all notification services
-  await _initializeNotificationServicesOptimized();
-
   runApp(const ProviderScope(child: MyApp()));
+
+  // Notification/FCM/Workmanager service setup is not needed for the first
+  // frame (SplashScreen resolves auth/role independently) — kick it off
+  // after the UI is already painting instead of blocking runApp() behind it.
+  unawaited(_initializeNotificationServicesOptimized());
 }
 
 /// Initialize all notification services

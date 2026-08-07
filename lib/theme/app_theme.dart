@@ -129,23 +129,29 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.surfaceAlt.withValues(alpha: 0.5),
+        fillColor: AppColors.surfaceAlt.withValues(alpha: 0.6),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        // A visible resting border (not just fill color) so fields read as
+        // distinct, fillable inputs before the user types anything.
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: AppColors.textSecondary.withValues(alpha: 0.35), width: 1.2),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: AppColors.textSecondary.withValues(alpha: 0.35), width: 1.2),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
           borderSide: const BorderSide(color: AppColors.error, width: 1.5),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: AppColors.error, width: 2),
         ),
         labelStyle: GoogleFonts.poppins(color: AppColors.textSecondary),
       ),

@@ -107,7 +107,6 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
 
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = AppBreakpoints.isMobile(screenWidth);
-    final isTablet = AppBreakpoints.isTablet(screenWidth);
     final String appBarTitle = organization == '-' ? 'Dashboard' : widget.title;
 
     return Scaffold(
@@ -118,7 +117,11 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
           style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: isMobile ? 18 : 20),
         ),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
-        leading: (isMobile || isTablet)
+        // The hamburger/drawer menu is a mobile-only pattern now — tablet
+        // and desktop both get the permanent side panel instead, since
+        // that's the width where content (e.g. the facilities grid) is
+        // already laid out in more than a single column.
+        leading: isMobile
             ? IconButton(
                 icon: const Icon(Icons.menu_rounded, color: Colors.white),
                 onPressed: () => _scaffoldKey.currentState?.openDrawer(),
@@ -129,12 +132,10 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
               ),
         actions: widget.actions,
       ),
-      drawer: (isMobile || isTablet)
-          ? _buildDrawer(currentRole, organization, isDeveloper, isClient, isMobile)
-          : null,
+      drawer: isMobile ? _buildDrawer(currentRole, organization, isDeveloper, isClient, isMobile) : null,
       body: Row(
         children: [
-          if (!isMobile && !isTablet) _buildSidebar(currentRole, organization, isDeveloper, isClient, isMobile),
+          if (!isMobile) _buildSidebar(currentRole, organization, isDeveloper, isClient, isMobile),
           Expanded(child: widget.child),
         ],
       ),
