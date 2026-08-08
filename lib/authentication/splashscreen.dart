@@ -58,10 +58,15 @@ class SplashScreenState extends ConsumerState<SplashScreen>
     NotificationService().initialize().catchError((e) {
       _logger.e('FCM init failed during splash: $e');
     });
-    Navigator.of(context).pushReplacement(
+    // pushAndRemoveUntil (not pushReplacement) so there is no lingering
+    // Welcome/Login route beneath the dashboard — otherwise the hardware/
+    // browser back button pops into a stale auth screen even though the
+    // Firebase session is still active, reading to the user as a logout.
+    Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (context) => DashboardScreen(facilityId: '', role: info.roleLabel),
       ),
+      (route) => false,
     );
   }
 

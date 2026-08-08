@@ -83,10 +83,13 @@ class RegistrationScreenState extends State<RegistrationScreen> {
       // Consistent with login: empty facilityId triggers facility selection
       // once an admin assigns an organization/role (previously hardcoded to
       // 'facility1' here, inconsistent with login_screen.dart's '').
-      Navigator.of(context).pushReplacement(
+      // pushAndRemoveUntil clears Welcome/Login/Registration from the stack
+      // so the back button can't land on a stale auth screen.
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => DashboardScreen(facilityId: '', role: UserRole.user.label),
         ),
+        (route) => false,
       );
     } catch (e) {
       if (!mounted) return;

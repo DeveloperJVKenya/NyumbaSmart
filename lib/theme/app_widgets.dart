@@ -87,33 +87,39 @@ class AppGradientButton extends StatelessWidget {
             onTap: disabled ? null : onPressed,
             child: SizedBox(
               height: 54,
-              child: Center(
-                child: isLoading
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.5,
-                        ),
-                      )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (icon != null) ...[
-                            Icon(icon, color: Colors.white, size: 20),
-                            const SizedBox(width: 8),
-                          ],
-                          Text(
-                            label,
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+              child: Padding(
+                // Breathing room around text/icon — needed now that this
+                // button hugs its own content instead of being stretched
+                // full-width by a parent Expanded/SizedBox.
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Center(
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
                           ),
-                        ],
-                      ),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (icon != null) ...[
+                              Icon(icon, color: Colors.white, size: 20),
+                              const SizedBox(width: 8),
+                            ],
+                            Text(
+                              label,
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
               ),
             ),
           ),
@@ -332,6 +338,12 @@ class AppSkeletonList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
+      // shrinkWrap + NeverScrollableScrollPhysics: this is used inside
+      // Columns/SingleChildScrollViews that give it unbounded height (not
+      // just bounded Expanded slots) — without these a bare ListView
+      // throws "Vertical viewport was given unbounded height".
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
       itemCount: count,
       separatorBuilder: (_, __) => const SizedBox(height: 12),

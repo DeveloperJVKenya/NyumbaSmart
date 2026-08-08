@@ -253,20 +253,22 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
             const SizedBox(height: 16),
             AppTextField(controller: _descriptionController, label: 'Description (optional)', icon: Icons.notes_rounded),
             const SizedBox(height: 32),
-            Row(
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 16,
+              runSpacing: 12,
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => setState(() => _isAddingOrganization = false),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.textPrimary,
-                      side: BorderSide(color: AppColors.textSecondary.withValues(alpha: 0.35)),
-                    ),
-                    child: const Text('Cancel'),
+                OutlinedButton(
+                  onPressed: () => setState(() => _isAddingOrganization = false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textPrimary,
+                    side: BorderSide(color: AppColors.textSecondary.withValues(alpha: 0.35)),
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                   ),
+                  child: const Text('Cancel'),
                 ),
-                const SizedBox(width: 16),
-                Expanded(child: AppGradientButton(label: 'Add Organization', isLoading: _isSaving, onPressed: _isSaving ? null : _addOrganization)),
+                AppGradientButton(label: 'Add Organization', isLoading: _isSaving, onPressed: _isSaving ? null : _addOrganization),
               ],
             ),
           ],

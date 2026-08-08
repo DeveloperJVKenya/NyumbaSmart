@@ -112,14 +112,39 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
     }
   }
 
+  /// A resolvable text fallback when there are no coordinates: prefer the
+  /// full street address over the short "Location" label (e.g. "Nairobi CBD
+  /// Office"), since Maps can't geocode a made-up nickname.
+  String? get _fallbackDestinationText {
+    final facility = _facility;
+    if (facility == null) return null;
+    if (facility.address != null && facility.address!.isNotEmpty) return facility.address;
+    if (facility.location.isNotEmpty) return facility.location;
+    return null;
+  }
+
   Future<void> _openDirections() async {
     if (_facility == null) return;
     try {
       final destination = _facilityLatLng != null
           ? '${_facilityLatLng!.latitude},${_facilityLatLng!.longitude}'
-          : Uri.encodeComponent(_facility!.location);
-      final origin = _currentPosition != null ? '${_currentPosition!.latitude},${_currentPosition!.longitude}/' : '';
-      final url = Uri.parse('https://www.google.com/maps/dir/$origin$destination');
+          : _fallbackDestinationText;
+      if (destination == null) {
+        _showSnackBar('No location details available for directions');
+        return;
+      }
+      // Built via Uri.https' queryParameters (not raw string concatenation)
+      // so the destination/origin are always correctly encoded and placed
+      // in the documented `/maps/dir/?api=1&...` query form — the previous
+      // version spliced coordinates/text directly into the path, which
+      // produced a broken or origin-less URL whenever the current position
+      // was unavailable.
+      final url = Uri.https('www.google.com', '/maps/dir/', {
+        'api': '1',
+        'destination': destination,
+        'travelmode': 'driving',
+        if (_currentPosition != null) 'origin': '${_currentPosition!.latitude},${_currentPosition!.longitude}',
+      });
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       } else {
@@ -128,19 +153,6 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
     } catch (e) {
       _logger.e('Error opening directions: $e');
       _showSnackBar('Error getting directions: $e');
-    }
-  }
-
-  Future<void> _openInMaps() async {
-    if (_facility == null) return;
-    final query = _facilityLatLng != null
-        ? '${_facilityLatLng!.latitude},${_facilityLatLng!.longitude}'
-        : Uri.encodeComponent(_facility!.location);
-    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
-      _showSnackBar('Could not open Google Maps');
     }
   }
 
@@ -171,9 +183,18 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
     if (result == null || !mounted) return;
 
     try {
+      // Every confirmed pick is authoritative: the short "Location" label
+      // is always resynced from the freshly-picked point, not just when it
+      // was blank, so what's shown here (and fed into Get Directions) never
+      // drifts from the coordinates actually selected on the map.
+      final newLocation = result.address != null && result.address!.isNotEmpty
+          ? result.address!.split(',').first.trim()
+          : facility.location;
+
       await FirebaseFirestore.instance.collection('Facilities').doc(widget.facilityId).update({
         'geoLocation': GeoPoint(result.latitude, result.longitude),
         if (result.address != null && result.address!.isNotEmpty) 'address': result.address,
+        if (newLocation != facility.location) 'location': newLocation,
       });
       if (!mounted) return;
       setState(() {
@@ -181,7 +202,7 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
         _facility = Facility(
           id: facility.id,
           name: facility.name,
-          location: facility.location,
+          location: newLocation,
           address: result.address ?? facility.address,
           organization: facility.organization,
           createdAt: facility.createdAt,
@@ -204,15 +225,21 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
 
     return ResponsiveScreenWrapper(
       title: 'Facility Location',
-      facilityId: '',
-      actions: canEdit && !_isLoading && _loadError == null
-          ? [
-              IconButton(
-                icon: const Icon(Icons.edit_location_alt_rounded, color: Colors.white),
-                tooltip: 'Edit Location',
-                onPressed: _editLocation,
-              ),
-            ]
+      // Was hardcoded to '' — the sidebar's "select a facility first" guard
+      // (_handleSubMenuNavigation in responsive_screen_wrapper.dart) reads
+      // this exact value, so switching menus from within Locations always
+      // looked like no facility was selected even though one was.
+      facilityId: widget.facilityId,
+      currentRole: roleInfo?.roleLabel ?? 'User',
+      organization: roleInfo?.organization ?? '-',
+      floatingActionButton: canEdit && !_isLoading && _loadError == null
+          ? FloatingActionButton.extended(
+              onPressed: _editLocation,
+              backgroundColor: AppColors.primary,
+              icon: const Icon(Icons.edit_location_alt_rounded, color: Colors.white),
+              label: Text('Edit Location', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+            )
           : null,
       child: Container(
         decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
@@ -274,20 +301,7 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
             const SizedBox(height: AppSpacing.lg),
             if (AppPlatform.mapsSupported) _buildMapPanel() else _buildDesktopFallback(),
             const SizedBox(height: AppSpacing.lg),
-            Row(
-              children: [
-                Expanded(child: AppGradientButton(label: 'Get Directions', icon: Icons.directions_rounded, onPressed: _openDirections)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _openInMaps,
-                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                    label: const Text('Open in Maps'),
-                    style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary, side: const BorderSide(color: AppColors.primary)),
-                  ),
-                ),
-              ],
-            ),
+            Center(child: AppGradientButton(label: 'Get Directions', icon: Icons.directions_rounded, onPressed: _openDirections)),
           ],
         ),
       ),
@@ -367,7 +381,7 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'An interactive map isn\'t available on this platform yet — use "Open in Maps" or "Get Directions" below.',
+              'An interactive map isn\'t available on this platform yet — use "Get Directions" below.',
               style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
             ),
           ),

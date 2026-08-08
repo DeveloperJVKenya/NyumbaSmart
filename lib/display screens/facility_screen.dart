@@ -192,6 +192,12 @@ class FacilityScreenState extends State<FacilityScreen> {
       _pickedLocation = result;
       if (result.address != null && result.address!.isNotEmpty) {
         _addressController.text = result.address!;
+        // Every confirmed pick is authoritative: the short "Location"
+        // label is always resynced from the freshly-picked point (first
+        // comma-separated segment, typically the street/place name), not
+        // just when it was blank — keeps what's displayed consistent with
+        // what was actually selected on the map.
+        _locationController.text = result.address!.split(',').first.trim();
       }
     });
   }
@@ -298,24 +304,27 @@ class FacilityScreenState extends State<FacilityScreen> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.primary,
                     side: const BorderSide(color: AppColors.primary),
-                    minimumSize: const Size(double.infinity, 48),
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                   ),
                 ),
               const SizedBox(height: 32),
-              Row(
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 16,
+                runSpacing: 12,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _cancelAddingFacility,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textPrimary,
-                        side: BorderSide(color: AppColors.textSecondary.withValues(alpha: 0.35)),
-                      ),
-                      child: const Text('Cancel'),
+                  OutlinedButton(
+                    onPressed: _cancelAddingFacility,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textPrimary,
+                      side: BorderSide(color: AppColors.textSecondary.withValues(alpha: 0.35)),
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                     ),
+                    child: const Text('Cancel'),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(child: AppGradientButton(label: 'Add Facility', onPressed: _addFacility)),
+                  AppGradientButton(label: 'Add Facility', onPressed: _addFacility),
                 ],
               ),
               const SizedBox(height: 32),

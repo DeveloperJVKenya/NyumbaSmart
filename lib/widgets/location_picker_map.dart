@@ -265,6 +265,12 @@ class _LocationPickerMapState extends State<LocationPickerMap> {
                 height: 54,
                 child: ElevatedButton(
                   onPressed: _searching ? null : _searchAddress,
+                  // Local override: the theme's default minimumSize is
+                  // Size(double.infinity, 54), which inside this Row's
+                  // non-flexible slot (next to an Expanded sibling) asks
+                  // for infinite width and breaks layout. Content-hugging
+                  // with generous padding instead.
+                  style: ElevatedButton.styleFrom(minimumSize: const Size(0, 54), padding: const EdgeInsets.symmetric(horizontal: 24)),
                   child: _searching
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : const Text('Find'),

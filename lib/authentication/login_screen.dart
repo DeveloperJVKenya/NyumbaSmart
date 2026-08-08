@@ -107,10 +107,14 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _navigateToDashboard(String role) {
-    Navigator.of(context).pushReplacement(
+    // Clears the whole stack (Welcome/Login/Registration) instead of just
+    // replacing the top route, so the back button can't land on a stale
+    // auth screen while the Firebase session is still signed in.
+    Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (context) => DashboardScreen(facilityId: '', role: role),
       ),
+      (route) => false,
     );
   }
 
