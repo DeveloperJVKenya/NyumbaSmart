@@ -87,6 +87,25 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
   String _searchQuery = '';
   String? _selectedCategory; // null = "All"
 
+  // Created once (not inline in build/StreamBuilder) so typing in the
+  // search box or tapping a category chip — both call setState on this
+  // widget — don't hand StreamBuilder a new Stream instance each time.
+  // A fresh instance reads as a brand new subscription, which briefly
+  // resets StreamBuilder to ConnectionState.waiting (the skeleton
+  // placeholder) and was the cause of the layout flicker between the
+  // skeleton's height and the loaded list's height.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _documentsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _documentsStream = FirebaseFirestore.instance
+        .collection(widget.collectionName)
+        .where('facilityId', isEqualTo: widget.facilityId)
+        .orderBy('uploadedAt', descending: true)
+        .snapshots();
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -119,29 +138,34 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
   Widget _buildBody(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = AppBreakpoints.isMobile(screenWidth);
-    final isDesktop = AppBreakpoints.isDesktop(screenWidth);
-    final horizontalPadding = isMobile ? AppSpacing.md : AppSpacing.xl;
+    const maxContentWidth = 1100.0;
+    const basePadding = AppSpacing.xl;
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Widen the padding itself on very wide windows instead of
+        // centering a fixed-width box inside the scroll view — a
+        // Center/Align wrapper here previously ended up vertically
+        // centering this (usually short) content within the whole
+        // viewport, leaving a large blank band above the header. Padding
+        // can only ever push content in from the edges, so top-anchoring
+        // is guaranteed regardless of content height.
+        final overflow = constraints.maxWidth - maxContentWidth;
+        final horizontalPadding = isMobile ? AppSpacing.md : basePadding + (overflow > 0 ? overflow / 2 : 0);
+
         return SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(horizontalPadding, AppSpacing.md, horizontalPadding, AppSpacing.xxl),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: isDesktop ? 1100 : constraints.maxWidth),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(isMobile),
-                  const SizedBox(height: AppSpacing.lg),
-                  _buildSearchField(isMobile),
-                  const SizedBox(height: AppSpacing.sm),
-                  _buildCategoryFilters(),
-                  const SizedBox(height: AppSpacing.lg),
-                  _buildDocumentStream(isMobile),
-                ],
-              ),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(isMobile),
+              const SizedBox(height: AppSpacing.lg),
+              _buildSearchField(isMobile),
+              const SizedBox(height: AppSpacing.sm),
+              _buildCategoryFilters(),
+              const SizedBox(height: AppSpacing.lg),
+              _buildDocumentStream(isMobile),
+            ],
           ),
         );
       },
@@ -263,11 +287,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
 
   Widget _buildDocumentStream(bool isMobile) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection(widget.collectionName)
-          .where('facilityId', isEqualTo: widget.facilityId)
-          .orderBy('uploadedAt', descending: true)
-          .snapshots(),
+      stream: _documentsStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           logger.e('Firestore error: ${snapshot.error}');
