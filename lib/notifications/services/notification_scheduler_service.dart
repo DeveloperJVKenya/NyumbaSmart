@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:workmanager/workmanager.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -31,8 +32,14 @@ class NotificationSchedulerService {
         _logger.w('FCM service not available for scheduler: $e');
         // Continue without FCM - notifications will be stored but not sent
       }
-      
-      await _scheduleDaily12AMCheck();
+
+      // Workmanager has no real OS-level background execution on web (WorkmanagerWeb is a shim
+      // that requires its own separate initialize() call main.dart deliberately skips on web) —
+      // scheduling a periodic/one-off task here would throw 'WorkmanagerWeb.initialize() must be
+      // called before registering tasks.' and abort the rest of this service's setup.
+      if (!kIsWeb) {
+        await _scheduleDaily12AMCheck();
+      }
       _logger.i('Notification scheduler initialized');
     } catch (e) {
       _logger.e('Failed to initialize notification scheduler: $e');
@@ -450,7 +457,7 @@ class NotificationSchedulerService {
       final fcmService = FCMHttpService();
       await fcmService.initialize();
 
-      // Get JV Almacis users
+      // System notifications are for JV Almacis, the contractor who performs the on-site work.
       final usersSnapshot = await firestore
           .collection('Users')
           .where('organization', isEqualTo: 'JV Almacis')

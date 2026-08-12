@@ -60,6 +60,23 @@ class BuildingInfoScreen extends ConsumerStatefulWidget {
   final BuildingInfoDocument Function(QueryDocumentSnapshot<Map<String, dynamic>> doc) fromSnapshot;
   final IconData Function(String fileName) fileIcon;
   final Color Function(String fileName) fileIconColor;
+  // When true, documents live at facilities/{facilityId}/{collectionName} instead of a flat
+  // top-level collection filtered by a facilityId field. Defaults to false so existing callers
+  // (Building Survey/Documentations/Drawings) are unaffected.
+  final bool isFacilitySubcollection;
+  // Extra fields merged into each newly-created document, e.g. a source-type inferred from the
+  // uploaded file's extension. Optional — most callers don't need this.
+  final Map<String, dynamic> Function(String fileName)? extraUploadFields;
+  // Optional second FAB (e.g. Scope of Work's "Schedule Activity") alongside the default
+  // Upload action. Leave all three null/omitted for the single-FAB behavior every other caller
+  // already relies on.
+  final String? secondaryActionLabel;
+  final IconData? secondaryActionIcon;
+  final VoidCallback? onSecondaryAction;
+  // Set to false when a single document can span multiple categories (e.g. Scope of Work,
+  // where one uploaded file covers Civil/Electrical/Cooling/etc. together) — hides the
+  // per-document category picker and filter chips, which otherwise imply one category per file.
+  final bool showCategorySelector;
 
   const BuildingInfoScreen({
     super.key,
@@ -75,6 +92,12 @@ class BuildingInfoScreen extends ConsumerStatefulWidget {
     required this.fromSnapshot,
     required this.fileIcon,
     required this.fileIconColor,
+    this.isFacilitySubcollection = false,
+    this.extraUploadFields,
+    this.secondaryActionLabel,
+    this.secondaryActionIcon,
+    this.onSecondaryAction,
+    this.showCategorySelector = true,
   });
 
   @override
@@ -99,11 +122,22 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
   @override
   void initState() {
     super.initState();
-    _documentsStream = FirebaseFirestore.instance
-        .collection(widget.collectionName)
-        .where('facilityId', isEqualTo: widget.facilityId)
-        .orderBy('uploadedAt', descending: true)
-        .snapshots();
+    _documentsStream = widget.isFacilitySubcollection
+        ? _collectionRef().orderBy('uploadedAt', descending: true).snapshots()
+        : _collectionRef()
+            .where('facilityId', isEqualTo: widget.facilityId)
+            .orderBy('uploadedAt', descending: true)
+            .snapshots();
+  }
+
+  CollectionReference<Map<String, dynamic>> _collectionRef() {
+    if (widget.isFacilitySubcollection) {
+      return FirebaseFirestore.instance
+          .collection('facilities')
+          .doc(widget.facilityId)
+          .collection(widget.collectionName);
+    }
+    return FirebaseFirestore.instance.collection(widget.collectionName);
   }
 
   @override
@@ -114,24 +148,52 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final roleInfo = ref.watch(currentUserRoleProvider).valueOrNull;
+    final roleInfo = ref.watch(currentUserRoleProvider).value;
 
     return ResponsiveScreenWrapper(
       title: widget.title,
       facilityId: widget.facilityId,
       currentRole: roleInfo?.roleLabel ?? 'User',
       organization: roleInfo?.organization ?? '-',
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showUploadSheet(context),
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.upload_file_rounded, color: Colors.white),
-        label: Text('Upload', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
-      ),
+      floatingActionButton: _buildFab(context),
       child: Container(
         decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
         child: SafeArea(top: false, child: _buildBody(context)),
       ),
+    );
+  }
+
+  Widget _buildFab(BuildContext context) {
+    final uploadFab = FloatingActionButton.extended(
+      heroTag: 'building_info_upload_fab',
+      onPressed: () => _showUploadSheet(context),
+      backgroundColor: AppColors.primary,
+      icon: const Icon(Icons.upload_file_rounded, color: Colors.white),
+      label: Text('Upload', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+    );
+
+    if (widget.onSecondaryAction == null) return uploadFab;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        FloatingActionButton.extended(
+          heroTag: 'building_info_secondary_fab',
+          onPressed: widget.onSecondaryAction,
+          backgroundColor: AppColors.surfaceAlt,
+          foregroundColor: AppColors.primaryDark,
+          icon: Icon(widget.secondaryActionIcon ?? Icons.add_rounded, color: AppColors.primaryDark),
+          label: Text(
+            widget.secondaryActionLabel ?? 'Add',
+            style: GoogleFonts.poppins(color: AppColors.primaryDark, fontWeight: FontWeight.w600),
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        uploadFab,
+      ],
     );
   }
 
@@ -161,8 +223,10 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
               _buildHeader(isMobile),
               const SizedBox(height: AppSpacing.lg),
               _buildSearchField(isMobile),
-              const SizedBox(height: AppSpacing.sm),
-              _buildCategoryFilters(),
+              if (widget.showCategorySelector) ...[
+                const SizedBox(height: AppSpacing.sm),
+                _buildCategoryFilters(),
+              ],
               const SizedBox(height: AppSpacing.lg),
               _buildDocumentStream(isMobile),
             ],
@@ -376,6 +440,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
       isMobile: isMobile,
       icon: widget.fileIcon(item.fileName),
       iconColor: widget.fileIconColor(item.fileName),
+      showCategory: widget.showCategorySelector,
       onView: () => _viewDocument(item.downloadUrl, item.fileName),
       onDownload: () => _downloadDocument(item.downloadUrl, item.fileName),
       onDelete: () => _deleteDocument(item.downloadUrl, item.fileName, item.id),
@@ -433,15 +498,17 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
                     Text('Upload ${widget.title}', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                     const SizedBox(height: 20),
                     AppTextField(controller: titleController, label: 'Title (optional)', icon: Icons.title_rounded),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedCategory,
-                      decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_rounded, color: AppColors.primary)),
-                      items: widget.categories.entries
-                          .map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value, style: GoogleFonts.poppins())))
-                          .toList(),
-                      onChanged: (value) => setSheetState(() => selectedCategory = value ?? selectedCategory),
-                    ),
+                    if (widget.showCategorySelector) ...[
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedCategory,
+                        decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_rounded, color: AppColors.primary)),
+                        items: widget.categories.entries
+                            .map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value, style: GoogleFonts.poppins())))
+                            .toList(),
+                        onChanged: (value) => setSheetState(() => selectedCategory = value ?? selectedCategory),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     Align(
                       alignment: Alignment.centerRight,
@@ -466,10 +533,9 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
 
   Future<void> _pickAndUpload(String titleInput, String category) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: widget.allowedExtensions,
-        withData: kIsWeb,
       );
       if (result == null || result.files.isEmpty) return;
 
@@ -493,8 +559,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
 
       UploadTask uploadTask;
       if (kIsWeb || Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        final fileBytes = platformFile.bytes;
-        if (fileBytes == null) throw 'Failed to read file data for web/desktop upload';
+        final fileBytes = await platformFile.readAsBytes();
         uploadTask = storageRef.putData(
           fileBytes,
           SettableMetadata(customMetadata: {'originalName': fileName, 'uploadedBy': user.uid, 'facilityId': widget.facilityId}),
@@ -513,8 +578,9 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
       await uploadTask;
       final downloadUrl = await storageRef.getDownloadURL();
 
-      await FirebaseFirestore.instance.collection(widget.collectionName).add({
+      await _collectionRef().add({
         'userId': user.uid,
+        'uploadedBy': user.uid,
         'title': title,
         'fileName': fileName,
         'downloadUrl': downloadUrl,
@@ -523,6 +589,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
         'category': category,
         'fileSize': platformFile.size,
         'platform': kIsWeb ? 'web' : Platform.operatingSystem,
+        ...?widget.extraUploadFields?.call(fileName),
       });
 
       if (mounted) {
@@ -665,7 +732,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
 
     try {
       await FirebaseStorage.instance.refFromURL(downloadUrl).delete();
-      await FirebaseFirestore.instance.collection(widget.collectionName).doc(docId).delete();
+      await _collectionRef().doc(docId).delete();
       _showSnackBar('Deleted successfully');
       logger.i('Deleted ${widget.collectionName} file: $fileName');
     } catch (e) {
@@ -706,6 +773,7 @@ class _DocumentCard extends StatefulWidget {
   final VoidCallback onView;
   final VoidCallback onDownload;
   final VoidCallback onDelete;
+  final bool showCategory;
 
   const _DocumentCard({
     required this.document,
@@ -715,6 +783,7 @@ class _DocumentCard extends StatefulWidget {
     required this.onView,
     required this.onDownload,
     required this.onDelete,
+    this.showCategory = true,
   });
 
   @override
@@ -835,10 +904,10 @@ class _DocumentCardState extends State<_DocumentCard> {
                           if (isMobile)
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [_categoryPill(), const SizedBox(height: 8), _dateRow()],
+                              children: [if (widget.showCategory) ...[_categoryPill(), const SizedBox(height: 8)], _dateRow()],
                             )
                           else
-                            Row(children: [_categoryPill(), const SizedBox(width: 14), _dateRow()]),
+                            Row(children: [if (widget.showCategory) ...[_categoryPill(), const SizedBox(width: 14)], _dateRow()]),
                         ],
                       ),
                     ),

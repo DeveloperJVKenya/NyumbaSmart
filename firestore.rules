@@ -31,10 +31,20 @@ service cloud.firestore {
     function isJVAlmacisUser() {
       return getUserOrganization() == 'JV Almacis';
     }
-    
+
     function hasRole(roles) {
       let userDoc = get(/databases/$(database)/documents/Users/$(request.auth.uid));
       return userDoc.data.role in roles;
+    }
+
+    // Organization that owns a given facility, used to scope the new
+    // facility-scoped scope-of-work / preventive-maintenance subcollections.
+    function facilityOrganization(facilityId) {
+      return get(/databases/$(database)/documents/Facilities/$(facilityId)).data.organization;
+    }
+
+    function canAccessFacility(facilityId) {
+      return isDeveloper() || isJVAlmacisUser() || facilityOrganization(facilityId) == getUserOrganization();
     }
 
     // 🔧 UPDATED: SystemNotifications collection rules - Enhanced for system updates
@@ -252,6 +262,48 @@ service cloud.firestore {
 
     match /facilities/{facilityId}/assets/{assetId} {
       allow read, write: if request.auth != null;
+    }
+
+    // Scope of Work documents uploaded per facility (Excel/PDF), plus the OCR/parsing
+    // review queue nested underneath each document.
+    match /facilities/{facilityId}/scope_of_work_documents/{docId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create: if request.auth != null && canAccessFacility(facilityId) &&
+        request.resource.data.uploadedBy == request.auth.uid;
+      allow update: if request.auth != null && (
+        canAccessFacility(facilityId) &&
+          (resource.data.uploadedBy == request.auth.uid || isAdmin() || isDeveloper()) ||
+        // Allow the parsing Cloud Function (or client) to update status-only fields.
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['parseStatus', 'parseError', 'startDate']
+        )
+      );
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (resource.data.uploadedBy == request.auth.uid || isAdmin() || isDeveloper());
+
+      match /parsed_rows/{rowId} {
+        allow read: if request.auth != null && canAccessFacility(facilityId);
+        allow write: if request.auth != null && canAccessFacility(facilityId);
+      }
+    }
+
+    // Facility-scoped preventive maintenance tasks (OCR-derived, manually added, or
+    // migrated from the legacy global Maintenance_Tasks/TaskProgress collections).
+    match /facilities/{facilityId}/preventive_maintenance/{taskId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create: if request.auth != null && canAccessFacility(facilityId);
+      allow update: if request.auth != null && canAccessFacility(facilityId) && (
+        isTechnician() || isAdmin() || isDeveloper() ||
+        resource.data.createdBy == request.auth.uid
+      );
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
+    // Facility-scoped notifications generated from preventive_maintenance due dates.
+    match /facilities/{facilityId}/notifications/{notificationId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow write: if request.auth != null && canAccessFacility(facilityId);
     }
 
     match /maintenance_tasks/{taskId} {

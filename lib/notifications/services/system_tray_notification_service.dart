@@ -40,7 +40,7 @@ class SystemTrayNotificationService {
 
       // Initialize the plugin
       await _flutterLocalNotificationsPlugin!.initialize(
-        initializationSettings,
+        settings: initializationSettings,
         onDidReceiveNotificationResponse: _onNotificationTapped,
       );
 
@@ -138,10 +138,10 @@ class SystemTrayNotificationService {
 
       // Show the notification
       await _flutterLocalNotificationsPlugin!.show(
-        id,
-        title,
-        body,
-        notificationDetails,
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: notificationDetails,
         payload: data?.toString(),
       );
 
@@ -156,7 +156,7 @@ class SystemTrayNotificationService {
     if (!_isInitialized || kIsWeb) return;
 
     try {
-      await _flutterLocalNotificationsPlugin!.cancel(id);
+      await _flutterLocalNotificationsPlugin!.cancel(id: id);
       _logger.i('❌ Notification cancelled: $id');
     } catch (e) {
       _logger.e('💥 Error cancelling notification: $e');

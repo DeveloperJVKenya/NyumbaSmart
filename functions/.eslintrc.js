@@ -1,3 +1,5 @@
+const path = require('path');
+
 module.exports = {
   env: {
     node: true,
@@ -21,11 +23,20 @@ module.exports = {
     'comma-dangle': ['error', 'always-multiline'],
     semi: ['error', 'always'],
     indent: ['error', 2],
+    // This checkout is on Windows, where git checks files out with CRLF line endings;
+    // enforcing 'unix' linebreaks here just fights the platform for no benefit.
+    'linebreak-style': 'off',
+    // eslint-import-resolver-node@0.3.x doesn't understand package.json "exports" maps, so it
+    // false-positives on legitimate, working subpath imports like 'firebase-admin/firestore'
+    // and 'firebase-functions/v2/https'. No resolver upgrade currently fixes this; disable.
+    'import/no-unresolved': 'off',
   },
-  settings: { // ADD THIS
+  settings: {
     'import/resolver': {
       node: {
-        paths: ['/Users/Administrator/PROJECTFlutter/JVA Projects/cmms/functions/node_modules'],
+        // Resolve relative to this config file so it works on any machine/OS, instead of
+        // a hardcoded absolute path (previously a macOS-only path that broke on Windows).
+        paths: [path.join(__dirname, 'node_modules')],
       },
     },
   },

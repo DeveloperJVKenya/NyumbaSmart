@@ -97,7 +97,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   Future<void> _uploadAttachment() async {
     try {
       _logger.i('Picking attachment file, platform: ${kIsWeb ? "web" : "non-web"}');
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'png', 'docx'],
       );
@@ -110,7 +110,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       }
 
       final file = result.files.first;
-      _logger.i('Selected file: ${file.name}, extension: ${file.extension}, bytes: ${file.bytes != null}');
+      _logger.i('Selected file: ${file.name}, extension: ${file.extension}');
       if (!['pdf', 'jpg', 'png', 'docx'].contains(file.extension)) {
         _logger.w('Invalid file type: ${file.extension}');
         _messengerKey.currentState?.showSnackBar(
@@ -127,11 +127,9 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       _logger.i('Uploading attachment to Storage: ${storageRef.fullPath}');
       String url;
       if (kIsWeb) {
-        if (file.bytes == null) {
-          throw Exception('No bytes available for web upload');
-        }
-        _logger.i('Uploading ${file.bytes!.length} bytes on web');
-        final uploadTask = storageRef.putData(file.bytes!);
+        final bytes = await file.readAsBytes();
+        _logger.i('Uploading ${bytes.length} bytes on web');
+        final uploadTask = storageRef.putData(bytes);
         final snapshot = await uploadTask.timeout(
           const Duration(seconds: 30),
           onTimeout: () {

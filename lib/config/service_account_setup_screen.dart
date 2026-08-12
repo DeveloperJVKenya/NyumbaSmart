@@ -74,14 +74,13 @@ class _ServiceAccountSetupScreenState extends State<ServiceAccountSetupScreen> {
 
   Future<void> _pickJsonFile() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      PlatformFile? result = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['json'],
-        allowMultiple: false,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
+      if (result != null && result.path != null) {
+        final file = File(result.path!);
         final jsonContent = await file.readAsString();
         
         _jsonController.text = jsonContent;

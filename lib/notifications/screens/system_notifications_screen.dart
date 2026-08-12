@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/notifications/services/system_notification_service.dart';
 import 'package:cmms/notifications/screens/notifications_screen.dart';
@@ -55,9 +56,14 @@ class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
 
     try {
       if (enabled) {
-        // Generate system notifications
+        final startDate = await _pickMaintenanceStartDate();
+        if (startDate == null) {
+          setState(() => _isGenerating = false);
+          return;
+        }
+
         _showSnackBar('Generating automatic notifications...', Colors.blue);
-        await _systemNotificationService.generateSystemNotifications();
+        await _systemNotificationService.regenerateSystemNotifications(startDate: startDate);
         _showSnackBar('Automatic notifications enabled and generated successfully!', Colors.green);
       } else {
         await _systemNotificationService.setAutoNotificationsEnabled(false);
@@ -79,46 +85,101 @@ class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
   }
 
   Future<void> _regenerateNotifications() async {
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Regenerate Notifications', style: GoogleFonts.poppins()),
-        content: Text(
-          'This will regenerate all system notifications based on current maintenance tasks. Continue?',
-          style: GoogleFonts.poppins(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: GoogleFonts.poppins()),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.blue),
-            child: Text('Regenerate', style: GoogleFonts.poppins()),
-          ),
-        ],
-      ),
-    );
+    final startDate = await _pickMaintenanceStartDate();
+    if (startDate == null) return;
 
-    if (confirm == true) {
+    setState(() {
+      _isGenerating = true;
+    });
+
+    try {
+      _showSnackBar('Regenerating schedules from ${DateFormat('MMM dd, yyyy').format(startDate)}...', Colors.blue);
+      final updatedCount = await _systemNotificationService.regenerateSystemNotifications(startDate: startDate);
+      _showSnackBar(
+        '$updatedCount task${updatedCount == 1 ? '' : 's'} rescheduled across all facilities!',
+        Colors.green,
+      );
+    } catch (e) {
+      _logger.e('Error regenerating notifications: $e');
+      _showSnackBar('Error regenerating notifications: $e', Colors.red);
+    } finally {
       setState(() {
-        _isGenerating = true;
+        _isGenerating = false;
       });
-
-      try {
-        _showSnackBar('Regenerating system notifications...', Colors.blue);
-        await _systemNotificationService.regenerateSystemNotifications();
-        _showSnackBar('System notifications regenerated successfully!', Colors.green);
-      } catch (e) {
-        _logger.e('Error regenerating notifications: $e');
-        _showSnackBar('Error regenerating notifications: $e', Colors.red);
-      } finally {
-        setState(() {
-          _isGenerating = false;
-        });
-      }
     }
+  }
+
+  /// Asks for the maintenance start date used to (re)anchor every facility's schedule. A facility
+  /// that already recorded its own start date (via its Scope of Work upload) keeps using that —
+  /// this is only the fallback for facilities that haven't. Walking forward from this date on
+  /// each task's own frequency, never landing before today, is what keeps a freshly-relaunched
+  /// system from instantly flagging months of "missed" maintenance as overdue.
+  Future<DateTime?> _pickMaintenanceStartDate() async {
+    final now = DateTime.now();
+    final defaultStart = DateTime(now.year, 1, 1);
+
+    return showDialog<DateTime>(
+      context: context,
+      builder: (dialogContext) {
+        DateTime selected = defaultStart;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: Text('Maintenance Start Date', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Used only for facilities that haven\'t recorded their own maintenance start date yet. '
+                    'Defaults to Jan 1 of this year, but change it if activities are only starting now, '
+                    'mid-year — every task\'s schedule plans forward from this date, never marking '
+                    'past-due dates as overdue.',
+                    style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[700]),
+                  ),
+                  const SizedBox(height: 16),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: dialogContext,
+                        initialDate: selected,
+                        firstDate: DateTime(now.year - 2),
+                        lastDate: DateTime(now.year + 2),
+                      );
+                      if (picked != null) setDialogState(() => selected = picked);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.withValues(alpha: 0.5)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(DateFormat('MMM dd, yyyy').format(selected), style: GoogleFonts.poppins()),
+                          const Icon(Icons.calendar_today, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text('Cancel', style: GoogleFonts.poppins()),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(dialogContext, selected),
+                  child: Text('Regenerate', style: GoogleFonts.poppins()),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showSnackBar(String message, Color color) {
@@ -354,7 +415,7 @@ class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
                             '• System notifications are generated automatically based on maintenance task frequencies\n'
                             '• Notifications are sent 5 days before maintenance is due\n'
                             '• Alerts are sent 1 day before maintenance is due\n'
-                            '• Only users from "JV Almacis" organization receive notifications\n'
+                            '• Only JV Almacis (the maintenance contractor) receives these\n'
                             '• Notifications are sent at 9:00 AM and 11:00 AM (retry)\n'
                             '• Tasks with same dates are grouped into single notifications\n'
                             '• Read status is tracked for each user individually',

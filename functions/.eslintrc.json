@@ -17,6 +17,6 @@
         "ForInStatement",
         "LabeledStatement",
         "WithStatement"
-      ]
+      ],
     }
   }

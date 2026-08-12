@@ -136,7 +136,7 @@ class NotificationQueueService {
     List<String> targetUsers = [];
 
     if (notification.type == NotificationQueueType.system) {
-      // Get JV Almacis users for system notifications
+      // System notifications are for JV Almacis, the contractor who performs the on-site work.
       final usersSnapshot = await _firestore
           .collection('Users')
           .where('organization', isEqualTo: 'JV Almacis')

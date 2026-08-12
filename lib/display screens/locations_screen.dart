@@ -220,7 +220,7 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final roleInfo = ref.watch(currentUserRoleProvider).valueOrNull;
+    final roleInfo = ref.watch(currentUserRoleProvider).value;
     final canEdit = _canEditLocation(roleInfo);
 
     return ResponsiveScreenWrapper(

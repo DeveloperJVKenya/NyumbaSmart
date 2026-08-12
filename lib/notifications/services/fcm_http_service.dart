@@ -19,9 +19,7 @@ class FCMHttpService {
 
   // Secure storage instance
   static const _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
+    aOptions: AndroidOptions(),
   );
 
   /// Initialize FCM HTTP service with service account

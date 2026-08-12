@@ -90,7 +90,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Role/organization now come from the same provider the rest of the app
     // uses, instead of this screen's own copy of the
     // Admins/Developers/Technicians/Users lookup cascade.
-    final roleInfo = ref.watch(currentUserRoleProvider).valueOrNull;
+    final roleInfo = ref.watch(currentUserRoleProvider).value;
 
     return ResponsiveScreenWrapper(
       title: 'Settings',

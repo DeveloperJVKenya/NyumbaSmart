@@ -23,7 +23,7 @@ import 'package:cmms/notifications/widgets/floating_notification_widget.dart';
 import 'package:cmms/screens/dashboard_screen.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'firebase_options.dart';
 import 'package:cmms/authentication/need_account_screen.dart';
 import 'package:cmms/theme/app_theme.dart';
@@ -139,7 +139,6 @@ void main() async {
   if (!kIsWeb) {
     await Workmanager().initialize(
       callbackDispatcher,
-      isInDebugMode: kDebugMode,
     );
     logger.i('WorkManager initialized');
   }
@@ -158,7 +157,7 @@ void main() async {
     );
 
     await flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
+      settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         logger.i('Local notification tapped: ${response.payload}');
         NotificationService().resetNotificationCount();

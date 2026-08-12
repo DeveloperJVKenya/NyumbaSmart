@@ -1,6 +1,7 @@
 import 'package:cmms/developer/collection_detail_screen.dart';
 import 'package:cmms/developer/maintenance_tasks_screen.dart';
 import 'package:cmms/notifications/screens/system_notifications_screen.dart';
+import 'package:cmms/notifications/screens/test_notification_screen.dart';
 import 'package:cmms/config/service_account_setup_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -193,6 +194,17 @@ class DeveloperScreenState extends State<DeveloperScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const SystemNotificationsScreen(),
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.science, color: Colors.blueGrey),
+                    title: const Text('Test Notifications'),
+                    subtitle: const Text('Verify delivery — open, background, and closed app'),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const TestNotificationScreen(),
                       ),
                     ),
                   ),

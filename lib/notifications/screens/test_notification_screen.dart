@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/notifications/services/custom_notification_service.dart';
 import 'package:cmms/notifications/models/custom_notification_model.dart';
-import 'dart:async';
 
 class TestNotificationScreen extends StatefulWidget {
   const TestNotificationScreen({super.key});
@@ -20,20 +19,11 @@ class _TestNotificationScreenState extends State<TestNotificationScreen> {
   
   bool _isSending = false;
   String _userOrganization = '';
-  Timer? _countdownTimer;
-  final Map<String, int> _countdowns = {};
 
   @override
   void initState() {
     super.initState();
     _getUserOrganization();
-    _startCountdownTimer();
-  }
-
-  @override
-  void dispose() {
-    _countdownTimer?.cancel();
-    super.dispose();
   }
 
   Future<void> _getUserOrganization() async {
@@ -53,24 +43,6 @@ class _TestNotificationScreenState extends State<TestNotificationScreen> {
         _logger.e('Error getting user organization: $e');
       }
     }
-  }
-
-  void _startCountdownTimer() {
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        final keysToRemove = <String>[];
-        for (final entry in _countdowns.entries) {
-          if (entry.value <= 1) {
-            keysToRemove.add(entry.key);
-          } else {
-            _countdowns[entry.key] = entry.value - 1;
-          }
-        }
-        for (final key in keysToRemove) {
-          _countdowns.remove(key);
-        }
-      });
-    });
   }
 
   @override
@@ -117,7 +89,9 @@ class _TestNotificationScreenState extends State<TestNotificationScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Send instant test notifications to verify the system is working correctly. Test notifications will trigger after 2 minutes.',
+                  'Sends a real push through the exact same delivery path as System and Custom '
+                  'notifications (FCM + local notification + system tray). Use this to verify '
+                  'delivery whether the app is open, backgrounded, or fully closed.',
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     color: Colors.orange[700],
@@ -239,8 +213,6 @@ class _TestNotificationScreenState extends State<TestNotificationScreen> {
 
   Widget _buildTestNotificationItem(CustomNotificationModel notification) {
     final isTriggered = notification.isTriggered;
-    final countdown = _countdowns[notification.id];
-    final hasCountdown = countdown != null && countdown > 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -321,27 +293,19 @@ class _TestNotificationScreenState extends State<TestNotificationScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: isTriggered 
+                    color: isTriggered
                         ? Colors.green.withValues(alpha: 0.1)
-                        : hasCountdown 
-                            ? Colors.blue.withValues(alpha: 0.1)
-                            : Colors.orange.withValues(alpha: 0.1),
+                        : Colors.orange.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    isTriggered 
-                        ? 'Triggered'
-                        : hasCountdown 
-                            ? 'Triggering in ${_formatCountdown(countdown)}'
-                            : 'Scheduled',
+                    // A Cloud Function sends this within moments of creation, so "Sending…" is
+                    // only ever seen briefly — not the multi-minute countdown this used to be.
+                    isTriggered ? 'Triggered' : 'Sending…',
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
-                      color: isTriggered 
-                          ? Colors.green[700]
-                          : hasCountdown 
-                              ? Colors.blue[700]
-                              : Colors.orange[700],
+                      color: isTriggered ? Colors.green[700] : Colors.orange[700],
                     ),
                   ),
                 ),
@@ -391,12 +355,6 @@ class _TestNotificationScreenState extends State<TestNotificationScreen> {
     );
   }
 
-  String _formatCountdown(int seconds) {
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '${minutes}m ${remainingSeconds}s';
-  }
-
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
@@ -419,18 +377,13 @@ class _TestNotificationScreenState extends State<TestNotificationScreen> {
     try {
       // FIXED: Pass String instead of List<String>, and handle List<String> return
       final notificationIds = await _service.sendTestNotification(_userOrganization);
-      
+
       if (notificationIds.isNotEmpty) {
-        // FIXED: Iterate over List<String> instead of trying to use .keys
-        for (final id in notificationIds) {
-          _countdowns[id] = 120; // 2 minutes = 120 seconds
-        }
-        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Test notification scheduled! Will trigger in 2 minutes.',
+                'Test notification sent — check below for delivery status.',
                 style: GoogleFonts.poppins(),
               ),
               backgroundColor: Colors.green,
@@ -494,8 +447,7 @@ class _TestNotificationScreenState extends State<TestNotificationScreen> {
       if (confirmed == true) {
         try {
           await _service.deleteCustomNotification(notification.id);
-          _countdowns.remove(notification.id);
-          
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(

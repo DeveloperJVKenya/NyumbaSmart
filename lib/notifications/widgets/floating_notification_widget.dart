@@ -262,8 +262,8 @@ class _FloatingNotificationWidgetState extends State<FloatingNotificationWidget>
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return Stream.value([]);
 
-    // Combine system and custom notifications
-    final systemStream = _userOrganization == 'JV Almacis' 
+    // System notifications are for JV Almacis, the contractor who performs the on-site work.
+    final systemStream = _userOrganization == 'JV Almacis'
         ? _systemService.getActiveNotifications()
         : Stream<List<SystemNotificationModel>>.value([]);
 
@@ -273,9 +273,14 @@ class _FloatingNotificationWidgetState extends State<FloatingNotificationWidget>
       final systemNotifications = results[0] as List<SystemNotificationModel>;
       final customNotifications = results[1] as List<CustomNotificationModel>;
 
-      // Filter for triggered notifications only
+      // Filter for triggered notifications only. Test notifications are excluded — they're a
+      // one-off manual diagnostic, not a real due-maintenance notice, and since this banner has
+      // no "already seen" memory it would otherwise keep re-showing whichever test notification
+      // was triggered most recently on every single app launch, indefinitely.
       final triggeredSystem = systemNotifications.where((n) => n.isTriggered).toList();
-      final triggeredCustom = customNotifications.where((n) => n.isTriggered).toList();
+      final triggeredCustom = customNotifications
+          .where((n) => n.isTriggered && n.type != CustomNotificationType.test)
+          .toList();
 
       // Combine and sort by triggered time
       final combined = <dynamic>[...triggeredSystem, ...triggeredCustom];

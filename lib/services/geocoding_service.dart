@@ -21,11 +21,12 @@ class GeocodingService {
   GeocodingService({Logger? logger}) : _logger = logger ?? Logger(printer: PrettyPrinter());
 
   final Logger _logger;
+  final Geocoding _geocoding = Geocoding();
 
   Future<GeoCoordinates?> geocode(String query) async {
     if (query.trim().isEmpty) return null;
     try {
-      final results = await locationFromAddress('$query, Kenya');
+      final results = await _geocoding.locationFromAddress('$query, Kenya');
       if (results.isEmpty) return null;
       return GeoCoordinates(results.first.latitude, results.first.longitude);
     } catch (e) {
@@ -38,7 +39,7 @@ class GeocodingService {
   /// what a dropped/dragged pin resolves to.
   Future<String?> reverseGeocode(double latitude, double longitude) async {
     try {
-      final placemarks = await placemarkFromCoordinates(latitude, longitude);
+      final placemarks = await _geocoding.placemarkFromCoordinates(latitude, longitude);
       if (placemarks.isEmpty) return null;
       final p = placemarks.first;
       final parts = [p.street, p.subLocality, p.locality, p.administrativeArea, p.country]

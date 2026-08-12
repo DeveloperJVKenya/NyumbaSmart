@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:workmanager/workmanager.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -20,19 +20,23 @@ class BackgroundNotificationService {
   /// Initialize background tasks
   Future<void> initialize() async {
     try {
-      await Workmanager().initialize(
-        callbackDispatcher,
-        isInDebugMode: kDebugMode,
-      );
+      // Workmanager has no real OS-level background execution on web — main.dart deliberately
+      // skips Workmanager().initialize() there, so registering tasks here would throw
+      // 'WorkmanagerWeb.initialize() must be called before registering tasks.'
+      if (!kIsWeb) {
+        await Workmanager().initialize(
+          callbackDispatcher,
+        );
+
+        // Schedule periodic tasks
+        await _schedulePeriodicTasks();
+      }
 
       // Initialize the notification scheduler
       await NotificationSchedulerService().initialize();
 
       // Initialize notification queue service
       await NotificationQueueService().initialize();
-
-      // Schedule periodic tasks
-      await _schedulePeriodicTasks();
 
       _logger.i('Background notification service initialized');
     } catch (e) {
@@ -84,6 +88,7 @@ class BackgroundNotificationService {
 
   /// Cancel all background tasks
   Future<void> cancelAllTasks() async {
+    if (kIsWeb) return;
     await Workmanager().cancelAll();
     _logger.i('All background tasks cancelled');
   }

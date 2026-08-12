@@ -5,11 +5,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cmms/notifications/models/system_notification_model.dart';
-import 'package:cmms/notifications/models/maintenance_task_model.dart';
 import 'package:cmms/notifications/utils/date_calculator.dart';
 import 'package:cmms/notifications/services/fcm_http_service.dart';
 import 'package:cmms/notifications/services/background_notification_service.dart';
 import 'package:cmms/notifications/services/notification_queue_service.dart';
+import 'package:cmms/services/pm_regeneration_service.dart';
 
 class SystemNotificationService {
   static final SystemNotificationService _instance = SystemNotificationService._internal();
@@ -75,147 +75,29 @@ class SystemNotificationService {
     }
   }
 
-  /// Generate system notifications
-  Future<void> generateSystemNotifications() async {
+  /// Regenerates every facility's preventive-maintenance schedule (see
+  /// [PmRegenerationService.regenerateAllFacilities]) and enables the twice-daily due/alert
+  /// Cloud Function cron. [startDate] anchors the schedule for any facility that hasn't recorded
+  /// its own maintenance start date via a Scope of Work upload; facilities that already have one
+  /// keep using it. Replaces the legacy global `Maintenance_Tasks`-based generator, which used
+  /// crude single-occurrence-per-year date math with no real start date and no protection
+  /// against marking distant-past dates overdue.
+  Future<int> regenerateSystemNotifications({required DateTime startDate}) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      _logger.i('Starting system notification generation...');
+      _logger.i('Regenerating facility-scoped preventive maintenance schedules from $startDate...');
 
-      // Get all maintenance tasks
-      final tasksSnapshot = await _firestore.collection('Maintenance_Tasks').get();
-      final tasks = tasksSnapshot.docs
-          .map((doc) => MaintenanceTaskModel.fromFirestore(doc))
-          .toList();
+      final updatedCount = await PmRegenerationService.regenerateAllFacilities(fallbackStartDate: startDate);
 
-      if (tasks.isEmpty) {
-        _logger.w('No maintenance tasks found');
-        return;
-      }
-
-      // Clear existing system notifications
-      await _clearExistingSystemNotifications();
-
-      // Group tasks by frequency
-      final Map<int, List<MaintenanceTaskModel>> tasksByFrequency = {};
-      for (final task in tasks) {
-        if (!tasksByFrequency.containsKey(task.frequency)) {
-          tasksByFrequency[task.frequency] = [];
-        }
-        tasksByFrequency[task.frequency]!.add(task);
-      }
-
-      final currentYear = DateTime.now().year;
-      final generatedNotifications = <SystemNotificationModel>[];
-
-      // Generate notifications for each frequency
-      for (final entry in tasksByFrequency.entries) {
-        final frequency = entry.key;
-        final frequencyTasks = entry.value;
-
-        // Get next schedule for this frequency
-        final nextSchedule = NotificationDateCalculator.getNextScheduleForFrequency(
-          frequencyMonths: frequency,
-          year: currentYear,
-        );
-
-        if (nextSchedule.isEmpty) continue;
-
-        final notificationDate = nextSchedule['notificationDate']!;
-        final alertDate = nextSchedule['alertDate']!;
-        final nextInspectionDate = nextSchedule['nextInspectionDate']!;
-
-        // Group tasks by category for this frequency
-        final categories = frequencyTasks.map((t) => t.category).toSet().toList();
-
-        // Create notification
-        final notification = SystemNotificationModel(
-          id: '',
-          title: 'Maintenance Tasks Due',
-          body: '${frequencyTasks.length} tasks in ${categories.length} categories need attention',
-          notificationDate: notificationDate,
-          alertDate: alertDate,
-          nextInspectionDate: nextInspectionDate,
-          categories: categories,
-          tasks: frequencyTasks.map((task) => SystemNotificationTask(
-            category: task.category,
-            component: task.component,
-            intervention: task.intervention,
-            frequency: task.frequency,
-            lastInspectionDate: NotificationDateCalculator.getYearStartDate(currentYear),
-          )).toList(),
-          createdAt: DateTime.now(),
-          createdBy: user.uid,
-        );
-
-        generatedNotifications.add(notification);
-
-        // Create alert notification
-        final alertNotification = SystemNotificationModel(
-          id: '',
-          title: 'Maintenance Alert - Due Tomorrow!',
-          body: '${frequencyTasks.length} maintenance tasks are due tomorrow - immediate attention required!',
-          notificationDate: alertDate,
-          alertDate: alertDate,
-          nextInspectionDate: nextInspectionDate,
-          categories: categories,
-          tasks: frequencyTasks.map((task) => SystemNotificationTask(
-            category: task.category,
-            component: task.component,
-            intervention: task.intervention,
-            frequency: task.frequency,
-            lastInspectionDate: NotificationDateCalculator.getYearStartDate(currentYear),
-          )).toList(),
-          type: SystemNotificationType.alert,
-          createdAt: DateTime.now(),
-          createdBy: user.uid,
-        );
-
-        generatedNotifications.add(alertNotification);
-      }
-
-      // Save notifications to Firestore
-      final batch = _firestore.batch();
-      for (final notification in generatedNotifications) {
-        final docRef = _firestore.collection('SystemNotifications').doc();
-        batch.set(docRef, notification.toMap());
-      }
-      await batch.commit();
-
-      // Enable auto notifications
       await setAutoNotificationsEnabled(true);
 
-      _logger.i('Generated ${generatedNotifications.length} system notifications');
+      _logger.i('Regenerated $updatedCount preventive maintenance tasks across all facilities');
+      return updatedCount;
     } catch (e) {
-      _logger.e('Error generating system notifications: $e');
+      _logger.e('Error regenerating facility schedules: $e');
       rethrow;
-    }
-  }
-
-  /// Regenerate system notifications
-  Future<void> regenerateSystemNotifications() async {
-    await generateSystemNotifications();
-  }
-
-  /// Clear existing system notifications
-  Future<void> _clearExistingSystemNotifications() async {
-    try {
-      final existingNotifications = await _firestore
-          .collection('SystemNotifications')
-          .where('isTriggered', isEqualTo: false)
-          .get();
-
-      if (existingNotifications.docs.isNotEmpty) {
-        final batch = _firestore.batch();
-        for (final doc in existingNotifications.docs) {
-          batch.delete(doc.reference);
-        }
-        await batch.commit();
-        _logger.i('Cleared ${existingNotifications.docs.length} existing notifications');
-      }
-    } catch (e) {
-      _logger.e('Error clearing existing notifications: $e');
     }
   }
 

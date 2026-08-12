@@ -94,7 +94,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
 
   @override
   Widget build(BuildContext context) {
-    final roleInfo = ref.watch(currentUserRoleProvider).valueOrNull ??
+    final roleInfo = ref.watch(currentUserRoleProvider).value ??
         UserRoleInfo(
           role: UserRoleX.fromString(widget.currentRole),
           organization: widget.organization ?? '-',

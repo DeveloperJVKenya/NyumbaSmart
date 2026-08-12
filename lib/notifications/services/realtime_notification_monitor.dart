@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/notifications/utils/timezone_utils.dart';
 import 'package:cmms/notifications/services/fcm_http_service.dart';
+import 'package:cmms/notifications/services/notification_service.dart' show NotificationService;
 import 'package:cmms/notifications/services/system_tray_notification_service.dart';
 import 'package:cmms/notifications/models/system_notification_model.dart';
 import 'package:cmms/notifications/models/custom_notification_model.dart';
@@ -25,6 +26,12 @@ class RealtimeNotificationMonitor {
   bool _isInitialized = false;
   bool _isMonitoring = false;
   String _userOrganization = '';
+
+  // Both the 30s periodic timer and the realtime Firestore listener independently run the same
+  // due-check logic, so a notification becoming due right as both happen to fire can otherwise
+  // get triggered (and sent) twice. This tracks ids currently being processed so the second
+  // caller skips instead of racing the first to the same Firestore update.
+  final Set<String> _triggeringIds = {};
 
   /// Initialize the real-time monitor
   Future<void> initialize() async {
@@ -103,8 +110,10 @@ class RealtimeNotificationMonitor {
   /// Set up Firestore listeners for real-time updates
   void _setupFirestoreListeners() {
     try {
-      // Listen to system notifications (for JV Almacis users)
-      if (_userOrganization == 'JV Almacis') {
+      // System notifications are built from the maintenance-task catalog — JV Almacis is the
+      // contractor who performs the on-site work across every client facility, so only their
+      // staff need a live listener for these.
+      if (_userOrganization == NotificationService.contractorOrganization) {
         _systemNotificationSubscription = _firestore
             .collection('SystemNotifications')
             .where('isActive', isEqualTo: true)
@@ -121,13 +130,18 @@ class RealtimeNotificationMonitor {
         );
       }
 
-      // Listen to custom notifications for user's organization
+      // Listen to custom notifications for user's organization. Test notifications are excluded —
+      // they're one-shot, sent immediately by the onTestNotificationCreated Cloud Function the
+      // instant a user presses "send test", and must never be re-picked-up by this recurring
+      // due-date check (which otherwise replays any test doc still isTriggered:false on every
+      // app launch and every 30s tick, since its notificationDate is permanently "now"/in the past).
       if (_userOrganization.isNotEmpty) {
         _customNotificationSubscription = _firestore
             .collection('CustomNotifications')
             .where('organization', isEqualTo: _userOrganization)
             .where('isActive', isEqualTo: true)
             .where('isTriggered', isEqualTo: false)
+            .where('type', isNotEqualTo: 'test')
             .snapshots()
             .listen(
           (snapshot) {
@@ -181,8 +195,8 @@ class RealtimeNotificationMonitor {
       _logger.i('⏰ Performing date comparison at: ${now.toString()}');
       _logger.i('📅 Today (local): ${TimezoneUtils.formatForDisplay(today)}');
 
-      // Check system notifications (for JV Almacis users)
-      if (_userOrganization == 'JV Almacis') {
+      // System notifications are for the contractor (JV Almacis) who does the on-site work.
+      if (_userOrganization == NotificationService.contractorOrganization) {
         await _checkSystemNotifications(today);
       }
 
@@ -224,6 +238,7 @@ class RealtimeNotificationMonitor {
           .where('organization', isEqualTo: _userOrganization)
           .where('isActive', isEqualTo: true)
           .where('isTriggered', isEqualTo: false)
+          .where('type', isNotEqualTo: 'test')
           .get();
 
       _logger.i('🔍 Checking ${query.docs.length} custom notifications for $_userOrganization...');
@@ -271,7 +286,12 @@ class RealtimeNotificationMonitor {
       }
 
       if (shouldTrigger) {
-        await _triggerSystemNotification(notification, doc, triggerReason);
+        if (!_triggeringIds.add(doc.id)) return; // Already being processed by the other path.
+        try {
+          await _triggerSystemNotification(notification, doc, triggerReason);
+        } finally {
+          _triggeringIds.remove(doc.id);
+        }
       }
     } catch (e) {
       _logger.e('💥 Error checking system notification ${doc.id}: $e');
@@ -312,7 +332,12 @@ class RealtimeNotificationMonitor {
       }
 
       if (shouldTrigger) {
-        await _triggerCustomNotification(notification, doc, triggerReason);
+        if (!_triggeringIds.add(doc.id)) return; // Already being processed by the other path.
+        try {
+          await _triggerCustomNotification(notification, doc, triggerReason);
+        } finally {
+          _triggeringIds.remove(doc.id);
+        }
       }
     } catch (e) {
       _logger.e('💥 Error checking custom notification ${doc.id}: $e');
@@ -339,8 +364,8 @@ class RealtimeNotificationMonitor {
 
       _logger.i('✅ System notification ${doc.id} marked as triggered in Firestore');
 
-      // Get target users (JV Almacis users)
-      final targetUsers = await _getJVAlmacisUsers();
+      // Get target users — the contractor (JV Almacis) who performs the on-site work.
+      final targetUsers = await _getContractorUsers();
       
       if (targetUsers.isNotEmpty) {
         // Send FCM notification using the correct method
@@ -376,7 +401,7 @@ class RealtimeNotificationMonitor {
 
         _logger.i('📤 System notification sent to ${targetUsers.length} users');
       } else {
-        _logger.w('⚠️ No JV Almacis users found for system notification');
+        _logger.w('⚠️ No notifiable users found for system notification');
       }
     } catch (e) {
       _logger.e('💥 Error triggering system notification ${doc.id}: $e');
@@ -470,20 +495,20 @@ class RealtimeNotificationMonitor {
     }
   }
 
-  /// Get JV Almacis users
-  Future<List<String>> _getJVAlmacisUsers() async {
+  /// Get JV Almacis (contractor) users — the team that acts on maintenance-task notifications.
+  Future<List<String>> _getContractorUsers() async {
     try {
       final usersSnapshot = await _firestore
           .collection('Users')
-          .where('organization', isEqualTo: 'JV Almacis')
+          .where('organization', isEqualTo: NotificationService.contractorOrganization)
           .where('notificationsEnabled', isNotEqualTo: false)
           .get();
 
       final userIds = usersSnapshot.docs.map((doc) => doc.id).toList();
-      _logger.i('👥 Found ${userIds.length} JV Almacis users');
+      _logger.i('👥 Found ${userIds.length} contractor users');
       return userIds;
     } catch (e) {
-      _logger.e('❌ Error getting JV Almacis users: $e');
+      _logger.e('❌ Error getting notifiable users: $e');
       return [];
     }
   }

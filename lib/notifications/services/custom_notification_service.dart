@@ -169,9 +169,12 @@ class CustomNotificationService {
         throw Exception('User not authenticated');
       }
 
-      // Create test notification that triggers in 2 minutes
-      final triggerTime = DateTime.now().add(const Duration(minutes: 2));
-      
+      // A Cloud Function (onTestNotificationCreated) sends the real FCM push the instant this
+      // document is created — that's what actually reaches a backgrounded/closed app, unlike
+      // the previous client-side "wait 2 minutes then poll" approach, which could only ever
+      // fire while the app itself was still running.
+      final now = DateTime.now();
+
       final testNotification = CustomNotificationModel(
         id: '',
         title: 'Test Notification',
@@ -180,18 +183,18 @@ class CustomNotificationService {
         component: 'System Test',
         intervention: 'Verify notification delivery',
         frequency: 1,
-        lastInspectionDate: DateTime.now(),
-        notificationDate: triggerTime,
-        alertDate: triggerTime,
-        nextInspectionDate: triggerTime,
+        lastInspectionDate: now,
+        notificationDate: now,
+        alertDate: now,
+        nextInspectionDate: now,
         type: CustomNotificationType.test,
-        createdAt: DateTime.now(),
+        createdAt: now,
         createdBy: user.uid,
         organization: organization,
       );
 
       final docRef = await _firestore.collection('CustomNotifications').add(testNotification.toMap());
-      
+
       _logger.i('✅ Test notification created: ${docRef.id}');
       return [docRef.id];
     } catch (e) {

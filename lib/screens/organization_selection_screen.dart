@@ -101,7 +101,7 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
     final isMobile = AppBreakpoints.isMobile(screenWidth);
     final isDesktop = AppBreakpoints.isDesktop(screenWidth);
     final contentWidth = isDesktop ? screenWidth * 0.7 : screenWidth;
-    final roleInfo = ref.watch(currentUserRoleProvider).valueOrNull;
+    final roleInfo = ref.watch(currentUserRoleProvider).value;
     final canAdd = _canAddOrganization(roleInfo);
 
     return Scaffold(

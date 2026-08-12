@@ -67,7 +67,7 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _refreshFacilitiesView() {
-    final info = ref.read(currentUserRoleProvider).valueOrNull;
+    final info = ref.read(currentUserRoleProvider).value;
     setState(() {
       _selectedFacilityId = null;
       if (info != null && info.isServiceProviderOrg) {

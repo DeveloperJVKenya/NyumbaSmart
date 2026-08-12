@@ -93,10 +93,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _uploadDocument() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
-        withData: kIsWeb,
       );
       if (result == null || result.files.isEmpty) return;
 
@@ -219,10 +218,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       late UploadTask uploadTask;
       
       if (kIsWeb || Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        if (platformFile.bytes == null) {
-          throw 'File bytes not available for web/desktop upload';
-        }
-        
         final metadata = SettableMetadata(
           contentType: 'application/pdf',
           customMetadata: {
@@ -231,8 +226,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
             'platform': kIsWeb ? 'web' : Platform.operatingSystem,
           },
         );
-        
-        uploadTask = storageRef.putData(platformFile.bytes!, metadata);
+
+        uploadTask = storageRef.putData(await platformFile.readAsBytes(), metadata);
       } else {
         if (platformFile.path == null) {
           throw 'File path not available for mobile upload';

@@ -8,6 +8,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/notifications/models/notification_model.dart';
 import 'package:cmms/notifications/models/maintenance_task_model.dart';
+import 'package:cmms/notifications/services/notification_persistence_service.dart';
+import 'package:cmms/services/pm_scheduling_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:audioplayers/audioplayers.dart';
@@ -24,6 +26,7 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
   final AudioPlayer _audioPlayer = AudioPlayer();
   final Logger _logger = Logger();
+  final NotificationPersistenceService _persistenceService = NotificationPersistenceService();
 
   // Notification settings keys
   static const String _notificationCountKey = 'notification_count';
@@ -40,9 +43,16 @@ class NotificationService {
   Timer? _alertTimer;
   Timer? _cleanupTimer;
   StreamSubscription? _notificationListener;
+  bool _isInitialized = false;
 
-  // Initialize notification service
+  // Initialize notification service. Many screens each call this on mount, but it must only
+  // actually run once per app session — without this guard, every extra call registered
+  // another FCM onMessage listener and another pair of periodic Timers on this same singleton,
+  // so a single due notification could fire once per every screen that had been visited.
   Future<void> initialize() async {
+    if (_isInitialized) return;
+    _isInitialized = true;
+
     await _initializeLocalNotifications();
     await _initializeFCM();
     await _requestNotificationPermissions();
@@ -55,11 +65,13 @@ class NotificationService {
     // Check for due notifications on startup
     await checkForDueNotifications();
     await checkForDueAlerts();
-    
+    await checkFacilityScopedDueTasks();
+
     // Set up periodic checks
     _periodicTimer = Timer.periodic(const Duration(minutes: 15), (_) {
       checkForDueNotifications();
       checkForDueAlerts();
+      checkFacilityScopedDueTasks();
     });
 
     // Set up daily cleanup
@@ -70,7 +82,7 @@ class NotificationService {
 
   Future<void> _initializeBackgroundTasks() async {
     if (!kIsWeb && !Platform.isIOS) {
-      await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+      await Workmanager().initialize(callbackDispatcher);
       await Workmanager().registerPeriodicTask(
         "notification-check",
         "checkDueNotifications",
@@ -223,7 +235,7 @@ class NotificationService {
     );
 
     await _localNotifications.initialize(
-      initSettings,
+      settings: initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
@@ -427,6 +439,18 @@ class NotificationService {
     String? payload,
     NotificationPriority priority = NotificationPriority.normal,
   }) async {
+    // Record the notification for the in-app bell/badge regardless of platform — web can't
+    // show a native OS popup via this plugin, but it should still reflect in-app that a
+    // notification happened, instead of silently doing nothing at all.
+    await _persistenceService.storeNotification(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: title,
+      body: body,
+      isUrgent: priority != NotificationPriority.normal,
+      data: payload != null ? {'payload': payload} : const {},
+      timestamp: DateTime.now(),
+    );
+
     if (kIsWeb) return;
 
     final soundEnabled = await isSoundEnabled();
@@ -492,10 +516,10 @@ class NotificationService {
     );
 
     await _localNotifications.show(
-      DateTime.now().millisecondsSinceEpoch.remainder(100000),
-      title,
-      body,
-      details,
+      id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+      title: title,
+      body: body,
+      notificationDetails: details,
       payload: payload,
     );
 
@@ -672,11 +696,11 @@ class NotificationService {
       );
     }
 
-    // Notification date: 5 days before next inspection
-    final notificationDate = nextInspectionDate.subtract(const Duration(days: 5));
-    
-    // Alert date: 1 day before next inspection
-    final alertDate = nextInspectionDate.subtract(const Duration(days: 1));
+    // Business-day-only: a due/notification/alert date that lands on a weekend shifts back
+    // to the preceding Friday rather than alerting on a day technicians aren't expected in.
+    nextInspectionDate = PmSchedulingService.shiftOffWeekend(nextInspectionDate);
+    final notificationDate = PmSchedulingService.computeNotificationDate(nextInspectionDate);
+    final alertDate = PmSchedulingService.computeAlertDate(nextInspectionDate);
 
     return {
       'nextInspectionDate': nextInspectionDate,
@@ -1196,22 +1220,147 @@ class NotificationService {
     }
   }
 
-  // Get all user IDs
-  Future<List<String>> getAllUserIds() async {
+  // Get all user IDs. When [organization] is given, scopes Users/Admins/Technicians to that
+  // organization instead of notifying every user in the system regardless of which facility
+  // the notification is actually about — Developers are always included since they're
+  // JV Almacis service-provider staff who work across every client organization.
+  Future<List<String>> getAllUserIds({String? organization}) async {
     try {
       final List<String> userIds = [];
 
-      final collections = ['Users', 'Admins', 'Technicians', 'Developers'];
-
-      for (final collection in collections) {
-        final snapshot = await _firestore.collection(collection).get();
+      final scopedCollections = ['Users', 'Admins', 'Technicians'];
+      for (final collection in scopedCollections) {
+        Query<Map<String, dynamic>> query = _firestore.collection(collection);
+        if (organization != null) {
+          query = query.where('organization', isEqualTo: organization);
+        }
+        final snapshot = await query.get();
         userIds.addAll(snapshot.docs.map((doc) => doc.id));
       }
+
+      final developerSnapshot = await _firestore.collection('Developers').get();
+      userIds.addAll(developerSnapshot.docs.map((doc) => doc.id));
 
       return userIds.toSet().toList();
     } catch (e) {
       _logger.e('Error getting user IDs: $e');
       return [];
+    }
+  }
+
+  /// JV Almacis is the maintenance contractor — the team that actually performs the on-site
+  /// work — across every client facility, so they're the intended recipient of task
+  /// due/alert notifications regardless of which client organization owns the facility.
+  static const String contractorOrganization = 'JV Almacis';
+
+  /// Facility-scoped due-date/alert checking for the new facilities/{facilityId}/
+  /// preventive_maintenance schema (backfilled legacy tasks, Scope of Work's manual "Schedule
+  /// Activity" entries, and — once later phases land — OCR-derived rows). Writes matches into
+  /// facilities/{facilityId}/notifications and fires a local notification targeted at
+  /// [contractorOrganization], instead of the legacy global generator's everyone-gets-
+  /// everything behavior.
+  Future<void> checkFacilityScopedDueTasks() async {
+    try {
+      final facilitiesSnapshot = await _firestore.collection('Facilities').get();
+      final today = DateTime.now();
+      final todayKey = DateTime(today.year, today.month, today.day);
+
+      for (final facilityDoc in facilitiesSnapshot.docs) {
+        // Note: PM subcollections live under the lowercase top-level `facilities` collection
+        // (a separate document tree keyed by the same ids), not nested under this `Facilities`
+        // registry doc — `facilityDoc.reference.collection(...)` would silently query an
+        // always-empty path.
+        final facilityDataRef = _firestore.collection('facilities').doc(facilityDoc.id);
+        final tasksSnapshot = await facilityDataRef.collection('preventive_maintenance').get();
+
+        final dueTasks = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        final alertTasks = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+        for (final taskDoc in tasksSnapshot.docs) {
+          final data = taskDoc.data();
+          if (data['status'] == 'completed') continue;
+          final dueDateTimestamp = data['dueDate'] as Timestamp?;
+          if (dueDateTimestamp == null) continue;
+
+          final dueDate = dueDateTimestamp.toDate();
+          final notificationDate = PmSchedulingService.computeNotificationDate(dueDate);
+          final alertDate = PmSchedulingService.computeAlertDate(dueDate);
+          final notificationKey = DateTime(notificationDate.year, notificationDate.month, notificationDate.day);
+          final alertKey = DateTime(alertDate.year, alertDate.month, alertDate.day);
+
+          if (data['notifiedAt'] is! Timestamp && !todayKey.isBefore(notificationKey)) {
+            dueTasks.add(taskDoc);
+          }
+          if (data['alertedAt'] is! Timestamp && !todayKey.isBefore(alertKey)) {
+            alertTasks.add(taskDoc);
+          }
+        }
+
+        if (dueTasks.isEmpty && alertTasks.isEmpty) continue;
+
+        final targetUsers = await getAllUserIds(organization: contractorOrganization);
+        final facilityName = facilityDoc.data()['name'] as String? ?? 'your facility';
+
+        if (dueTasks.isNotEmpty) {
+          await _notifyFacilityTasks(
+            facilityDataRef: facilityDataRef,
+            tasks: dueTasks,
+            targetUsers: targetUsers,
+            facilityName: facilityName,
+            isAlert: false,
+            markField: 'notifiedAt',
+          );
+        }
+        if (alertTasks.isNotEmpty) {
+          await _notifyFacilityTasks(
+            facilityDataRef: facilityDataRef,
+            tasks: alertTasks,
+            targetUsers: targetUsers,
+            facilityName: facilityName,
+            isAlert: true,
+            markField: 'alertedAt',
+          );
+        }
+      }
+    } catch (e) {
+      _logger.e('Error checking facility-scoped due tasks: $e');
+    }
+  }
+
+  Future<void> _notifyFacilityTasks({
+    required DocumentReference<Map<String, dynamic>> facilityDataRef,
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> tasks,
+    required List<String> targetUsers,
+    required String facilityName,
+    required bool isAlert,
+    required String markField,
+  }) async {
+    final title = isAlert ? 'Maintenance Alert — $facilityName' : 'Maintenance Due — $facilityName';
+    final body = isAlert
+        ? '${tasks.length} maintenance ${tasks.length == 1 ? 'task is' : 'tasks are'} due very soon at $facilityName'
+        : '${tasks.length} maintenance ${tasks.length == 1 ? 'task needs' : 'tasks need'} attention at $facilityName';
+
+    final notificationRef = await facilityDataRef.collection('notifications').add({
+      'title': title,
+      'body': body,
+      'taskIds': tasks.map((t) => t.id).toList(),
+      'isAlert': isAlert,
+      'createdAt': FieldValue.serverTimestamp(),
+      'readByUsers': <String>[],
+    });
+
+    for (final userId in targetUsers) {
+      await _sendNotificationToUser(
+        userId,
+        title,
+        body,
+        notificationRef.id,
+        isAlert ? NotificationPriority.urgent : NotificationPriority.normal,
+      );
+    }
+
+    for (final taskDoc in tasks) {
+      await taskDoc.reference.update({markField: FieldValue.serverTimestamp()});
     }
   }
 

@@ -20,18 +20,16 @@ class PdfService {
     try {
       _logger.i('Picking file for collection: $collection, allowedExtensions: $allowedExtensions');
 
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: allowedExtensions,
-        allowMultiple: false,
       );
-      if (result == null || result.files.isEmpty) {
+      if (file == null) {
         _logger.w('No file selected');
         return null;
       }
 
-      final file = result.files.first;
-      _logger.i('Uploading file: ${file.name}, bytes: ${file.bytes != null}');
+      _logger.i('Uploading file: ${file.name}');
 
       // Storage path: facilities/{facilityId}/{collection}/{fileName}
       final storagePath = 'facilities/$facilityId/$collection/${DateTime.now().millisecondsSinceEpoch}_${file.name}';
@@ -39,12 +37,8 @@ class PdfService {
 
       String url;
       if (kIsWeb) {
-        if (file.bytes == null) {
-          _logger.e('No bytes available for web upload');
-          throw Exception('File data unavailable');
-        }
         final uploadTask = await storageRef.putData(
-          file.bytes!,
+          await file.readAsBytes(),
           SettableMetadata(contentType: 'application/pdf'),
         );
         url = await uploadTask.ref.getDownloadURL();

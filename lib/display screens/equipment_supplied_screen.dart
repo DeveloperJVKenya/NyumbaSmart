@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/equipment.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'dart:io';
+import 'dart:typed_data';
 
 class EquipmentSuppliedScreen extends StatefulWidget {
   final String facilityId;
@@ -119,7 +120,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   Future<void> _uploadAttachment() async {
     try {
       _logger.i('Picking attachment file');
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'png', 'docx'],
       );
@@ -172,14 +173,17 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
 
       UploadTask uploadTask;
       if (kIsWeb) {
-        if (file.bytes == null) {
+        Uint8List fileBytes;
+        try {
+          fileBytes = await file.readAsBytes();
+        } catch (e) {
           if (mounted) {
             Navigator.pop(context);
             _showSnackBar('File data unavailable');
           }
           return;
         }
-        uploadTask = storageRef.putData(file.bytes!);
+        uploadTask = storageRef.putData(fileBytes);
       } else {
         if (file.path == null) {
           if (mounted) {

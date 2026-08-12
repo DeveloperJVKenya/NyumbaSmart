@@ -372,13 +372,18 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                               'Clear the notification badge count',
                               style: GoogleFonts.poppins(fontSize: 12),
                             ),
-                            trailing: ElevatedButton(
-                              onPressed: _resetNotificationCount,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
+                            trailing: SizedBox(
+                              width: 88,
+                              height: 36,
+                              child: ElevatedButton(
+                                onPressed: _resetNotificationCount,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.zero,
+                                ),
+                                child: Text('Reset', style: GoogleFonts.poppins(fontSize: 13)),
                               ),
-                              child: Text('Reset', style: GoogleFonts.poppins()),
                             ),
                           ),
                           const Divider(),
@@ -399,13 +404,18 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                               'Remove all notification data from device',
                               style: GoogleFonts.poppins(fontSize: 12),
                             ),
-                            trailing: ElevatedButton(
-                              onPressed: _clearAllNotifications,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                                foregroundColor: Colors.white,
+                            trailing: SizedBox(
+                              width: 88,
+                              height: 36,
+                              child: ElevatedButton(
+                                onPressed: _clearAllNotifications,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.zero,
+                                ),
+                                child: Text('Clear', style: GoogleFonts.poppins(fontSize: 13)),
                               ),
-                              child: Text('Clear', style: GoogleFonts.poppins()),
                             ),
                           ),
                         ],
@@ -446,7 +456,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                             '• Sound and vibration patterns vary by priority level\n'
                             '• All users receive notifications with read tracking\n'
                             '• Background processing ensures notifications work when app is closed\n'
-                            '• Only users from "JV Almacis" organization receive system notifications',
+                            '• System notifications go to JV Almacis (the maintenance contractor); custom notifications stay scoped to your organization',
                             style: GoogleFonts.poppins(
                               fontSize: 13,
                               color: Colors.blue[700],
