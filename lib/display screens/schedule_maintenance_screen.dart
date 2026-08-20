@@ -19,6 +19,7 @@ import 'package:cmms/models/scope_of_work_document.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/services/pm_regeneration_service.dart';
 import 'package:cmms/services/pm_scheduling_service.dart';
+import 'package:cmms/services/scope_of_work_excel_parser.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/theme/app_widgets.dart';
 import 'package:cmms/widgets/pdf_viewer_screen.dart';
@@ -96,7 +97,12 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
           builder: (context, constraints) {
             final isMobile = AppBreakpoints.isMobile(constraints.maxWidth);
             return SingleChildScrollView(
-              padding: EdgeInsets.all(isMobile ? AppSpacing.md : AppSpacing.xl),
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? AppSpacing.md : AppSpacing.xl,
+                AppSpacing.md,
+                isMobile ? AppSpacing.md : AppSpacing.xl,
+                isMobile ? AppSpacing.md : AppSpacing.xl,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -235,6 +241,25 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
     );
     if (result == null || result.files.isEmpty) return;
     final platformFile = result.files.single;
+    final fileName = platformFile.name;
+    final isExcel = ScopeOfWorkSourceTypeExtension.fromFileName(fileName) == ScopeOfWorkSourceType.excel;
+
+    // Excel workbooks are unambiguous (fixed column names, no OCR/fuzzy mapping needed), so
+    // parsing happens client-side right after picking — but nothing is written until the user
+    // reviews a preview and confirms, so a wrong file never silently pollutes the schedule.
+    List<ParsedScopeOfWorkRow>? parsedRows;
+    if (isExcel) {
+      try {
+        final bytes = await platformFile.readAsBytes();
+        parsedRows = ScopeOfWorkExcelParser.parse(bytes);
+      } catch (e) {
+        _showSnackBar('Could not read this Excel file: $e');
+        return;
+      }
+      if (!mounted) return;
+      final confirmed = await _showExcelPreview(parsedRows);
+      if (confirmed != true) return;
+    }
 
     if (!mounted) return;
     final startDate = await _pickStartDate(context);
@@ -261,7 +286,6 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
         }
       }
 
-      final fileName = platformFile.name;
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('facilities/${widget.facilityId}/schedule_maintenance/${DateTime.now().millisecondsSinceEpoch}_$fileName');
@@ -287,18 +311,27 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
         uploadedAt: DateTime.now(),
         uploadedBy: user.uid,
         sourceType: sourceType,
-        parseStatus: ScopeOfWorkParseStatus.pending,
+        parseStatus: isExcel ? ScopeOfWorkParseStatus.parsed : ScopeOfWorkParseStatus.pending,
         startDate: startDate,
       );
       await _docRef.set(sow.toMap());
 
+      int? tasksCreated;
+      if (isExcel && parsedRows != null) {
+        tasksCreated = await _commitExcelTasks(parsedRows, startDate, user.uid);
+      }
+
       final updatedCount = await _regenerateSchedule(startDate);
 
-      _showSnackBar(
-        isReplace
-            ? 'Document replaced — $updatedCount task${updatedCount == 1 ? '' : 's'} rescheduled from ${DateFormat('MMM dd, yyyy').format(startDate)}'
-            : 'Document uploaded successfully',
-      );
+      final message = StringBuffer();
+      if (tasksCreated != null) {
+        message.write('$tasksCreated task${tasksCreated == 1 ? '' : 's'} scheduled from ${DateFormat('MMM dd, yyyy').format(startDate)}');
+      } else if (isReplace) {
+        message.write('Document replaced — $updatedCount task${updatedCount == 1 ? '' : 's'} rescheduled from ${DateFormat('MMM dd, yyyy').format(startDate)}');
+      } else {
+        message.write('Document uploaded successfully');
+      }
+      _showSnackBar(message.toString());
     } catch (e) {
       _logger.e('Error uploading scope of work document: $e');
       _showSnackBar('Error uploading document: $e');
@@ -377,6 +410,115 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
         );
       },
     );
+  }
+
+  /// Shows a summary of what was parsed out of the workbook and lets the user back out before
+  /// anything is written — the schema is unambiguous so the parse itself is trusted, but a
+  /// wrong file (or a template that doesn't match) should never silently create a pile of
+  /// incorrect tasks.
+  Future<bool?> _showExcelPreview(List<ParsedScopeOfWorkRow> rows) {
+    final categories = rows.map((r) => r.category).where((c) => c.isNotEmpty).toSet();
+    final sample = rows.take(5).toList();
+
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+        title: Text('Review Parsed Tasks', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${rows.length} maintenance task${rows.length == 1 ? '' : 's'} detected across '
+                '${categories.length} categor${categories.length == 1 ? 'y' : 'ies'}.',
+                style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 12),
+              Text('Sample:', style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary)),
+              const SizedBox(height: 6),
+              ...sample.map(
+                (row) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${row.category} — ${row.component}', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                        const SizedBox(height: 2),
+                        Text(row.intervention, style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 4),
+                        Text('Every ${row.frequencyMonths} month${row.frequencyMonths == 1 ? '' : 's'}', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (rows.length > sample.length)
+                Text('...and ${rows.length - sample.length} more', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text('Cancel', style: GoogleFonts.poppins())),
+          AppGradientButton(label: 'Confirm & Schedule', onPressed: () => Navigator.pop(dialogContext, true)),
+        ],
+      ),
+    );
+  }
+
+  /// Replaces this facility's Excel-derived tasks with the freshly parsed set — simplest correct
+  /// behavior for a re-upload (these are operational schedule records, not historical data worth
+  /// diffing/reconciling). Manually-added tasks are untouched. Returns the number created.
+  Future<int> _commitExcelTasks(List<ParsedScopeOfWorkRow> rows, DateTime startDate, String uid) async {
+    final tasksRef = FirebaseFirestore.instance
+        .collection('facilities')
+        .doc(widget.facilityId)
+        .collection('preventive_maintenance');
+
+    final existingExcelTasks = await tasksRef
+        .where('origin', isEqualTo: PmTaskOrigin.excel.value)
+        .where('sourceDocId', isEqualTo: _documentId)
+        .get();
+
+    final now = DateTime.now();
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in existingExcelTasks.docs) {
+      batch.delete(doc.reference);
+    }
+    for (final row in rows) {
+      final dueDate = PmSchedulingService.nextOccurrenceFromAnchor(
+        anchor: startDate,
+        frequencyMonths: row.frequencyMonths,
+        notBefore: now,
+      );
+      final task = PreventiveMaintenanceTask(
+        id: '',
+        facilityId: widget.facilityId,
+        category: row.category,
+        component: row.component,
+        intervention: row.intervention,
+        frequencyMonths: row.frequencyMonths,
+        dueDate: dueDate,
+        status: PmTaskStatus.pending,
+        origin: PmTaskOrigin.excel,
+        sourceDocId: _documentId,
+        createdBy: uid,
+        createdAt: now,
+        updatedAt: now,
+      );
+      batch.set(tasksRef.doc(), task.toMap());
+    }
+    await batch.commit();
+
+    return rows.length;
   }
 
   Future<void> _viewDocument(ScopeOfWorkDocument sow) async {

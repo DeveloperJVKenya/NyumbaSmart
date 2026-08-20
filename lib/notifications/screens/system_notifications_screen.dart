@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:logger/logger.dart';
-import 'package:cmms/notifications/services/system_notification_service.dart';
 import 'package:cmms/notifications/screens/notifications_screen.dart';
-import 'package:cmms/notifications/screens/notification_settings_screen.dart';
+import 'package:cmms/services/pm_regeneration_service.dart';
+import 'package:cmms/theme/app_theme.dart';
+import 'package:cmms/theme/app_widgets.dart';
 
+/// Auto-notification settings: regenerates every facility's preventive-maintenance schedule from
+/// a chosen start date (the same logic the Scope of Work screen uses on a per-facility upload —
+/// see [PmRegenerationService]). Due/alert detection and delivery themselves are entirely
+/// server-side (the hourly `checkDueNotifications` Cloud Function) — this screen no longer lists
+/// or manages individual notifications, since that's now the unified feed in
+/// [NotificationsScreen].
 class SystemNotificationsScreen extends StatefulWidget {
   const SystemNotificationsScreen({super.key});
 
@@ -14,423 +20,126 @@ class SystemNotificationsScreen extends StatefulWidget {
 }
 
 class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
-  final Logger _logger = Logger(printer: PrettyPrinter());
-  final SystemNotificationService _systemNotificationService = SystemNotificationService();
-  
-  bool _autoNotificationsEnabled = false;
-  bool _isLoading = true;
-  bool _isGenerating = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSettings();
-  }
-
-  Future<void> _loadSettings() async {
-    try {
-      final autoEnabled = await _systemNotificationService.areAutoNotificationsEnabled();
-      
-      if (mounted) {
-        setState(() {
-          _autoNotificationsEnabled = autoEnabled;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      _logger.e('Error loading settings: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _toggleAutoNotifications(bool enabled) async {
-    if (_isGenerating) return;
-
-    setState(() {
-      _isGenerating = true;
-    });
-
-    try {
-      if (enabled) {
-        final startDate = await _pickMaintenanceStartDate();
-        if (startDate == null) {
-          setState(() => _isGenerating = false);
-          return;
-        }
-
-        _showSnackBar('Generating automatic notifications...', Colors.blue);
-        await _systemNotificationService.regenerateSystemNotifications(startDate: startDate);
-        _showSnackBar('Automatic notifications enabled and generated successfully!', Colors.green);
-      } else {
-        await _systemNotificationService.setAutoNotificationsEnabled(false);
-        _showSnackBar('Automatic notifications disabled', Colors.orange);
-      }
-
-      setState(() {
-        _autoNotificationsEnabled = enabled;
-        _isGenerating = false;
-      });
-
-    } catch (e) {
-      _logger.e('Error toggling auto notifications: $e');
-      setState(() {
-        _isGenerating = false;
-      });
-      _showSnackBar('Error updating automatic notifications: $e', Colors.red);
-    }
-  }
-
-  Future<void> _regenerateNotifications() async {
-    final startDate = await _pickMaintenanceStartDate();
-    if (startDate == null) return;
-
-    setState(() {
-      _isGenerating = true;
-    });
-
-    try {
-      _showSnackBar('Regenerating schedules from ${DateFormat('MMM dd, yyyy').format(startDate)}...', Colors.blue);
-      final updatedCount = await _systemNotificationService.regenerateSystemNotifications(startDate: startDate);
-      _showSnackBar(
-        '$updatedCount task${updatedCount == 1 ? '' : 's'} rescheduled across all facilities!',
-        Colors.green,
-      );
-    } catch (e) {
-      _logger.e('Error regenerating notifications: $e');
-      _showSnackBar('Error regenerating notifications: $e', Colors.red);
-    } finally {
-      setState(() {
-        _isGenerating = false;
-      });
-    }
-  }
-
-  /// Asks for the maintenance start date used to (re)anchor every facility's schedule. A facility
-  /// that already recorded its own start date (via its Scope of Work upload) keeps using that —
-  /// this is only the fallback for facilities that haven't. Walking forward from this date on
-  /// each task's own frequency, never landing before today, is what keeps a freshly-relaunched
-  /// system from instantly flagging months of "missed" maintenance as overdue.
-  Future<DateTime?> _pickMaintenanceStartDate() async {
-    final now = DateTime.now();
-    final defaultStart = DateTime(now.year, 1, 1);
-
-    return showDialog<DateTime>(
-      context: context,
-      builder: (dialogContext) {
-        DateTime selected = defaultStart;
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: Text('Maintenance Start Date', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Used only for facilities that haven\'t recorded their own maintenance start date yet. '
-                    'Defaults to Jan 1 of this year, but change it if activities are only starting now, '
-                    'mid-year — every task\'s schedule plans forward from this date, never marking '
-                    'past-due dates as overdue.',
-                    style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[700]),
-                  ),
-                  const SizedBox(height: 16),
-                  InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: dialogContext,
-                        initialDate: selected,
-                        firstDate: DateTime(now.year - 2),
-                        lastDate: DateTime(now.year + 2),
-                      );
-                      if (picked != null) setDialogState(() => selected = picked);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.withValues(alpha: 0.5)),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(DateFormat('MMM dd, yyyy').format(selected), style: GoogleFonts.poppins()),
-                          const Icon(Icons.calendar_today, size: 18),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: Text('Cancel', style: GoogleFonts.poppins()),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(dialogContext, selected),
-                  child: Text('Regenerate', style: GoogleFonts.poppins()),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showSnackBar(String message, Color color) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message, style: GoogleFonts.poppins()),
-          backgroundColor: color,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
+  bool _isRegenerating = false;
+  DateTime _startDate = DateTime(DateTime.now().year, 1, 1);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: Text(
-          'System Notifications',
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.blueGrey,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text('System Notifications', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
+        flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings, color: Colors.white),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NotificationSettingsScreen(),
-                ),
-              );
-            },
-            tooltip: 'Notification Settings',
+            icon: const Icon(Icons.notifications_rounded, color: Colors.white),
+            tooltip: 'View notifications',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen())),
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Text(
-                    'System Notification Management',
-                    style: GoogleFonts.poppins(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isMobile = AppBreakpoints.isMobile(constraints.maxWidth);
+          return SingleChildScrollView(
+            padding: EdgeInsets.all(isMobile ? AppSpacing.md : AppSpacing.xl),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 10))],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Manage automatic system notifications for maintenance tasks',
-                    style: GoogleFonts.poppins(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Automatic Notifications Card
-                  Card(
-                    elevation: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              Icon(Icons.autorenew, color: Colors.green[700], size: 28),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Automatic System Notifications',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blueGrey[800],
-                                  ),
-                                ),
-                              ),
-                              if (_isGenerating)
-                                const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              else
-                                Switch(
-                                  value: _autoNotificationsEnabled,
-                                  onChanged: _toggleAutoNotifications,
-                                  activeThumbColor: Colors.green,
-                                ),
-                            ],
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(AppRadius.md)),
+                            child: const Icon(Icons.event_repeat_rounded, color: Colors.white, size: 24),
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            _autoNotificationsEnabled
-                                ? 'Automatic notifications are enabled. The system will generate and send maintenance reminders based on task frequencies.'
-                                : 'Enable automatic notifications to have the system generate maintenance reminders for all tasks.',
-                            style: GoogleFonts.poppins(
-                              color: Colors.grey[600],
-                              fontSize: 14,
-                            ),
-                          ),
-                          if (_autoNotificationsEnabled) ...[
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: _isGenerating ? null : _regenerateNotifications,
-                                    icon: const Icon(Icons.refresh),
-                                    label: Text(
-                                      'Regenerate Notifications',
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.blue,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // View Notifications Card
-                  Card(
-                    elevation: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.notifications, color: Colors.blue[700], size: 28),
-                              const SizedBox(width: 12),
-                              Text(
-                                'View Notifications',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blueGrey[800],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'View and manage all system notifications, including read status and details',
-                            style: GoogleFonts.poppins(
-                              color: Colors.grey[600],
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const NotificationsScreen(),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.list),
-                              label: Text(
-                                'View All Notifications',
-                                style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text('Regenerate Maintenance Schedule', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Information Card
-                  Card(
-                    elevation: 2,
-                    color: Colors.blue[50],
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          Row(
+                      const SizedBox(height: 12),
+                      Text(
+                        'Recomputes every facility\'s task due dates from the chosen start date, walking each '
+                        'task forward on its own frequency until it lands on a date that isn\'t in the past. '
+                        'Due/alert notifications themselves are generated automatically every hour by the server '
+                        '— this only affects when tasks are next due.',
+                        style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 16),
+                      InkWell(
+                        onTap: _pickStartDate,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.3)),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                          ),
+                          child: Row(
                             children: [
-                              Icon(Icons.info_outline, color: Colors.blue[700]),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'System Information',
-                                  style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue[700],
-                                  ),
-                                ),
-                              ),
+                              const Icon(Icons.calendar_today_rounded, size: 18, color: AppColors.primary),
+                              const SizedBox(width: 10),
+                              Text('Fallback start date: ${DateFormat('MMMM dd, yyyy').format(_startDate)}', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            '• System notifications are generated automatically based on maintenance task frequencies\n'
-                            '• Notifications are sent 5 days before maintenance is due\n'
-                            '• Alerts are sent 1 day before maintenance is due\n'
-                            '• Only JV Almacis (the maintenance contractor) receives these\n'
-                            '• Notifications are sent at 9:00 AM and 11:00 AM (retry)\n'
-                            '• Tasks with same dates are grouped into single notifications\n'
-                            '• Read status is tracked for each user individually',
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              color: Colors.blue[700],
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 20),
+                      AppGradientButton(
+                        label: _isRegenerating ? 'Regenerating...' : 'Regenerate All Facilities',
+                        icon: Icons.refresh_rounded,
+                        isLoading: _isRegenerating,
+                        onPressed: _isRegenerating ? null : _regenerate,
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          );
+        },
+      ),
     );
+  }
+
+  Future<void> _pickStartDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate,
+      firstDate: DateTime(DateTime.now().year - 2),
+      lastDate: DateTime(DateTime.now().year + 2),
+    );
+    if (picked != null) setState(() => _startDate = picked);
+  }
+
+  Future<void> _regenerate() async {
+    setState(() => _isRegenerating = true);
+    try {
+      final count = await PmRegenerationService.regenerateAllFacilities(fallbackStartDate: _startDate);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$count task${count == 1 ? '' : 's'} rescheduled', style: GoogleFonts.poppins()), backgroundColor: AppColors.success),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error regenerating schedule: $e', style: GoogleFonts.poppins()), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isRegenerating = false);
+    }
   }
 }

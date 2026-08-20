@@ -300,10 +300,52 @@ service cloud.firestore {
         (isAdmin() || isDeveloper());
     }
 
-    // Facility-scoped notifications generated from preventive_maintenance due dates.
+    // Facility-scoped notifications generated from preventive_maintenance due dates — an
+    // immutable audit record once written. System docs (type=='system') come only from Cloud
+    // Functions via the Admin SDK, which bypasses these rules entirely; the create rule here only
+    // needs to cover the client-authored path (a user creating a type=='custom' notification).
     match /facilities/{facilityId}/notifications/{notificationId} {
       allow read: if request.auth != null && canAccessFacility(facilityId);
-      allow write: if request.auth != null && canAccessFacility(facilityId);
+      allow create: if request.auth != null && canAccessFacility(facilityId) &&
+        request.resource.data.type == 'custom' && request.resource.data.createdBy == request.auth.uid;
+      allow update: if false;
+      allow delete: if request.auth != null && canAccessFacility(facilityId) && (isAdmin() || isDeveloper());
+    }
+
+    // Per-user notification digests (the consolidated notifications pipeline).
+    // Each user only ever sees/touches their own subcollection; digest documents
+    // themselves are Cloud-Function-only writes (admin SDK bypasses these rules),
+    // clients may only patch their own read/delivery receipt fields.
+    match /NotificationDigests/{userId}/items/{digestId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if false;
+      allow update: if request.auth != null && request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'deliveredAt']);
+      allow delete: if false;
+    }
+
+    // Per-run delivery audit log — which accounts/devices a given system or test notification
+    // was actually sent to, and why any recipient was skipped or failed. Developer/admin only;
+    // written exclusively by Cloud Functions (admin SDK bypasses rules).
+    match /NotificationDeliveryLogs/{logId} {
+      allow read: if isDeveloper() || isAdmin();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Client-written proof-of-receipt: the moment a device actually gets a push (foreground or
+    // native background handler), it upserts its own receipt here — separate from
+    // NotificationDeliveryLogs (server-authoritative "FCM accepted it for delivery") so a
+    // developer/admin can distinguish "we sent it" from "the device actually got it", without
+    // widening read access to the full NotificationDigests content (task details, read status).
+    // Doc id is `${runId}_${userId}`, so writes are naturally idempotent per device-run.
+    match /NotificationDeliveryReceipts/{receiptId} {
+      allow read: if isDeveloper() || isAdmin();
+      allow create, update: if request.auth != null &&
+        request.resource.data.userId == request.auth.uid &&
+        receiptId == request.resource.data.runId + '_' + request.auth.uid;
+      allow delete: if false;
     }
 
     match /maintenance_tasks/{taskId} {

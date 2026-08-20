@@ -273,7 +273,7 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
     if (facility == null) return _buildError('Facility details not available');
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
         child: Column(

@@ -887,7 +887,7 @@ class _BillingScreenState extends State<BillingScreen> {
     final fontSizeSubtitle = isMobile ? 14.0 : isTablet ? 16.0 : 18.0;
 
     return SingleChildScrollView(
-      padding: EdgeInsets.all(padding),
+      padding: EdgeInsets.fromLTRB(padding, 16.0, padding, padding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

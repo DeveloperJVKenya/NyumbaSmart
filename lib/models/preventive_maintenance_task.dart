@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum PmTaskOrigin { ocr, manual, legacy }
+enum PmTaskOrigin { ocr, excel, manual, legacy }
 
 extension PmTaskOriginExtension on PmTaskOrigin {
   String get value => toString().split('.').last;
@@ -9,6 +9,8 @@ extension PmTaskOriginExtension on PmTaskOrigin {
     switch (value) {
       case 'ocr':
         return PmTaskOrigin.ocr;
+      case 'excel':
+        return PmTaskOrigin.excel;
       case 'legacy':
         return PmTaskOrigin.legacy;
       default:

@@ -213,7 +213,11 @@ exports.sendSystemNotification = onCall(async (request) => { // Changed to reque
   }
 });
 
-// Helper function to send notifications (internal use)
+// Helper function to send notifications (internal use). Returns per-recipient results
+// (not just aggregate counts) so callers can persist/display exactly which accounts and
+// devices did or didn't receive a given send — including *why* a recipient was skipped
+// (no token on file, notifications disabled, stale token, etc.), which the old aggregate-only
+// return value threw away.
 async function sendNotificationInternal(notificationData, targetUsers) {
   const {
     title, body, notificationId, priority = 'normal', data: extraData = {},
@@ -221,8 +225,9 @@ async function sendNotificationInternal(notificationData, targetUsers) {
 
   console.log(`Sending notification to ${targetUsers.length} users: ${title}`);
 
-  // Get FCM tokens for target users
-  const userTokens = [];
+  // Look up every target user's token/eligibility (not just the ones that pan out) so we can
+  // report a reason for every recipient, not only the successful ones.
+  const recipientChecks = [];
   const batchSize = 10;
 
   for (let i = 0; i < targetUsers.length; i += batchSize) {
@@ -230,31 +235,53 @@ async function sendNotificationInternal(notificationData, targetUsers) {
     const batchPromises = batch.map(async (userId) => {
       try {
         const userDoc = await db.collection('Users').doc(userId).get();
-        if (userDoc.exists) {
-          const userData = userDoc.data();
-          // Same as sendSystemNotification: trust the caller's already-scoped targetUsers
-          // list instead of re-filtering to a single hardcoded organization.
-          if (userData.fcmToken && userData.notificationsEnabled !== false) {
-            return {
-              userId,
-              token: userData.fcmToken,
-              userName: userData.name || userData.email || 'Unknown User',
-            };
-          }
+        if (!userDoc.exists) {
+          return {
+            userId, userName: 'Unknown User', token: null, platform: null, skipReason: 'user not found',
+          };
         }
+        const userData = userDoc.data();
+        const userName = userData.name || userData.email || 'Unknown User';
+        const platform = userData.platform || null;
+        if (!userData.fcmToken) {
+          return {
+            userId, userName, token: null, platform, skipReason: 'no FCM token on file',
+          };
+        }
+        if (userData.notificationsEnabled === false) {
+          return {
+            userId, userName, token: null, platform, skipReason: 'notifications disabled',
+          };
+        }
+        return {
+          userId, userName, token: userData.fcmToken, platform, skipReason: null,
+        };
       } catch (error) {
         console.error(`Error getting token for user ${userId}:`, error);
+        return {
+          userId, userName: 'Unknown User', token: null, platform: null, skipReason: error.message,
+        };
       }
-      return null;
     });
 
-    const batchResults = await Promise.all(batchPromises);
-    userTokens.push(...batchResults.filter((result) => result !== null));
+    recipientChecks.push(...await Promise.all(batchPromises));
   }
+
+  const userTokens = recipientChecks.filter((r) => r.token);
+  const recipients = recipientChecks.map((r) => ({
+    userId: r.userId,
+    userName: r.userName,
+    platform: r.platform,
+    success: false,
+    error: r.skipReason,
+  }));
+  const recipientByUserId = new Map(recipients.map((r) => [r.userId, r]));
 
   if (userTokens.length === 0) {
     console.log('No valid FCM tokens found for target users');
-    return { success: true, sentCount: 0, message: 'No valid recipients found' };
+    return {
+      success: true, sentCount: 0, failedCount: 0, totalTargets: targetUsers.length, recipients,
+    };
   }
 
   // FCM data payloads must be string-only key/value pairs — an array, number, or boolean here
@@ -324,27 +351,33 @@ async function sendNotificationInternal(notificationData, targetUsers) {
           + `${response.successCount}/${tokens.length} messages sent successfully`,
       );
 
-      if (response.failureCount > 0) {
-        response.responses.forEach((resp, idx) => {
-          if (!resp.success) {
-            const failedToken = batch[idx];
-            console.error(`Failed to send to ${failedToken.userName} (${failedToken.userId}):`, resp.error);
-            if (
-              resp.error
-              && (resp.error.code === 'messaging/registration-token-not-registered'
-                || resp.error.code === 'messaging/invalid-registration-token')
-            ) {
-              db.collection('Users')
-                .doc(failedToken.userId)
-                .update({ fcmToken: FieldValue.delete() })
-                .catch((err) => console.error('Error removing invalid token:', err));
-            }
-          }
-        });
-      }
+      response.responses.forEach((resp, idx) => {
+        const sentTo = batch[idx];
+        const rec = recipientByUserId.get(sentTo.userId);
+        if (resp.success) {
+          if (rec) rec.success = true;
+          return;
+        }
+        console.error(`Failed to send to ${sentTo.userName} (${sentTo.userId}):`, resp.error);
+        if (rec) rec.error = resp.error ? resp.error.message : 'unknown error';
+        if (
+          resp.error
+          && (resp.error.code === 'messaging/registration-token-not-registered'
+            || resp.error.code === 'messaging/invalid-registration-token')
+        ) {
+          db.collection('Users')
+            .doc(sentTo.userId)
+            .update({ fcmToken: FieldValue.delete() })
+            .catch((err) => console.error('Error removing invalid token:', err));
+        }
+      });
     } catch (error) {
       console.error(`Error sending batch ${Math.floor(i / fcmBatchSize) + 1}:`, error);
       totalFailed += tokens.length;
+      batch.forEach((sentTo) => {
+        const rec = recipientByUserId.get(sentTo.userId);
+        if (rec) rec.error = error.message;
+      });
     }
   }
 
@@ -363,8 +396,32 @@ async function sendNotificationInternal(notificationData, targetUsers) {
     success: true,
     sentCount: totalSent,
     failedCount: totalFailed,
-    totalTargets: userTokens.length,
+    totalTargets: targetUsers.length,
+    recipients,
   };
+}
+
+// Persists a per-recipient delivery record so a developer/admin can see exactly which accounts
+// and devices received (or were skipped/failed for) a given system or test notification —
+// aggregate sentCount/failedCount alone don't answer "did *my* account get it".
+async function logDelivery({
+  kind, title, body, result, runId,
+}) {
+  try {
+    await db.collection('NotificationDeliveryLogs').add({
+      kind,
+      title,
+      body,
+      runId,
+      createdAt: FieldValue.serverTimestamp(),
+      totalTargets: result.totalTargets,
+      sentCount: result.sentCount,
+      failedCount: result.failedCount,
+      recipients: result.recipients,
+    });
+  } catch (error) {
+    console.error('Error logging notification delivery:', error);
+  }
 }
 
 // Calendar-accurate date helpers mirroring the notification/alert math in
@@ -390,11 +447,20 @@ function dateKey(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-// Sends the due/alert notification for one facility's batch of tasks: writes a summary doc to
-// facilities/{facilityId}/notifications, pushes FCM to the contractor (JV Almacis), and marks
-// each task's [markField] so this same due/alert cycle isn't re-sent on the next cron tick.
-async function notifyFacilityTasks({
-  facilityRef, tasks, targetUsers, facilityName, isAlert, markField,
+// Splits an array into fixed-size chunks — used to stay under Firestore's 500-op batch limit
+// when writing one digest doc per target user.
+function chunk(array, size) {
+  const chunks = [];
+  for (let i = 0; i < array.length; i += size) chunks.push(array.slice(i, i + size));
+  return chunks;
+}
+
+// Writes the immutable audit record for one facility's batch of due/alert tasks to
+// facilities/{facilityId}/notifications, and marks each task's [markField] so this same
+// due/alert cycle isn't re-sent on the next cron tick. No FCM send here — delivery is handled
+// once, as a single cross-facility digest per user, by the caller (checkDueNotifications).
+async function recordFacilityNotification({
+  facilityRef, tasks, facilityName, isAlert, markField,
 }) {
   const title = isAlert ? `Maintenance Alert — ${facilityName}` : `Maintenance Due — ${facilityName}`;
   const body = isAlert
@@ -402,28 +468,19 @@ async function notifyFacilityTasks({
     : `${tasks.length} maintenance ${tasks.length === 1 ? 'task needs' : 'tasks need'} attention at ${facilityName}`;
 
   const notificationRef = await facilityRef.collection('notifications').add({
+    facilityId: facilityRef.id,
+    type: 'system',
+    category: isAlert ? 'alert' : 'due',
     title,
     body,
     taskIds: tasks.map((t) => t.id),
     isAlert,
+    priority: isAlert ? 'urgent' : 'normal',
     createdAt: FieldValue.serverTimestamp(),
-    readByUsers: [],
-  });
-
-  const result = await sendNotificationInternal(
-    {
-      title,
-      body,
-      notificationId: null,
-      priority: isAlert ? 'urgent' : 'normal',
-      data: { type: 'facility_pm', facilityId: facilityRef.id, notificationId: notificationRef.id },
-    },
-    targetUsers,
-  );
-
-  await notificationRef.update({
-    sentCount: result.sentCount,
-    failedCount: result.failedCount,
+    createdBy: null,
+    sentCount: 0,
+    failedCount: 0,
+    digestId: null,
   });
 
   const batch = db.batch();
@@ -431,6 +488,8 @@ async function notifyFacilityTasks({
     batch.update(taskDoc.ref, { [markField]: FieldValue.serverTimestamp() });
   }
   await batch.commit();
+
+  return { notificationRef, title, body };
 }
 
 // Scheduled function to check for due/alert preventive-maintenance tasks across every facility's
@@ -442,10 +501,10 @@ async function notifyFacilityTasks({
 // alert window from it and tracks per-task dedup via `notifiedAt`/`alertedAt`.
 exports.checkDueNotifications = onSchedule(
   {
-    schedule: '0 9,11 * * *',
+    schedule: '0 * * * *',
     timeZone: 'Africa/Nairobi',
     memory: '256MiB',
-    timeoutSeconds: 120,
+    timeoutSeconds: 180,
   },
   async () => {
     try {
@@ -496,38 +555,230 @@ exports.checkDueNotifications = onSchedule(
         .get();
       const targetUsers = usersSnapshot.docs.map((userDoc) => userDoc.id);
 
-      let facilitiesNotified = 0;
+      // Phase 1: record each facility's due/alert work as an immutable audit doc, and roll every
+      // facility's items into ONE cross-facility digest structure — every target user currently
+      // shares the same JV-Almacis-wide scope, so the digest content is identical for all of them
+      // this run, but it's still written per-user (not once) so future per-user facility scoping
+      // is a pure data-shape change, not a rearchitecture.
+      const digestFacilities = [];
+      const digestSourceRefs = [];
+      let anyAlert = false;
+
       for (const [facilityId, bucket] of byFacility) {
         const hasWork = bucket.dueTasks.length > 0 || bucket.alertTasks.length > 0;
-        if (hasWork && targetUsers.length > 0) {
-          const facilityDoc = await db.collection('Facilities').doc(facilityId).get();
-          const facilityName = facilityDoc.exists ? (facilityDoc.data().name || 'your facility') : 'your facility';
-
-          if (bucket.dueTasks.length > 0) {
-            await notifyFacilityTasks({
-              facilityRef: bucket.facilityRef,
-              tasks: bucket.dueTasks,
-              targetUsers,
-              facilityName,
-              isAlert: false,
-              markField: 'notifiedAt',
-            });
-          }
-          if (bucket.alertTasks.length > 0) {
-            await notifyFacilityTasks({
-              facilityRef: bucket.facilityRef,
-              tasks: bucket.alertTasks,
-              targetUsers,
-              facilityName,
-              isAlert: true,
-              markField: 'alertedAt',
-            });
-          }
-          facilitiesNotified += 1;
+        if (!hasWork) {
+          // eslint-disable-next-line no-continue
+          continue;
         }
+
+        const facilityDoc = await db.collection('Facilities').doc(facilityId).get();
+        const facilityName = facilityDoc.exists ? (facilityDoc.data().name || 'your facility') : 'your facility';
+        const items = [];
+
+        const rowToItem = (t, isAlert) => {
+          const d = t.data();
+          return {
+            taskId: t.id,
+            category: d.category || '',
+            component: d.component || '',
+            intervention: d.intervention || '',
+            dueDate: d.dueDate,
+            isAlert,
+          };
+        };
+
+        if (bucket.dueTasks.length > 0) {
+          const rec = await recordFacilityNotification({
+            facilityRef: bucket.facilityRef,
+            tasks: bucket.dueTasks,
+            facilityName,
+            isAlert: false,
+            markField: 'notifiedAt',
+          });
+          digestSourceRefs.push({ facilityId, notificationId: rec.notificationRef.id });
+          items.push(...bucket.dueTasks.map((t) => rowToItem(t, false)));
+        }
+        if (bucket.alertTasks.length > 0) {
+          anyAlert = true;
+          const rec = await recordFacilityNotification({
+            facilityRef: bucket.facilityRef,
+            tasks: bucket.alertTasks,
+            facilityName,
+            isAlert: true,
+            markField: 'alertedAt',
+          });
+          digestSourceRefs.push({ facilityId, notificationId: rec.notificationRef.id });
+          items.push(...bucket.alertTasks.map((t) => rowToItem(t, true)));
+        }
+
+        digestFacilities.push({
+          facilityId, facilityName, count: items.length, items,
+        });
       }
 
-      console.log(`checkDueNotifications complete: ${facilitiesNotified} facilities notified`);
+      const totalCount = digestFacilities.reduce((sum, f) => sum + f.count, 0);
+      const facilityCount = digestFacilities.length;
+
+      if (totalCount > 0 && targetUsers.length > 0) {
+        const notifWord = totalCount === 1 ? '' : 's';
+        const facilityWord = facilityCount === 1 ? 'y' : 'ies';
+        const title = `${totalCount} notification${notifWord} from ${facilityCount} facilit${facilityWord}`;
+        const topNames = digestFacilities.slice(0, 2).map((f) => f.facilityName);
+        const remaining = facilityCount - topNames.length;
+        const body = remaining > 0 ? `${topNames.join(', ')} and ${remaining} more` : topNames.join(', ');
+        const runId = `run_${now.getTime()}`;
+
+        for (const userIdBatch of chunk(targetUsers, 450)) {
+          const digestBatch = db.batch();
+          for (const userId of userIdBatch) {
+            const digestRef = db.collection('NotificationDigests').doc(userId).collection('items').doc();
+            digestBatch.set(digestRef, {
+              userId,
+              runId,
+              createdAt: FieldValue.serverTimestamp(),
+              kind: anyAlert ? 'alert_digest' : 'due_digest',
+              title,
+              body,
+              totalCount,
+              facilityCount,
+              facilities: digestFacilities,
+              sourceNotificationRefs: digestSourceRefs,
+              fcmSent: true,
+              fcmMessageIds: [],
+              deliveredAt: null,
+              readAt: null,
+              reTriggerCount: 0,
+              lastReTriggeredAt: null,
+              supersededByDigestId: null,
+            });
+          }
+          await digestBatch.commit();
+        }
+
+        // One multicast for the whole run — content is uniform across recipients today (see
+        // comment above), so a single send covers every target user's device(s). `runId` rides
+        // along in the data payload so each recipient's device can ack receipt back onto its own
+        // NotificationDigests doc (which shares this same runId) — see markDelivered() client-side.
+        const digestSendResult = await sendNotificationInternal(
+          {
+            title,
+            body,
+            notificationId: null,
+            priority: anyAlert ? 'urgent' : 'normal',
+            data: { type: 'digest', runId },
+          },
+          targetUsers,
+        );
+        await logDelivery({
+          kind: anyAlert ? 'alert_digest' : 'due_digest', title, body, result: digestSendResult, runId,
+        });
+        console.log(`checkDueNotifications: digest sent to ${targetUsers.length} users — ${title}`);
+      } else {
+        console.log('checkDueNotifications: nothing due this run, no digest sent');
+      }
+
+      // Phase 2: re-trigger any digest a user still hasn't opened 4+ hours after it was sent —
+      // capped at 3 re-triggers per original digest, and combined per-user into one push each
+      // (not one push per stale digest) so a user who ignored several runs still gets a single
+      // reminder, not a flood.
+      const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+      const RETRIGGER_CAP = 3;
+      let usersRetriggered = 0;
+
+      for (const userId of targetUsers) {
+        // Filtered to reTriggerCount < RETRIGGER_CAP in-process rather than in the query itself —
+        // Firestore doesn't support inequality filters on two different fields in one query
+        // without a purpose-built composite index, and this keeps the query index-free.
+        const staleSnap = await db
+          .collection('NotificationDigests').doc(userId).collection('items')
+          .where('readAt', '==', null)
+          .where('createdAt', '<=', Timestamp.fromDate(fourHoursAgo))
+          .orderBy('createdAt', 'desc')
+          .limit(20)
+          .get();
+
+        const staleDocs = staleSnap.docs.filter((d) => (d.data().reTriggerCount || 0) < RETRIGGER_CAP);
+
+        const mergedFacilitiesMap = new Map();
+        let mergedTotal = 0;
+        for (const doc of staleDocs) {
+          const d = doc.data();
+          mergedTotal += d.totalCount || 0;
+          for (const f of (d.facilities || [])) {
+            const existingEntry = mergedFacilitiesMap.get(f.facilityId);
+            if (existingEntry) {
+              existingEntry.count += f.count;
+              existingEntry.items = existingEntry.items.concat(f.items || []);
+            } else {
+              mergedFacilitiesMap.set(f.facilityId, { ...f, items: [...(f.items || [])] });
+            }
+          }
+        }
+
+        if (staleDocs.length === 0 || mergedTotal === 0) {
+          // eslint-disable-next-line no-continue
+          continue;
+        }
+
+        const mergedFacilities = Array.from(mergedFacilitiesMap.values());
+        const mergedFacilityCount = mergedFacilities.length;
+        const mergedNotifWord = mergedTotal === 1 ? '' : 's';
+        const mergedFacilityWord = mergedFacilityCount === 1 ? 'y' : 'ies';
+        const retriggerTitle = `Reminder: ${mergedTotal} notification${mergedNotifWord} still unread`;
+        const retriggerBody = `From ${mergedFacilityCount} facilit${mergedFacilityWord} — tap to review`;
+
+        const retriggerRunId = `retrigger_${now.getTime()}_${userId}`;
+        const retriggerRef = db.collection('NotificationDigests').doc(userId).collection('items').doc();
+        const retriggerBatch = db.batch();
+        retriggerBatch.set(retriggerRef, {
+          userId,
+          runId: retriggerRunId,
+          createdAt: FieldValue.serverTimestamp(),
+          kind: 'retrigger',
+          title: retriggerTitle,
+          body: retriggerBody,
+          totalCount: mergedTotal,
+          facilityCount: mergedFacilityCount,
+          facilities: mergedFacilities,
+          sourceNotificationRefs: [],
+          fcmSent: true,
+          fcmMessageIds: [],
+          deliveredAt: null,
+          readAt: null,
+          reTriggerCount: 0,
+          lastReTriggeredAt: null,
+          supersededByDigestId: null,
+        });
+        for (const doc of staleDocs) {
+          retriggerBatch.update(doc.ref, {
+            reTriggerCount: FieldValue.increment(1),
+            lastReTriggeredAt: FieldValue.serverTimestamp(),
+            supersededByDigestId: retriggerRef.id,
+          });
+        }
+        await retriggerBatch.commit();
+
+        const retriggerSendResult = await sendNotificationInternal(
+          {
+            title: retriggerTitle,
+            body: retriggerBody,
+            notificationId: null,
+            priority: 'normal',
+            data: { type: 'digest', runId: retriggerRunId },
+          },
+          [userId],
+        );
+        await logDelivery({
+          kind: 'retrigger',
+          title: retriggerTitle,
+          body: retriggerBody,
+          result: retriggerSendResult,
+          runId: retriggerRunId,
+        });
+        usersRetriggered += 1;
+      }
+
+      console.log(`checkDueNotifications complete: digest=${totalCount > 0}, usersRetriggered=${usersRetriggered}`);
       return null;
     } catch (error) {
       console.error('Error in checkDueNotifications:', error);
@@ -637,6 +888,192 @@ exports.onTestNotificationCreated = onDocumentCreated('CustomNotifications/{noti
     });
   }
 });
+
+// Fans out a facility-scoped custom notification (facilities/{facilityId}/notifications doc
+// with type=='custom') to every JV Almacis contractor user's digest and sends FCM immediately —
+// unlike due/alert digests, a custom notification is a deliberate, human-authored single
+// message, so it delivers right away instead of waiting for the next hourly digest run.
+exports.onCustomNotificationCreated = onDocumentCreated(
+  'facilities/{facilityId}/notifications/{notificationId}',
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+    const notification = snapshot.data();
+    if (notification.type !== 'custom') return;
+
+    try {
+      const usersSnapshot = await db
+        .collection('Users')
+        .where('organization', '==', 'JV Almacis')
+        .where('notificationsEnabled', '!=', false)
+        .get();
+      const targetUsers = usersSnapshot.docs.map((doc) => doc.id);
+      if (targetUsers.length === 0) return;
+
+      const { facilityId, notificationId } = event.params;
+      const facilityDoc = await db.collection('Facilities').doc(facilityId).get();
+      const facilityName = facilityDoc.exists ? (facilityDoc.data().name || 'your facility') : 'your facility';
+      const customRunId = `custom_${notificationId}`;
+
+      for (const userIdBatch of chunk(targetUsers, 450)) {
+        const digestBatch = db.batch();
+        for (const userId of userIdBatch) {
+          const digestRef = db.collection('NotificationDigests').doc(userId).collection('items').doc();
+          digestBatch.set(digestRef, {
+            userId,
+            runId: customRunId,
+            createdAt: FieldValue.serverTimestamp(),
+            kind: 'custom',
+            title: notification.title,
+            body: notification.body,
+            totalCount: 1,
+            facilityCount: 1,
+            facilities: [{
+              facilityId, facilityName, count: 1, items: [],
+            }],
+            sourceNotificationRefs: [{ facilityId, notificationId }],
+            fcmSent: true,
+            fcmMessageIds: [],
+            deliveredAt: null,
+            readAt: null,
+            reTriggerCount: 0,
+            lastReTriggeredAt: null,
+            supersededByDigestId: null,
+          });
+        }
+        await digestBatch.commit();
+      }
+
+      const result = await sendNotificationInternal(
+        {
+          title: notification.title,
+          body: notification.body,
+          notificationId: null,
+          priority: notification.priority || 'normal',
+          data: { type: 'digest', facilityId, runId: customRunId },
+        },
+        targetUsers,
+      );
+      await logDelivery({
+        kind: 'custom', title: notification.title, body: notification.body, result, runId: customRunId,
+      });
+
+      await snapshot.ref.update({ sentCount: result.sentCount, failedCount: result.failedCount });
+    } catch (error) {
+      console.error(`Error fanning out custom notification ${event.params.notificationId}:`, error);
+    }
+  },
+);
+
+// Sends a test push directly to the calling user's own device(s). Replaces the old client-side
+// direct-FCM-HTTP path, which bundled a Firebase service-account JSON inside the app — a real
+// credential-exposure risk (a decompiled app leaks push-send credentials for the whole project).
+// No persistent Firestore doc is needed; this purely verifies delivery end-to-end.
+exports.sendTestNotification = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const title = 'Test Notification';
+  const body = 'This is a test notification from the CMMS system.';
+  const testRunId = `test_${Date.now()}_${request.auth.uid}`;
+
+  try {
+    const result = await sendNotificationInternal(
+      {
+        title, body, notificationId: null, priority: 'normal', data: { type: 'test', runId: testRunId },
+      },
+      [request.auth.uid],
+    );
+    await logDelivery({
+      kind: 'test', title, body, result, runId: testRunId,
+    });
+
+    // Also write a digest item for the caller, same as every other notification kind — this is
+    // what makes the test push actually visible in-app (floating banner / notifications screen /
+    // tray grouping) rather than relying solely on the OS push, which a foregrounded web tab
+    // never auto-displays (Chrome/web only auto-shows a notification for *background* pushes;
+    // a page that's open and focused only gets the onMessage JS event, which this app previously
+    // no-op'd on web).
+    await db.collection('NotificationDigests').doc(request.auth.uid).collection('items').add({
+      userId: request.auth.uid,
+      runId: testRunId,
+      createdAt: FieldValue.serverTimestamp(),
+      kind: 'test',
+      title,
+      body,
+      totalCount: 1,
+      facilityCount: 0,
+      facilities: [],
+      sourceNotificationRefs: [],
+      fcmSent: result.sentCount > 0,
+      fcmMessageIds: [],
+      deliveredAt: null,
+      readAt: null,
+      reTriggerCount: 0,
+      lastReTriggeredAt: null,
+      supersededByDigestId: null,
+    });
+
+    return result;
+  } catch (error) {
+    console.error('Error sending test notification:', error);
+    throw new HttpsError('internal', error.message);
+  }
+});
+
+// Replaces cleanupExpiredNotifications for the consolidated pipeline: deletes NotificationDigests
+// items older than 90 days. facilities/{id}/notifications audit docs are intentionally left
+// alone — they're the maintenance history record, not a delivery queue, so they don't expire.
+exports.cleanupOldDigests = onSchedule(
+  {
+    schedule: '30 2 * * *',
+    timeZone: 'Africa/Nairobi',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+  },
+  async () => {
+    try {
+      const cutoff = Timestamp.fromDate(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000));
+      const usersSnapshot = await db.collection('Users').where('organization', '==', 'JV Almacis').get();
+
+      let deleted = 0;
+      for (const userDoc of usersSnapshot.docs) {
+        const oldSnap = await db
+          .collection('NotificationDigests').doc(userDoc.id).collection('items')
+          .where('createdAt', '<', cutoff)
+          .limit(400)
+          .get();
+        if (!oldSnap.empty) {
+          const batch = db.batch();
+          oldSnap.docs.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+          deleted += oldSnap.docs.length;
+        }
+      }
+
+      const oldLogsSnap = await db
+        .collection('NotificationDeliveryLogs')
+        .where('createdAt', '<', cutoff)
+        .limit(400)
+        .get();
+      if (!oldLogsSnap.empty) {
+        const logsBatch = db.batch();
+        oldLogsSnap.docs.forEach((doc) => logsBatch.delete(doc.ref));
+        await logsBatch.commit();
+      }
+
+      console.log(
+        `cleanupOldDigests: deleted ${deleted} digest items and ${oldLogsSnap.size} `
+        + 'delivery logs older than 90 days',
+      );
+      return null;
+    } catch (error) {
+      console.error('Error in cleanupOldDigests:', error);
+      return null;
+    }
+  },
+);
 
 // One-time backfill of legacy global Maintenance_Tasks/TaskProgress into a facility's
 // facilities/{facilityId}/preventive_maintenance subcollection. See functions/migrations/

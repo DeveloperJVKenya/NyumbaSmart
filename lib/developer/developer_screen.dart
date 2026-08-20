@@ -1,8 +1,8 @@
 import 'package:cmms/developer/collection_detail_screen.dart';
 import 'package:cmms/developer/maintenance_tasks_screen.dart';
+import 'package:cmms/notifications/screens/notification_delivery_stats_screen.dart';
 import 'package:cmms/notifications/screens/system_notifications_screen.dart';
 import 'package:cmms/notifications/screens/test_notification_screen.dart';
-import 'package:cmms/config/service_account_setup_screen.dart';
 import 'package:flutter/material.dart';
 
 class DeveloperScreen extends StatefulWidget {
@@ -39,41 +39,6 @@ class DeveloperScreenState extends State<DeveloperScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Firebase Configuration Section
-                  Card(
-                    elevation: 4,
-                    margin: const EdgeInsets.only(bottom: 20),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Firebase Configuration',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blueGrey,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 10),
-                          ListTile(
-                            leading: const Icon(Icons.security, color: Colors.green),
-                            title: const Text('FCM Service Account Setup'),
-                            subtitle: const Text('Configure Firebase Cloud Messaging credentials'),
-                            trailing: const Icon(Icons.arrow_forward_ios),
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ServiceAccountSetupScreen(),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
                   const Text(
                     'Firestore Collections',
                     style: TextStyle(
@@ -205,6 +170,17 @@ class DeveloperScreenState extends State<DeveloperScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const TestNotificationScreen(),
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.query_stats_rounded, color: Colors.blueGrey),
+                    title: const Text('Delivery & Recipients'),
+                    subtitle: const Text('Who received each system, custom, and test notification'),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const NotificationDeliveryStatsScreen(),
                       ),
                     ),
                   ),

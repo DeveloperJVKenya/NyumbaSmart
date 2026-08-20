@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/models/preventive_maintenance_task.dart';
-import 'package:cmms/notifications/services/notification_persistence_service.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:cmms/notifications/screens/system_notifications_screen.dart';
 import 'package:cmms/services/pm_scheduling_service.dart';
@@ -28,7 +27,6 @@ class PreventiveMaintenanceScreen extends StatefulWidget {
 
 class _PreventiveMaintenanceScreenState extends State<PreventiveMaintenanceScreen> {
   final Logger _logger = Logger(printer: PrettyPrinter());
-  final NotificationPersistenceService _persistenceService = NotificationPersistenceService();
   final NotificationService _notificationService = NotificationService();
 
   String? _selectedCategory;
@@ -47,7 +45,6 @@ class _PreventiveMaintenanceScreenState extends State<PreventiveMaintenanceScree
         .collection('preventive_maintenance')
         .snapshots();
     _notificationService.initialize();
-    _persistenceService.initialize();
     _getCurrentUserRole();
   }
 
@@ -90,15 +87,15 @@ class _PreventiveMaintenanceScreenState extends State<PreventiveMaintenanceScree
   }
 
   Future<void> _navigateToNotifications() async {
-    await _persistenceService.markAllAsRead();
     if (mounted) {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const SystemNotificationsScreen()));
     }
   }
 
   Stream<int> _getUnreadNotificationCountStream() {
-    return Stream.periodic(const Duration(seconds: 5), (_) async => _persistenceService.getUnreadCount())
-        .asyncMap((future) => future);
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return Stream.value(0);
+    return _notificationService.watchUnreadCount(userId);
   }
 
   @override

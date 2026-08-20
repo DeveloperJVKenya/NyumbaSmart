@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
+import 'package:cmms/theme/app_theme.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -13,7 +14,7 @@ class NotificationSettingsScreen extends StatefulWidget {
 class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
   final Logger _logger = Logger(printer: PrettyPrinter());
   final NotificationService _notificationService = NotificationService();
-  
+
   bool _notificationsEnabled = true;
   bool _soundEnabled = true;
   bool _vibrationEnabled = true;
@@ -44,156 +45,58 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       }
     } catch (e) {
       _logger.e('Error loading settings: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _updateNotificationsEnabled(bool enabled) async {
     try {
       await _notificationService.setNotificationsEnabled(enabled);
-      setState(() {
-        _notificationsEnabled = enabled;
-      });
-      _showSnackBar(
-        enabled 
-            ? 'Notifications enabled'
-            : 'Notifications disabled',
-        enabled ? Colors.green : Colors.orange,
-      );
+      setState(() => _notificationsEnabled = enabled);
+      _showSnackBar(enabled ? 'Notifications enabled' : 'Notifications disabled', enabled ? AppColors.success : AppColors.warning);
     } catch (e) {
       _logger.e('Error updating notifications enabled: $e');
-      _showSnackBar('Error updating notification settings: $e', Colors.red);
+      _showSnackBar('Error updating notification settings: $e', AppColors.error);
     }
   }
 
   Future<void> _updateSoundEnabled(bool enabled) async {
     try {
       await _notificationService.setSoundEnabled(enabled);
-      setState(() {
-        _soundEnabled = enabled;
-      });
-      _showSnackBar(
-        enabled 
-            ? 'Notification sound enabled'
-            : 'Notification sound disabled',
-        enabled ? Colors.green : Colors.orange,
-      );
-      
-      // Play test sound if enabled
-      if (enabled) {
-        await _notificationService.triggerTestNotification(
-          customTitle: 'Sound Test',
-          customBody: 'This is a sound test notification',
-          targetAudience: 'self',
-        );
-      }
+      setState(() => _soundEnabled = enabled);
+      _showSnackBar(enabled ? 'Notification sound enabled' : 'Notification sound disabled', enabled ? AppColors.success : AppColors.warning);
     } catch (e) {
       _logger.e('Error updating sound setting: $e');
-      _showSnackBar('Error updating sound setting: $e', Colors.red);
+      _showSnackBar('Error updating sound setting: $e', AppColors.error);
     }
   }
 
   Future<void> _updateVibrationEnabled(bool enabled) async {
     try {
       await _notificationService.setVibrationEnabled(enabled);
-      setState(() {
-        _vibrationEnabled = enabled;
-      });
-      _showSnackBar(
-        enabled 
-            ? 'Notification vibration enabled'
-            : 'Notification vibration disabled',
-        enabled ? Colors.green : Colors.orange,
-      );
-      
-      // Test vibration if enabled
-      if (enabled) {
-        await _notificationService.triggerTestNotification(
-          customTitle: 'Vibration Test',
-          customBody: 'This is a vibration test notification',
-          targetAudience: 'self',
-        );
-      }
+      setState(() => _vibrationEnabled = enabled);
+      _showSnackBar(enabled ? 'Notification vibration enabled' : 'Notification vibration disabled', enabled ? AppColors.success : AppColors.warning);
     } catch (e) {
       _logger.e('Error updating vibration setting: $e');
-      _showSnackBar('Error updating vibration setting: $e', Colors.red);
+      _showSnackBar('Error updating vibration setting: $e', AppColors.error);
     }
   }
 
   Future<void> _updateScreenWakeEnabled(bool enabled) async {
     try {
       await _notificationService.setScreenWakeEnabled(enabled);
-      setState(() {
-        _screenWakeEnabled = enabled;
-      });
-      _showSnackBar(
-        enabled 
-            ? 'Screen wake enabled for urgent notifications'
-            : 'Screen wake disabled',
-        enabled ? Colors.green : Colors.orange,
-      );
+      setState(() => _screenWakeEnabled = enabled);
+      _showSnackBar(enabled ? 'Screen wake enabled for urgent notifications' : 'Screen wake disabled', enabled ? AppColors.success : AppColors.warning);
     } catch (e) {
       _logger.e('Error updating screen wake setting: $e');
-      _showSnackBar('Error updating screen wake setting: $e', Colors.red);
-    }
-  }
-
-  Future<void> _resetNotificationCount() async {
-    try {
-      await _notificationService.resetNotificationCount();
-      _showSnackBar('Notification count reset', Colors.green);
-    } catch (e) {
-      _logger.e('Error resetting notification count: $e');
-      _showSnackBar('Error resetting notification count: $e', Colors.red);
-    }
-  }
-
-  Future<void> _clearAllNotifications() async {
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Clear All Notifications', style: GoogleFonts.poppins()),
-        content: Text(
-          'This will clear all notification data from your device. This action cannot be undone.',
-          style: GoogleFonts.poppins(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: GoogleFonts.poppins()),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text('Clear All', style: GoogleFonts.poppins()),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        await _notificationService.resetNotificationCount();
-        _showSnackBar('All notifications cleared', Colors.green);
-      } catch (e) {
-        _logger.e('Error clearing notifications: $e');
-        _showSnackBar('Error clearing notifications: $e', Colors.red);
-      }
+      _showSnackBar('Error updating screen wake setting: $e', AppColors.error);
     }
   }
 
   void _showSnackBar(String message, Color color) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message, style: GoogleFonts.poppins()),
-          backgroundColor: color,
-          duration: const Duration(seconds: 3),
-        ),
+        SnackBar(content: Text(message, style: GoogleFonts.poppins()), backgroundColor: color, duration: const Duration(seconds: 3)),
       );
     }
   }
@@ -201,323 +104,140 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: Text(
-          'Notification Settings',
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.blueGrey,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text('Notification Settings', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
+        flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Text(
-                    'Notification Preferences',
-                    style: GoogleFonts.poppins(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Configure how you receive maintenance notifications and alerts',
-                    style: GoogleFonts.poppins(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // General Settings Card
-                  Card(
-                    elevation: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = AppBreakpoints.isMobile(constraints.maxWidth);
+                return SingleChildScrollView(
+                  padding: EdgeInsets.all(isMobile ? AppSpacing.md : AppSpacing.xl),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Notification Preferences', style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                      const SizedBox(height: 6),
+                      Text('Configure how you receive maintenance notifications and alerts', style: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: 13.5)),
+                      const SizedBox(height: AppSpacing.lg),
+                      _sectionCard(
+                        icon: Icons.notifications_rounded,
+                        title: 'General',
                         children: [
-                          Row(
-                            children: [
-                              Icon(Icons.settings, color: Colors.blueGrey[700], size: 24),
-                              const SizedBox(width: 12),
-                              Text(
-                                'General Settings',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blueGrey[800],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          _buildSettingTile(
+                          _settingTile(
                             title: 'Enable Notifications',
                             subtitle: 'Receive maintenance task notifications and alerts',
                             value: _notificationsEnabled,
                             onChanged: _updateNotificationsEnabled,
-                            icon: Icons.notifications,
-                            iconColor: Colors.blue,
+                            icon: Icons.notifications_active_rounded,
                           ),
                         ],
                       ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Device Settings Card
-                  Card(
-                    elevation: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: AppSpacing.md),
+                      _sectionCard(
+                        icon: Icons.phone_android_rounded,
+                        title: 'Device',
                         children: [
-                          Row(
-                            children: [
-                              Icon(Icons.phone_android, color: Colors.blueGrey[700], size: 24),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Device Settings',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blueGrey[800],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          _buildSettingTile(
-                            title: 'Sound Notifications',
-                            subtitle: 'Play sound when notifications arrive (includes test sound)',
+                          _settingTile(
+                            title: 'Sound',
+                            subtitle: 'Play sound when notifications arrive',
                             value: _soundEnabled,
                             onChanged: _notificationsEnabled ? _updateSoundEnabled : null,
-                            icon: Icons.volume_up,
-                            iconColor: Colors.orange,
+                            icon: Icons.volume_up_rounded,
                           ),
                           const Divider(),
-                          _buildSettingTile(
+                          _settingTile(
                             title: 'Vibration',
-                            subtitle: 'Vibrate device for notifications (includes test vibration)',
+                            subtitle: 'Vibrate device for notifications',
                             value: _vibrationEnabled,
                             onChanged: _notificationsEnabled ? _updateVibrationEnabled : null,
-                            icon: Icons.vibration,
-                            iconColor: Colors.purple,
+                            icon: Icons.vibration_rounded,
                           ),
                           const Divider(),
-                          _buildSettingTile(
+                          _settingTile(
                             title: 'Screen Wake',
                             subtitle: 'Wake screen for urgent notifications and alerts',
                             value: _screenWakeEnabled,
                             onChanged: _notificationsEnabled ? _updateScreenWakeEnabled : null,
-                            icon: Icons.screen_lock_portrait,
-                            iconColor: Colors.red,
+                            icon: Icons.screen_lock_portrait_rounded,
                           ),
                         ],
                       ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Actions Card
-                  Card(
-                    elevation: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.build, color: Colors.blueGrey[700], size: 24),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Actions',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blueGrey[800],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          ListTile(
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.blue[100],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(Icons.refresh, color: Colors.blue[700]),
-                            ),
-                            title: Text(
-                              'Reset Notification Count',
-                              style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
-                            ),
-                            subtitle: Text(
-                              'Clear the notification badge count',
-                              style: GoogleFonts.poppins(fontSize: 12),
-                            ),
-                            trailing: SizedBox(
-                              width: 88,
-                              height: 36,
-                              child: ElevatedButton(
-                                onPressed: _resetNotificationCount,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue,
-                                  foregroundColor: Colors.white,
-                                  padding: EdgeInsets.zero,
-                                ),
-                                child: Text('Reset', style: GoogleFonts.poppins(fontSize: 13)),
+                      const SizedBox(height: AppSpacing.lg),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(AppRadius.md)),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.info_outline_rounded, color: AppColors.primary),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Notifications are sent 5 days before maintenance is due, with an urgent alert '
+                                '1 day before. Due tasks are checked hourly, and any unread notification is '
+                                're-sent after 4 hours. Due/alert notifications go to JV Almacis (the '
+                                'maintenance contractor); custom notifications are facility-scoped and deliver '
+                                'immediately. Delivery works whether the app is open, backgrounded, or closed.',
+                                style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textPrimary),
                               ),
                             ),
-                          ),
-                          const Divider(),
-                          ListTile(
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.red[100],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(Icons.clear_all, color: Colors.red[700]),
-                            ),
-                            title: Text(
-                              'Clear All Notifications',
-                              style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
-                            ),
-                            subtitle: Text(
-                              'Remove all notification data from device',
-                              style: GoogleFonts.poppins(fontSize: 12),
-                            ),
-                            trailing: SizedBox(
-                              width: 88,
-                              height: 36,
-                              child: ElevatedButton(
-                                onPressed: _clearAllNotifications,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  foregroundColor: Colors.white,
-                                  padding: EdgeInsets.zero,
-                                ),
-                                child: Text('Clear', style: GoogleFonts.poppins(fontSize: 13)),
-                              ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-
-                  const SizedBox(height: 24),
-
-                  // Information Card
-                  Card(
-                    elevation: 2,
-                    color: Colors.blue[50],
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.info_outline, color: Colors.blue[700]),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Enhanced Notification System',
-                                  style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue[700],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            '• System notifications are managed from the System Notifications screen\n'
-                            '• Notifications are sent 5 days before maintenance is due\n'
-                            '• Alerts are sent 1 day before maintenance is due\n'
-                            '• Sound and vibration patterns vary by priority level\n'
-                            '• All users receive notifications with read tracking\n'
-                            '• Background processing ensures notifications work when app is closed\n'
-                            '• System notifications go to JV Almacis (the maintenance contractor); custom notifications stay scoped to your organization',
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              color: Colors.blue[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
     );
   }
 
-  Widget _buildSettingTile({
+  Widget _sectionCard({required IconData icon, required String title, required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.06), blurRadius: 16, offset: const Offset(0, 8))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: AppColors.primary, size: 22),
+              const SizedBox(width: 10),
+              Text(title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _settingTile({
     required String title,
     required String subtitle,
     required bool value,
     required Function(bool)? onChanged,
     required IconData icon,
-    required Color iconColor,
-    bool isLoading = false,
   }) {
     return ListTile(
+      contentPadding: EdgeInsets.zero,
       leading: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: iconColor.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: isLoading 
-            ? SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(iconColor),
-                ),
-              )
-            : Icon(icon, color: iconColor),
+        decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppRadius.sm)),
+        child: Icon(icon, color: AppColors.primary),
       ),
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-          fontWeight: FontWeight.w500,
-          color: onChanged != null ? Colors.black87 : Colors.grey,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          color: onChanged != null ? Colors.grey[600] : Colors.grey[400],
-        ),
-      ),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
-        activeThumbColor: iconColor,
-      ),
+      title: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: onChanged != null ? AppColors.textPrimary : AppColors.textSecondary)),
+      subtitle: Text(subtitle, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+      trailing: Switch(value: value, onChanged: onChanged, activeThumbColor: AppColors.primary),
     );
   }
 }
