@@ -192,6 +192,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   children: [
                     Text(digest.title, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: digest.isRead ? FontWeight.w500 : FontWeight.w700, color: AppColors.textPrimary)),
                     const SizedBox(height: 3),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
+                      child: Text(digest.kind.label, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: accent)),
+                    ),
+                    const SizedBox(height: 5),
                     Text(digest.body, style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 6),
                     Text(DateFormat('MMM dd, yyyy · h:mm a').format(digest.createdAt), style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary.withValues(alpha: 0.8))),

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cmms/notifications/models/digest_item.dart';
+import 'package:cmms/notifications/models/engagement_stats.dart';
 import 'package:cmms/notifications/models/facility_notification.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:cmms/providers/auth_providers.dart';
@@ -33,6 +34,11 @@ final latestUnreadDigestProvider = Provider.autoDispose<DigestItem?>((ref) {
     if (!digest.isRead) return digest;
   }
   return null;
+});
+
+/// Developer/admin-only read/open engagement summary — see `NotificationService.fetchEngagementStats`.
+final engagementStatsProvider = FutureProvider.autoDispose<EngagementStats?>((ref) {
+  return ref.watch(notificationServiceProvider).fetchEngagementStats();
 });
 
 /// A facility's notification audit trail (`facilities/{facilityId}/notifications`) — used by the

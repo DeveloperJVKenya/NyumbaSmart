@@ -1075,6 +1075,92 @@ exports.cleanupOldDigests = onSchedule(
   },
 );
 
+// Daily aggregation of notification read/open engagement for the developer/admin "Engagement"
+// stats view. Reads across every user's NotificationDigests via the Admin SDK (bypasses the
+// per-user-only client rule in firestore.rules, which deliberately keeps digest content private —
+// see the comment there) but writes back counts and timings only, never titles/bodies/task
+// details, so that same privacy boundary holds for what developer/admin accounts can actually see.
+exports.aggregateNotificationEngagement = onSchedule(
+  {
+    schedule: '15 3 * * *',
+    timeZone: 'Africa/Nairobi',
+    memory: '256MiB',
+    timeoutSeconds: 300,
+  },
+  async () => {
+    try {
+      const windowDays = 30;
+      const windowStart = Timestamp.fromDate(new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000));
+      const usersSnapshot = await db.collection('Users').where('organization', '==', 'JV Almacis').get();
+
+      const byKind = {};
+      let total = 0;
+      let totalRead = 0;
+      let readDelayMinutesSum = 0;
+
+      for (const userDoc of usersSnapshot.docs) {
+        const itemsSnap = await db
+          .collection('NotificationDigests').doc(userDoc.id).collection('items')
+          .where('createdAt', '>=', windowStart)
+          .get();
+
+        for (const itemDoc of itemsSnap.docs) {
+          const data = itemDoc.data();
+          const kind = data.kind || 'due_digest';
+          if (!byKind[kind]) byKind[kind] = { total: 0, read: 0, readDelayMinutesSum: 0 };
+
+          total += 1;
+          byKind[kind].total += 1;
+
+          const { createdAt, readAt } = data;
+          if (readAt) {
+            totalRead += 1;
+            byKind[kind].read += 1;
+            if (createdAt) {
+              const delayMinutes = (readAt.toMillis() - createdAt.toMillis()) / 60000;
+              if (delayMinutes >= 0) {
+                readDelayMinutesSum += delayMinutes;
+                byKind[kind].readDelayMinutesSum += delayMinutes;
+              }
+            }
+          }
+        }
+      }
+
+      const kindBreakdown = Object.entries(byKind).map(([kind, stats]) => ({
+        kind,
+        total: stats.total,
+        read: stats.read,
+        readRate: stats.total > 0 ? stats.read / stats.total : 0,
+        avgMinutesToRead: stats.read > 0 ? stats.readDelayMinutesSum / stats.read : null,
+      }));
+
+      const summary = {
+        windowDays,
+        total,
+        totalRead,
+        readRate: total > 0 ? totalRead / total : 0,
+        avgMinutesToRead: totalRead > 0 ? readDelayMinutesSum / totalRead : null,
+        kindBreakdown,
+        computedAt: FieldValue.serverTimestamp(),
+      };
+
+      const todayKey = new Date().toISOString().slice(0, 10);
+      await db.collection('NotificationEngagementStats').doc(todayKey).set(summary);
+      await db.collection('NotificationEngagementStats').doc('latest').set(summary);
+
+      console.log(
+        `aggregateNotificationEngagement: ${total} digests, ${totalRead} read `
+        + `(${(summary.readRate * 100).toFixed(1)}%) over ${windowDays}d`,
+      );
+      return null;
+    } catch (error) {
+      console.error('Error in aggregateNotificationEngagement:', error);
+      return null;
+    }
+  },
+);
+
 // One-time backfill of legacy global Maintenance_Tasks/TaskProgress into a facility's
 // facilities/{facilityId}/preventive_maintenance subcollection. See functions/migrations/
 // backfillPreventiveMaintenance.js for details.

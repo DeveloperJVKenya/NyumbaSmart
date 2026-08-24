@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cmms/notifications/models/delivery_log.dart';
+import 'package:cmms/notifications/models/engagement_stats.dart';
 import 'package:cmms/notifications/providers/notification_providers.dart';
 import 'package:cmms/theme/app_theme.dart';
+
+enum _StatsTab { delivery, engagement }
 
 enum _KindFilter { all, system, custom, test }
 
@@ -54,6 +57,7 @@ class NotificationDeliveryStatsScreen extends ConsumerStatefulWidget {
 }
 
 class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDeliveryStatsScreen> {
+  _StatsTab _tab = _StatsTab.delivery;
   _KindFilter _filter = _KindFilter.all;
 
   @override
@@ -61,42 +65,163 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: Text('Delivery & Recipients', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text('Notification Analytics', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
       ),
-      body: StreamBuilder<List<DeliveryLog>>(
-        stream: ref.read(notificationServiceProvider).watchRecentDeliveryLogs(limit: 100),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error loading delivery logs: ${snapshot.error}', style: GoogleFonts.poppins(color: AppColors.error)));
-          }
-          final logs = snapshot.data ?? [];
-          final filtered = logs.where((l) => _filter.matches(l.kind)).toList();
-
-          return ListView(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            children: [
-              _summaryRow(logs),
-              const SizedBox(height: AppSpacing.md),
-              _filterBar(),
-              const SizedBox(height: AppSpacing.md),
-              if (filtered.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 40),
-                  child: Center(
-                    child: Text('No sends yet for this filter.', style: GoogleFonts.poppins(color: AppColors.textSecondary)),
-                  ),
-                )
-              else
-                ...filtered.map(_logCard),
-            ],
-          );
-        },
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
+            child: _tabBar(),
+          ),
+          Expanded(child: _tab == _StatsTab.delivery ? _deliveryView() : _engagementView()),
+        ],
       ),
     );
+  }
+
+  Widget _tabBar() {
+    return Row(
+      children: [
+        _tabChip('Delivery', _StatsTab.delivery),
+        const SizedBox(width: 8),
+        _tabChip('Engagement', _StatsTab.engagement),
+      ],
+    );
+  }
+
+  Widget _tabChip(String label, _StatsTab value) {
+    final selected = _tab == value;
+    return ChoiceChip(
+      label: Text(label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : AppColors.textPrimary)),
+      selected: selected,
+      onSelected: (_) => setState(() => _tab = value),
+      selectedColor: AppColors.primary,
+      backgroundColor: AppColors.surfaceAlt,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+      side: BorderSide.none,
+    );
+  }
+
+  Widget _deliveryView() {
+    return StreamBuilder<List<DeliveryLog>>(
+      stream: ref.read(notificationServiceProvider).watchRecentDeliveryLogs(limit: 100),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error loading delivery logs: ${snapshot.error}', style: GoogleFonts.poppins(color: AppColors.error)));
+        }
+        final logs = snapshot.data ?? [];
+        final filtered = logs.where((l) => _filter.matches(l.kind)).toList();
+
+        return ListView(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          children: [
+            _summaryRow(logs),
+            const SizedBox(height: AppSpacing.md),
+            _filterBar(),
+            const SizedBox(height: AppSpacing.md),
+            if (filtered.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: Text('No sends yet for this filter.', style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+                ),
+              )
+            else
+              ...filtered.map(_logCard),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _engagementView() {
+    final statsAsync = ref.watch(engagementStatsProvider);
+    return statsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) => Center(child: Text('Error loading engagement stats: $e', style: GoogleFonts.poppins(color: AppColors.error))),
+      data: (stats) {
+        if (stats == null) {
+          return Padding(
+            padding: const EdgeInsets.all(32),
+            child: Center(
+              child: Text(
+                'No engagement data yet — the daily aggregation runs each night and will populate here after its first run.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(color: AppColors.textSecondary),
+              ),
+            ),
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          children: [
+            Text(
+              'Last ${stats.windowDays} days${stats.computedAt != null ? ' · updated ${DateFormat('MMM dd, h:mm a').format(stats.computedAt!)}' : ''}',
+              style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Expanded(child: _statTile('Sent', '${stats.total}', AppColors.primary, Icons.mark_email_unread_rounded)),
+                const SizedBox(width: 8),
+                Expanded(child: _statTile('Read rate', '${(stats.readRate * 100).toStringAsFixed(0)}%', AppColors.success, Icons.visibility_rounded)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _statTile(
+                    'Avg time to read',
+                    stats.avgMinutesToRead == null ? '—' : _formatMinutes(stats.avgMinutesToRead!),
+                    AppColors.accent,
+                    Icons.timer_rounded,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text('By notification type', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            const SizedBox(height: AppSpacing.sm),
+            ...stats.kindBreakdown.map(_engagementKindCard),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _engagementKindCard(EngagementKindStat stat) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(_kindLabel(stat.kind), style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          ),
+          Text(
+            '${stat.read}/${stat.total} read (${(stat.readRate * 100).toStringAsFixed(0)}%)',
+            style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          if (stat.avgMinutesToRead != null) ...[
+            const SizedBox(width: 10),
+            Text(_formatMinutes(stat.avgMinutesToRead!), style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.accent)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _formatMinutes(double minutes) {
+    if (minutes < 60) return '${minutes.round()}m';
+    final hours = minutes / 60;
+    if (hours < 24) return '${hours.toStringAsFixed(1)}h';
+    return '${(hours / 24).toStringAsFixed(1)}d';
   }
 
   Widget _summaryRow(List<DeliveryLog> logs) {

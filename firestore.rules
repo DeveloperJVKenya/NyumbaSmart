@@ -334,6 +334,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Daily read/open engagement aggregates (counts and timings only — no notification content,
+    // preserving the same privacy boundary as NotificationDigests above). Developer/admin only;
+    // written exclusively by the aggregateNotificationEngagement Cloud Function.
+    match /NotificationEngagementStats/{doc} {
+      allow read: if isDeveloper() || isAdmin();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // Client-written proof-of-receipt: the moment a device actually gets a push (foreground or
     // native background handler), it upserts its own receipt here — separate from
     // NotificationDeliveryLogs (server-authoritative "FCM accepted it for delivery") so a

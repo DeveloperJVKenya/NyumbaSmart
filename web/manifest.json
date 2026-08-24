@@ -1,6 +1,6 @@
 {
-    "name": "cmms",
-    "short_name": "cmms",
+    "name": "NyumbaSmart",
+    "short_name": "NyumbaSmart",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

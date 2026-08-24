@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/notifications/models/digest_item.dart';
 import 'package:cmms/notifications/providers/notification_providers.dart';
+import 'package:cmms/notifications/screens/notifications_screen.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/screens/dashboard_screen.dart';
 import 'package:cmms/theme/app_theme.dart';
@@ -19,11 +22,16 @@ class FloatingNotificationWidget extends ConsumerStatefulWidget {
 }
 
 class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificationWidget> with SingleTickerProviderStateMixin {
+  static const _autoDismissDelay = Duration(seconds: 6);
+
   late final AnimationController _slideController;
   late final Animation<Offset> _slideAnimation;
 
   bool _expanded = false;
   String? _dismissedDigestId;
+
+  Timer? _autoDismissTimer;
+  String? _timerDigestId;
 
   @override
   void initState() {
@@ -36,7 +44,23 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
   @override
   void dispose() {
     _slideController.dispose();
+    _autoDismissTimer?.cancel();
     super.dispose();
+  }
+
+  // Hides the banner locally after a few seconds — it must NOT mark the digest as
+  // read, so the appbar bell badge keeps counting it until the user actually opens it.
+  void _scheduleAutoDismiss(String digestId) {
+    _autoDismissTimer?.cancel();
+    _timerDigestId = digestId;
+    _autoDismissTimer = Timer(_autoDismissDelay, () {
+      if (mounted) setState(() => _dismissedDigestId = digestId);
+    });
+  }
+
+  void _cancelAutoDismiss() {
+    _autoDismissTimer?.cancel();
+    _autoDismissTimer = null;
   }
 
   @override
@@ -44,7 +68,14 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
     final digest = ref.watch(latestUnreadDigestProvider);
 
     if (digest == null || digest.id == _dismissedDigestId) {
+      _cancelAutoDismiss();
       return const SizedBox.shrink();
+    }
+
+    // Don't restart the timer on every rebuild — only when a genuinely new digest
+    // becomes the latest unread one, and only while the user isn't mid-read (expanded).
+    if (!_expanded && _timerDigestId != digest.id) {
+      _scheduleAutoDismiss(digest.id);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -86,7 +117,7 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
           children: [
             InkWell(
               borderRadius: BorderRadius.circular(AppRadius.lg),
-              onTap: () => setState(() => _expanded = !_expanded),
+              onTap: () => _openNotifications(digest),
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Row(
@@ -112,9 +143,25 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
                         ],
                       ),
                     ),
-                    Icon(_expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: Colors.white70),
                     GestureDetector(
-                      onTap: () => setState(() => _dismissedDigestId = digest.id),
+                      onTap: () => setState(() {
+                        _expanded = !_expanded;
+                        if (_expanded) {
+                          _cancelAutoDismiss();
+                        } else {
+                          _scheduleAutoDismiss(digest.id);
+                        }
+                      }),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(_expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: Colors.white70),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        _cancelAutoDismiss();
+                        setState(() => _dismissedDigestId = digest.id);
+                      },
                       child: const Padding(
                         padding: EdgeInsets.only(left: 6),
                         child: Icon(Icons.close_rounded, color: Colors.white70, size: 18),
@@ -151,10 +198,17 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
     );
   }
 
+  void _openNotifications(DigestItem digest) {
+    _cancelAutoDismiss();
+    setState(() => _dismissedDigestId = digest.id);
+    Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen()));
+  }
+
   void _openFacility(DigestItem digest, DigestFacilityGroup facility) {
     final userId = ref.read(authStateProvider).value?.uid;
     if (userId != null) ref.read(notificationServiceProvider).markDigestRead(userId, digest.id);
 
+    _cancelAutoDismiss();
     setState(() => _dismissedDigestId = digest.id);
 
     Navigator.push(

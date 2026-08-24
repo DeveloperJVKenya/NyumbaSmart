@@ -43,6 +43,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await NotificationService().markDelivered(runId: message.data['runId']);
 }
 
+/// Module-level (not a `_MyAppState` field) so `_initializeNotificationServices` — which runs
+/// from `main()` before `MyApp` is ever built — can reference it in the tray-tap navigation
+/// callback without waiting for widget construction.
+final navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -50,7 +55,10 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   if (!kIsWeb) {
-    const androidInitializationSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
+    // A dedicated white-on-transparent silhouette, not the full-color launcher icon — Android
+    // renders the status-bar/notification small icon using only its alpha channel (API 21+), so
+    // an opaque launcher icon there shows up as a solid gray blob instead of a recognizable shape.
+    const androidInitializationSettings = AndroidInitializationSettings('ic_stat_notify');
     const iosInitializationSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -81,7 +89,9 @@ Future<void> _initializeNotificationServices() async {
   final logger = Logger();
   try {
     await NotificationService().initialize();
-    await SystemTrayNotificationService().initialize();
+    await SystemTrayNotificationService().initialize(
+      onTap: () => navigatorKey.currentState?.pushNamed('/notification-status'),
+    );
     logger.i('Notification services initialized');
   } catch (e) {
     logger.e('Error initializing notification services: $e');
@@ -96,7 +106,6 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   final Logger _logger = Logger();
 
   @override

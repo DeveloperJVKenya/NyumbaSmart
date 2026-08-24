@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/models/preventive_maintenance_task.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
-import 'package:cmms/notifications/screens/system_notifications_screen.dart';
 import 'package:cmms/services/pm_scheduling_service.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 
@@ -86,18 +85,6 @@ class _PreventiveMaintenanceScreenState extends State<PreventiveMaintenanceScree
     }
   }
 
-  Future<void> _navigateToNotifications() async {
-    if (mounted) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const SystemNotificationsScreen()));
-    }
-  }
-
-  Stream<int> _getUnreadNotificationCountStream() {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return Stream.value(0);
-    return _notificationService.watchUnreadCount(userId);
-  }
-
   @override
   Widget build(BuildContext context) {
     return ResponsiveScreenWrapper(
@@ -105,39 +92,6 @@ class _PreventiveMaintenanceScreenState extends State<PreventiveMaintenanceScree
       facilityId: widget.facilityId,
       currentRole: _currentRole,
       organization: _organization,
-      actions: [
-        if (_currentRole == 'Developer' || _currentRole == 'Admin')
-          StreamBuilder<int>(
-            stream: _getUnreadNotificationCountStream(),
-            builder: (context, snapshot) {
-              final unreadCount = snapshot.data ?? 0;
-              return Stack(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_active, color: Colors.white),
-                    onPressed: _navigateToNotifications,
-                    tooltip: 'System Notifications',
-                  ),
-                  if (unreadCount > 0)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                        constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                        child: Text(
-                          unreadCount > 99 ? '99+' : '$unreadCount',
-                          style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-      ],
       child: _buildBody(),
     );
   }

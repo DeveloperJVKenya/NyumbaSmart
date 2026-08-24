@@ -21,16 +21,24 @@ class SystemTrayNotificationService {
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
 
-  Future<void> initialize() async {
+  /// [onTap] fires when the user taps a foreground-shown tray notification —
+  /// previously nothing was wired up here at all, so those taps silently did
+  /// nothing. Callers pass a navigation callback (see main.dart).
+  Future<void> initialize({void Function()? onTap}) async {
     if (_isInitialized || kIsWeb) return;
     try {
-      const androidSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
+      // See lib/main.dart's matching comment: this must be the monochrome ic_stat_notify
+      // silhouette, not the launcher icon, or Android renders it as a gray blob.
+      const androidSettings = AndroidInitializationSettings('ic_stat_notify');
       const iosSettings = DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
         requestSoundPermission: true,
       );
-      await _plugin.initialize(settings: const InitializationSettings(android: androidSettings, iOS: iosSettings));
+      await _plugin.initialize(
+        settings: const InitializationSettings(android: androidSettings, iOS: iosSettings),
+        onDidReceiveNotificationResponse: (response) => onTap?.call(),
+      );
       _isInitialized = true;
       _logger.i('SystemTrayNotificationService initialized');
     } catch (e) {

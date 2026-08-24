@@ -72,6 +72,23 @@ class NotificationDetailScreen extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
+                child: Text(digest.kind.label, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: accent)),
+              ),
+              if (isUrgent)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
+                  child: Text('Urgent', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.error)),
+                ),
+            ],
+          ),
           const SizedBox(height: 12),
           Text(digest.body, style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textSecondary)),
           const SizedBox(height: 12),
@@ -123,6 +140,13 @@ class NotificationDetailScreen extends StatelessWidget {
                       children: [
                         Text('${item.category} — ${item.component}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                         Text(item.intervention, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
+                        if (item.dueDate != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            '${item.isAlert ? 'Alert for' : 'Due'} ${DateFormat('MMM dd, yyyy').format(item.dueDate!)}',
+                            style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: item.isAlert ? AppColors.error : AppColors.primary),
+                          ),
+                        ],
                       ],
                     ),
                   ),

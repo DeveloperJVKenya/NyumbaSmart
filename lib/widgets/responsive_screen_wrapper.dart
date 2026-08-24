@@ -21,6 +21,7 @@ import 'package:cmms/display%20screens/kpi_screen.dart';
 import 'package:cmms/display%20screens/report_screen.dart';
 import 'package:cmms/screens/settings_screen.dart';
 import 'package:cmms/developer/developer_screen.dart';
+import 'package:cmms/notifications/widgets/notification_bell_action.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/models/user_model.dart';
 import 'package:cmms/theme/app_theme.dart';
@@ -130,7 +131,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
                 icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                 onPressed: () => Navigator.pop(context),
               ),
-        actions: widget.actions,
+        actions: [const NotificationBellAction(), ...?widget.actions],
       ),
       drawer: isMobile ? _buildDrawer(currentRole, organization, isDeveloper, isClient, isMobile) : null,
       body: Row(

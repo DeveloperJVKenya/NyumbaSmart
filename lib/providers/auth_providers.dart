@@ -62,6 +62,17 @@ class RoleService {
   /// Live role/organization for [uid]. Any Admin/Technician/Developer/Users
   /// collection write for this uid propagates automatically, matching the
   /// previous multi-listener behavior in dashboard_screen.dart.
+  ///
+  /// Deliberately does NOT self-heal on every emission: an assign/remove
+  /// batch writes two documents (a role collection + `Users/{uid}`) that are
+  /// two independent Firestore listeners here, so they can arrive out of
+  /// order. Self-healing on each transient combination previously caused a
+  /// write-back-into-own-input feedback loop (the write re-triggers the
+  /// `Users` listener, re-triggering this stream, potentially self-healing
+  /// again) that showed up as continuous role flicker, including cases where
+  /// it settled on a stale/reverted role. `resolveOnce` remains the only
+  /// self-heal path. `debounceTime` lets a batch's two listener updates
+  /// settle before resolving; `distinct` skips re-emitting an unchanged role.
   Stream<UserRoleInfo> watch(String uid) {
     final admins = _firestore.collection('Admins').doc(uid).snapshots();
     final developers = _firestore.collection('Developers').doc(uid).snapshots();
@@ -80,10 +91,12 @@ class RoleService {
         technicianDoc: technicianDoc,
         userDoc: userDoc,
       ),
-    ).asyncMap((info) async {
-      await _selfHeal(uid, info);
-      return info;
-    });
+    )
+        .debounceTime(const Duration(milliseconds: 300))
+        .distinct((prev, next) =>
+            prev.role == next.role &&
+            prev.organization == next.organization &&
+            prev.isDeveloper == next.isDeveloper);
   }
 
   /// One-shot resolution (used right after sign-in/sign-up, before the

@@ -8,6 +8,7 @@ import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cmms/notifications/models/delivery_log.dart';
 import 'package:cmms/notifications/models/digest_item.dart';
+import 'package:cmms/notifications/models/engagement_stats.dart';
 import 'package:cmms/notifications/models/facility_notification.dart';
 
 /// Thin, singleton wrapper around the consolidated notifications pipeline: per-user digests
@@ -108,7 +109,9 @@ class NotificationService {
   /// the system tray fallback) never disagrees with what FCM itself filed the push under.
   Future<void> _createNotificationChannels() async {
     if (kIsWeb) return;
-    const androidSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
+    // See lib/main.dart's matching comment: this must be the monochrome ic_stat_notify
+    // silhouette, not the launcher icon, or Android renders it as a gray blob.
+    const androidSettings = AndroidInitializationSettings('ic_stat_notify');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -274,6 +277,17 @@ class NotificationService {
     if (data == null) return null;
     final deliveredAt = data['deliveredAt'];
     return deliveredAt is Timestamp ? deliveredAt.toDate() : null;
+  }
+
+  // ---- Read/open engagement stats (NotificationEngagementStats) — developer/admin only ----
+
+  /// The latest daily read/open engagement summary, written by the
+  /// `aggregateNotificationEngagement` Cloud Function. Null before the function's first run, or
+  /// if the doc doesn't exist yet for a fresh environment.
+  Future<EngagementStats?> fetchEngagementStats() async {
+    final doc = await _firestore.collection('NotificationEngagementStats').doc('latest').get();
+    if (!doc.exists) return null;
+    return EngagementStats.fromFirestore(doc);
   }
 
   // ---- Local preferences ----

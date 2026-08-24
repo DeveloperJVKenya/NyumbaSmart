@@ -76,6 +76,23 @@ extension DigestKindExtension on DigestKind {
         return DigestKind.dueDigest;
     }
   }
+
+  /// Plain-language type label shown on notification cards/detail so a user can tell at a
+  /// glance what kind of notification this is, not just its icon color.
+  String get label {
+    switch (this) {
+      case DigestKind.dueDigest:
+        return 'Due Reminder';
+      case DigestKind.alertDigest:
+        return 'Urgent Alert';
+      case DigestKind.retrigger:
+        return 'Re-trigger';
+      case DigestKind.custom:
+        return 'Custom';
+      case DigestKind.test:
+        return 'Test';
+    }
+  }
 }
 
 /// A single push actually sent to one user — the WhatsApp-style grouped digest unit, stored at
