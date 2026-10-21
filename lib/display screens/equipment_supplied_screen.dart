@@ -120,17 +120,16 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   Future<void> _uploadAttachment() async {
     try {
       _logger.i('Picking attachment file');
-      final result = await FilePicker.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'png', 'docx'],
       );
 
-      if (result == null || result.files.isEmpty) {
+      if (file == null) {
         if (mounted) _showSnackBar('No file selected');
         return;
       }
 
-      final file = result.files.first;
       if (!['pdf', 'jpg', 'png', 'docx'].contains(file.extension)) {
         if (mounted) _showSnackBar('Please select a PDF, JPG, PNG, or DOCX file');
         return;

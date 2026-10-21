@@ -125,13 +125,12 @@ class _BillingScreenState extends State<BillingScreen> {
     }
 
     try {
-      final result = await FilePicker.pickFiles(
+      final platformFile = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'pptx', 'txt'],
       );
-      if (result == null || result.files.isEmpty) return;
+      if (platformFile == null) return;
 
-      final platformFile = result.files.single;
       final fileName = platformFile.name;
       final user = FirebaseAuth.instance.currentUser;
 
@@ -288,17 +287,16 @@ class _BillingScreenState extends State<BillingScreen> {
 
     try {
       logger.i('Starting document upload for facilityId: ${widget.facilityId}');
-      final result = await FilePicker.pickFiles(
+      final platformFile = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
       );
-      if (result == null || result.files.isEmpty) {
+      if (platformFile == null) {
         logger.w('No file selected');
         if (mounted) _showSnackBar('No file selected');
         return;
       }
 
-      final platformFile = result.files.single;
       final fileName = platformFile.name;
       final user = FirebaseAuth.instance.currentUser;
 

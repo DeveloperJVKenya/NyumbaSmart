@@ -235,12 +235,11 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
   }
 
   Future<void> _pickAndUpload({required bool isReplace}) async {
-    final result = await FilePicker.pickFiles(
+    final platformFile = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['xlsx', 'pdf'],
     );
-    if (result == null || result.files.isEmpty) return;
-    final platformFile = result.files.single;
+    if (platformFile == null) return;
     final fileName = platformFile.name;
     final isExcel = ScopeOfWorkSourceTypeExtension.fromFileName(fileName) == ScopeOfWorkSourceType.excel;
 

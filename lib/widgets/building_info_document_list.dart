@@ -533,13 +533,12 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
 
   Future<void> _pickAndUpload(String titleInput, String category) async {
     try {
-      final result = await FilePicker.pickFiles(
+      final platformFile = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: widget.allowedExtensions,
       );
-      if (result == null || result.files.isEmpty) return;
+      if (platformFile == null) return;
 
-      final platformFile = result.files.single;
       final fileName = platformFile.name;
       final user = FirebaseAuth.instance.currentUser;
 
@@ -587,7 +586,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
         'uploadedAt': FieldValue.serverTimestamp(),
         'facilityId': widget.facilityId,
         'category': category,
-        'fileSize': platformFile.size,
+        'fileSize': await platformFile.length(),
         'platform': kIsWeb ? 'web' : Platform.operatingSystem,
         ...?widget.extraUploadFields?.call(fileName),
       });

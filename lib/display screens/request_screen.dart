@@ -486,17 +486,16 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
   Future<void> _uploadDocumentAttachment() async {
     try {
       _logger.i('Picking document attachment');
-      final result = await FilePicker.pickFiles(
+      final platformFile = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'docx', 'doc', 'txt'],
       );
 
-      if (result == null || result.files.isEmpty) {
+      if (platformFile == null) {
         _logger.w('No document selected');
         return;
       }
 
-      final platformFile = result.files.single;
       final fileBytes = await platformFile.readAsBytes();
 
       await _processAndUploadFile(platformFile.name, fileBytes);

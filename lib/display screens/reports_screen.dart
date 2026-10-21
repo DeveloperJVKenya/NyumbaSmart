@@ -93,13 +93,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _uploadDocument() async {
     try {
-      final result = await FilePicker.pickFiles(
+      final platformFile = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
       );
-      if (result == null || result.files.isEmpty) return;
+      if (platformFile == null) return;
 
-      final platformFile = result.files.single;
       final fileName = platformFile.name;
       final user = FirebaseAuth.instance.currentUser;
       
