@@ -10,6 +10,7 @@ import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/work_order.dart';
+import 'package:cmms/widgets/equipment_picker_field.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
@@ -19,7 +20,12 @@ import 'package:cmms/utils/file_download_helper.dart';
 
 class WorkOrderScreen extends StatefulWidget {
   final String facilityId;
-  const WorkOrderScreen({super.key, required this.facilityId});
+
+  /// When set (e.g. "New work order" from an equipment card or the 3D viewer), the create form
+  /// opens straight away with this equipment already chosen.
+  final EquipmentRef? initialEquipment;
+
+  const WorkOrderScreen({super.key, required this.facilityId, this.initialEquipment});
 
   @override
   State<WorkOrderScreen> createState() => _WorkOrderScreenState();
@@ -42,6 +48,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
   String? _selectedRequestId;
   String? _selectedTechnicianId;
   String? _selectedTechnicianEmail;
+  EquipmentRef? _selectedEquipment;
   final List<Map<String, String>> _attachmentUrls = [];
   bool _showForm = false;
   String _currentRole = 'User';
@@ -80,6 +87,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _getCurrentUserInfo();
+    if (widget.initialEquipment != null) {
+      _selectedEquipment = widget.initialEquipment;
+      _showForm = true;
+    }
     _logger.i('WorkOrderScreen initialized: facilityId=${widget.facilityId}');
   }
 
@@ -300,12 +311,25 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
           ],
           clientStatus: 'To be Reviewed',
           clientNotes: '',
+          equipmentId: _selectedEquipment?.id,
+          equipmentName: _selectedEquipment?.name,
+          spaceId: _selectedEquipment?.spaceId,
         );
 
         await FirebaseFirestore.instance
             .collection('Work_Orders')
             .doc(workOrderId)
             .set(workOrder.toMap());
+
+        if (_selectedEquipment != null) {
+          await appendEquipmentHistory(
+            facilityId: widget.facilityId,
+            equipmentId: _selectedEquipment!.id,
+            action: 'Work order opened: ${_titleController.text}',
+            notes: _descriptionController.text,
+            userId: user.uid,
+          );
+        }
 
         // Update the related request if selected
         if (_selectedRequestId != null) {
@@ -324,6 +348,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
             _selectedRequestId = null;
             _selectedTechnicianId = null;
             _selectedTechnicianEmail = null;
+            _selectedEquipment = null;
             _showForm = false;
             _isSubmitting = false;
           });
@@ -711,10 +736,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
 
       _logger.i('Updating status: docId=$docId, newStatus=$newStatus');
 
-      await FirebaseFirestore.instance
-          .collection('Work_Orders')
-          .doc(docId)
-          .update({
+      final workOrderRef = FirebaseFirestore.instance.collection('Work_Orders').doc(docId);
+      await workOrderRef.update({
         'status': newStatus,
         'history': FieldValue.arrayUnion([
           {
@@ -727,6 +750,21 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
           }
         ]),
       });
+
+      // Record progress on the linked equipment so its history shows the work done on it.
+      if (newStatus == 'Completed' || newStatus == 'In Progress') {
+        final data = (await workOrderRef.get()).data();
+        final equipmentId = data?['equipmentId'] as String?;
+        if (equipmentId != null) {
+          await appendEquipmentHistory(
+            facilityId: widget.facilityId,
+            equipmentId: equipmentId,
+            action: 'Work order ${newStatus == 'Completed' ? 'completed' : 'started'}: ${data?['title'] ?? ''}',
+            notes: notes,
+            userId: user.uid,
+          );
+        }
+      }
 
       if (mounted) _showSnackBar('Status updated to $newStatus');
     } catch (e) {
@@ -1473,7 +1511,9 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
             ),
             const SizedBox(height: 12),
             _buildDetailRow('Description', workOrder.description, fontSize, isMobile),
-                      
+            if (workOrder.equipmentName != null)
+              _buildDetailRow('Equipment', workOrder.equipmentName!, fontSize, isMobile),
+
             // Show "Assigned To" and "Created By" only to JV Almacis users
             if (_isJVAlmacisUser) ...[
               // Use FutureBuilder to fetch username for Assigned To
@@ -2410,6 +2450,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
                       children: [
                         _buildRequestField(fontSizeSubtitle),
                         const SizedBox(height: 16),
+                        _buildEquipmentField(fontSizeSubtitle),
+                        const SizedBox(height: 16),
                         _buildTextField(_titleController, 'Title', fontSizeSubtitle, validator: (value) => value!.isEmpty ? 'Enter a title' : null),
                         const SizedBox(height: 16),
                         _buildTextField(_descriptionController, 'Description', fontSizeSubtitle, maxLines: 3),
@@ -2430,6 +2472,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
                             Expanded(child: _buildTextField(_titleController, 'Title', fontSizeSubtitle, validator: (value) => value!.isEmpty ? 'Enter a title' : null)),
                           ],
                         ),
+                        const SizedBox(height: 16),
+                        _buildEquipmentField(fontSizeSubtitle),
                         const SizedBox(height: 16),
                         Row(
                           children: [
@@ -2550,6 +2594,15 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
     );
   }
 
+  Widget _buildEquipmentField(double fontSize) {
+    return EquipmentPickerField(
+      facilityId: widget.facilityId,
+      value: _selectedEquipment,
+      fontSize: fontSize,
+      onChanged: (v) => setState(() => _selectedEquipment = v),
+    );
+  }
+
   Widget _buildRequestField(double fontSize) {
     return TextFormField(
       controller: TextEditingController(text: _selectedRequestId != null ? "Selected Request" : ""),
@@ -2650,6 +2703,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
                             _titleController.text = data['title'] ?? '';
                             _descriptionController.text = data['description'] ?? '';
                             _priority = data['priority'] ?? 'Medium';
+                            // Carry the request's equipment over, unless one was already chosen.
+                            if (_selectedEquipment == null && data['equipmentId'] != null) {
+                              _selectedEquipment = EquipmentRef(
+                                id: data['equipmentId'] as String,
+                                name: (data['equipmentName'] as String?) ?? 'Equipment',
+                                spaceId: data['spaceId'] as String?,
+                              );
+                            }
                           });
                           Navigator.pop(context);
                         },

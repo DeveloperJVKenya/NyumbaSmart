@@ -1,12 +1,48 @@
+rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
-    
+
+    // --- Helpers (read the same Firestore data your firestore.rules use) ---
+    function isDev() {
+      return firestore.exists(/databases/(default)/documents/Developers/$(request.auth.uid));
+    }
+    function isAdminUser() {
+      return firestore.exists(/databases/(default)/documents/Admins/$(request.auth.uid)) ||
+        (firestore.exists(/databases/(default)/documents/Users/$(request.auth.uid)) &&
+          firestore.get(/databases/(default)/documents/Users/$(request.auth.uid)).data.role == 'Admin');
+    }
+    function userOrg() {
+      return firestore.get(/databases/(default)/documents/Users/$(request.auth.uid)).data.organization;
+    }
+    function canAccessFacility(facilityId) {
+      return request.auth != null && (
+        isDev() ||
+        userOrg() == 'JV Almacis' ||
+        firestore.get(/databases/(default)/documents/Facilities/$(facilityId)).data.organization == userOrg()
+      );
+    }
+
+    // --- BIM models: facilities/{facilityId}/bim/{modelId}/... (source files + converted geometry) ---
+    // Building layouts are sensitive: organization-scoped read, admin/developer write, 1 GB cap.
+    match /facilities/{facilityId}/bim/{modelId}/{allPaths=**} {
+      allow read: if canAccessFacility(facilityId);
+      allow create, update: if canAccessFacility(facilityId) && (isAdminUser() || isDev()) &&
+        request.resource.size < 1024 * 1024 * 1024;
+      // Separate from create/update: a delete has no request.resource, so the size check would deny it.
+      allow delete: if canAccessFacility(facilityId) && (isAdminUser() || isDev());
+    }
+
+    // --- Existing per-facility files ---
+    // CHANGED: added `request.auth != null`. The original rule had no auth check, so anyone who
+    // knew a path could read or write these files without signing in.
+    // Scoped to the facility's organization (was: any signed-in user, any organization).
     match /facilities/{facilityId}/{collection}/{fileName} {
-      allow read, write: if collection in [
+      allow read, write: if canAccessFacility(facilityId) && collection in [
         'survey_pdfs', 'drawings', 'documentations', 'reports', 'price_list',
         'schedule_maintenance', 'scheduled_tasks', 'preventive_maintenance',
         'vendors', 'equipment_supplied', 'inventory', 'requests', 'work_orders',
-        'kpis', 'locations', 'maintenance_settings', 'predefined_tasks', 
+        'kpis', 'locations', 'maintenance_settings', 'predefined_tasks',
         'scheduled_tasks_attachments', 'building_surveys', 'billing_data',
         'work_requests'
       ];

@@ -17,6 +17,12 @@ class Request {
   final List<String> workOrderIds;
   final String clientStatus;
 
+  // Equipment this job is about (facilities/{facilityId}/equipment/{equipmentId}). Optional; the
+  // name is copied so lists can show it without an extra read, and spaceId places it on a floor/room.
+  final String? equipmentId;
+  final String? equipmentName;
+  final String? spaceId;
+
   Request({
     required this.id,
     required this.requestId,
@@ -33,6 +39,9 @@ class Request {
     required this.comments,
     required this.workOrderIds,
     required this.clientStatus,
+    this.equipmentId,
+    this.equipmentName,
+    this.spaceId,
   });
 
   factory Request.fromSnapshot(DocumentSnapshot doc) {
@@ -63,6 +72,9 @@ class Request {
           ?.map((item) => item.toString())
           .toList() ?? [],
       clientStatus: data['clientStatus'] ?? 'Pending',
+      equipmentId: data['equipmentId'] as String?,
+      equipmentName: data['equipmentName'] as String?,
+      spaceId: data['spaceId'] as String?,
     );
   }
 
@@ -82,6 +94,9 @@ class Request {
       'comments': comments,
       'workOrderIds': workOrderIds,
       'clientStatus': clientStatus,
+      if (equipmentId != null) 'equipmentId': equipmentId,
+      if (equipmentName != null) 'equipmentName': equipmentName,
+      if (spaceId != null) 'spaceId': spaceId,
     };
   }
 }

@@ -10,6 +10,7 @@ import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/request.dart';
+import 'package:cmms/widgets/equipment_picker_field.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
@@ -19,7 +20,12 @@ import 'package:cmms/utils/file_download_helper.dart';
 
 class RequestScreen extends StatefulWidget {
   final String facilityId;
-  const RequestScreen({super.key, required this.facilityId});
+
+  /// When set (e.g. "Report a problem" from an equipment card or the 3D viewer), the create form
+  /// opens straight away with this equipment already chosen.
+  final EquipmentRef? initialEquipment;
+
+  const RequestScreen({super.key, required this.facilityId, this.initialEquipment});
 
   @override
   State<RequestScreen> createState() => _RequestScreenState();
@@ -37,6 +43,7 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
   String _statusFilter = 'All';
   String _priorityFilter = 'All';
   bool _isStatusFilterMode = true;
+  EquipmentRef? _selectedEquipment;
   final List<Map<String, String>> _attachmentUrls = [];
   bool _showForm = false;
   String _currentRole = 'User';
@@ -70,6 +77,10 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
     _tabController = TabController(length: 4, vsync: this);
     _getCurrentUserInfo();
     _setupAutomaticStatusUpdates();
+    if (widget.initialEquipment != null) {
+      _selectedEquipment = widget.initialEquipment;
+      _showForm = true;
+    }
     _logger.i('RequestScreen initialized: facilityId=${widget.facilityId}');
   }
 
@@ -294,8 +305,10 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
         newStatus = 'Open';
       } else {
         // Check work order statuses
+        // facilityId lets the organization-scoped Work_Orders rule check this query.
         final workOrdersQuery = await FirebaseFirestore.instance
             .collection('Work_Orders')
+            .where('facilityId', isEqualTo: widget.facilityId)
             .where('requestId', isEqualTo: requestId)
             .get();
                 
@@ -393,16 +406,30 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
           ],
           workOrderIds: [],
           clientStatus: 'Pending',
+          equipmentId: _selectedEquipment?.id,
+          equipmentName: _selectedEquipment?.name,
+          spaceId: _selectedEquipment?.spaceId,
         );
 
         final batch = FirebaseFirestore.instance.batch();
         final docRef = FirebaseFirestore.instance.collection('Work_Requests').doc(requestId);
-                
+
         batch.set(docRef, request.toMap());
         await batch.commit();
 
+        if (_selectedEquipment != null) {
+          await appendEquipmentHistory(
+            facilityId: widget.facilityId,
+            equipmentId: _selectedEquipment!.id,
+            action: 'Problem reported: ${_titleController.text}',
+            notes: _descriptionController.text,
+            userId: user.uid,
+          );
+        }
+
         if (mounted) {
           setState(() {
+            _selectedEquipment = null;
             _attachmentUrls.clear();
             _showForm = false;
             _isSubmitting = false;
@@ -1271,6 +1298,8 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
             ),
             const SizedBox(height: 12),
             _buildDetailRow('Description', request.description, fontSize, isMobile),
+            if (request.equipmentName != null)
+              _buildDetailRow('Equipment', request.equipmentName!, fontSize, isMobile),
             // Use FutureBuilder to fetch username from Users collection
             FutureBuilder<String>(
               future: _getUsernameFromCollection(request.createdBy),
@@ -1504,6 +1533,15 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
     );
   }
 
+  Widget _buildEquipmentField(double fontSize) {
+    return EquipmentPickerField(
+      facilityId: widget.facilityId,
+      value: _selectedEquipment,
+      fontSize: fontSize,
+      onChanged: (v) => setState(() => _selectedEquipment = v),
+    );
+  }
+
   Widget _buildRequestForm(double padding, double fontSizeTitle, double fontSizeSubtitle) {
     final isMobile = MediaQuery.of(context).size.width <= 600;
 
@@ -1541,6 +1579,8 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
                       children: [
                         _buildTextField(_titleController, 'Title', fontSizeSubtitle, validator: (value) => value!.isEmpty ? 'Enter a title' : null),
                         const SizedBox(height: 16),
+                        _buildEquipmentField(fontSizeSubtitle),
+                        const SizedBox(height: 16),
                         _buildTextField(_descriptionController, 'Description', fontSizeSubtitle, maxLines: 3),
                         const SizedBox(height: 16),
                         _buildDropdown('Priority', _priority, ['Low', 'Medium', 'High'], (value) => setState(() => _priority = value!), fontSizeSubtitle),
@@ -1557,6 +1597,8 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
                             Expanded(child: _buildTextField(_descriptionController, 'Description', fontSizeSubtitle, maxLines: 3)),
                           ],
                         ),
+                        const SizedBox(height: 16),
+                        _buildEquipmentField(fontSizeSubtitle),
                         const SizedBox(height: 16),
                         Row(
                           children: [

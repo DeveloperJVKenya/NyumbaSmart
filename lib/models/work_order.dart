@@ -17,6 +17,12 @@ class WorkOrder {
   final List<Map<String, String>> attachments;
   final List<Map<String, dynamic>> history;
   final String clientStatus; // Approved, To be Reviewed (Declined removed)
+
+  // Equipment this job is about (facilities/{facilityId}/equipment/{equipmentId}). Optional; the
+  // name is copied so lists can show it without an extra read, and spaceId places it on a floor/room.
+  final String? equipmentId;
+  final String? equipmentName;
+  final String? spaceId;
   final String clientNotes;
   final DateTime? clientActionDate;
 
@@ -37,6 +43,9 @@ class WorkOrder {
     required this.attachments,
     required this.history,
     required this.clientStatus,
+    this.equipmentId,
+    this.equipmentName,
+    this.spaceId,
     required this.clientNotes,
     this.clientActionDate,
   });
@@ -76,6 +85,9 @@ class WorkOrder {
       clientStatus: clientStatus,
       clientNotes: data['clientNotes'] ?? '',
       clientActionDate: (data['clientActionDate'] as Timestamp?)?.toDate(),
+      equipmentId: data['equipmentId'] as String?,
+      equipmentName: data['equipmentName'] as String?,
+      spaceId: data['spaceId'] as String?,
     );
   }
 
@@ -98,6 +110,9 @@ class WorkOrder {
       'clientStatus': clientStatus,
       'clientNotes': clientNotes,
       'clientActionDate': clientActionDate != null ? Timestamp.fromDate(clientActionDate!) : null,
+      if (equipmentId != null) 'equipmentId': equipmentId,
+      if (equipmentName != null) 'equipmentName': equipmentName,
+      if (spaceId != null) 'spaceId': spaceId,
     };
   }
 }

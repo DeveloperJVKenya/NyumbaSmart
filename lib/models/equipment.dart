@@ -6,7 +6,7 @@ class Equipment {
   final String name;
   final String type;
   final String serialNumber;
-  final String locationId;
+  final String locationId; // free-text today; kept as-is so existing screens keep working
   final double purchasePrice;
   final DateTime? purchaseDate;
   final int warrantyMonths;
@@ -17,6 +17,29 @@ class Equipment {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final String createdBy;
+
+  // --- BIM link fields (all optional: existing documents and call sites are unaffected) ---
+
+  /// IFC GlobalId (22-char GUID). The key that ties this record to a model element.
+  final String? bimGlobalId;
+
+  /// BimModel document this record was imported from.
+  final String? bimModelId;
+
+  /// Where the record came from: 'manual' | 'ifc' | 'cobie'. Null on legacy records.
+  final String? bimSource;
+
+  /// Link to a BimSpace (storey/room) document. Sits beside the legacy free-text [locationId].
+  final String? spaceId;
+
+  // COBie Type / System fields.
+  final String? manufacturer;
+  final String? modelNumber;
+  final String? typeName;
+  final String? systemName;
+
+  /// Uniclass / OmniClass / etc. code, when the client uses one.
+  final String? classification;
 
   Equipment({
     required this.id,
@@ -35,7 +58,18 @@ class Equipment {
     this.createdAt,
     this.updatedAt,
     required this.createdBy,
+    this.bimGlobalId,
+    this.bimModelId,
+    this.bimSource,
+    this.spaceId,
+    this.manufacturer,
+    this.modelNumber,
+    this.typeName,
+    this.systemName,
+    this.classification,
   });
+
+  bool get isBimLinked => bimGlobalId != null && bimGlobalId!.isNotEmpty;
 
   factory Equipment.fromSnapshot(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -60,6 +94,15 @@ class Equipment {
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
       createdBy: data['createdBy'] ?? '',
+      bimGlobalId: data['bimGlobalId'] as String?,
+      bimModelId: data['bimModelId'] as String?,
+      bimSource: data['bimSource'] as String?,
+      spaceId: data['spaceId'] as String?,
+      manufacturer: data['manufacturer'] as String?,
+      modelNumber: data['modelNumber'] as String?,
+      typeName: data['typeName'] as String?,
+      systemName: data['systemName'] as String?,
+      classification: data['classification'] as String?,
     );
   }
 
@@ -80,6 +123,16 @@ class Equipment {
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
       'createdBy': createdBy,
+      // BIM fields are only written when set, so manual records stay unchanged.
+      if (bimGlobalId != null) 'bimGlobalId': bimGlobalId,
+      if (bimModelId != null) 'bimModelId': bimModelId,
+      if (bimSource != null) 'bimSource': bimSource,
+      if (spaceId != null) 'spaceId': spaceId,
+      if (manufacturer != null) 'manufacturer': manufacturer,
+      if (modelNumber != null) 'modelNumber': modelNumber,
+      if (typeName != null) 'typeName': typeName,
+      if (systemName != null) 'systemName': systemName,
+      if (classification != null) 'classification': classification,
     };
   }
 }

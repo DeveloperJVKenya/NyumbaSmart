@@ -9,7 +9,17 @@ import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/equipment.dart';
+import 'package:cmms/models/bim_model.dart';
+import 'package:cmms/screens/bim/bim_import_screen.dart';
+import 'package:cmms/display%20screens/request_screen.dart';
+import 'package:cmms/display%20screens/work_order_screen.dart';
+import 'package:cmms/screens/bim/bim_models_screen.dart';
+import 'package:cmms/screens/bim/bim_viewer_screen.dart';
+import 'package:cmms/widgets/equipment_activity_section.dart';
+import 'package:cmms/widgets/equipment_picker_field.dart';
+import 'package:cmms/screens/bim/spaces_screen.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -39,14 +49,51 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   bool _showForm = false;
   double? _uploadProgress;
 
+  // BIM: floors/rooms for the form picker, the space filter and resolving spaceId -> name.
+  List<BimSpace> _spaces = [];
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _spacesSub;
+  String? _formSpaceId;
+  String _sourceFilter = 'All'; // All | Manual | BIM import
+  String _spaceFilter = 'All'; // All | <space doc id>
+
   @override
   void initState() {
     super.initState();
     _logger.i('EquipmentSuppliedScreen initialized: facilityId=${widget.facilityId}');
+    _spacesSub = FirebaseFirestore.instance
+        .collection('facilities')
+        .doc(widget.facilityId)
+        .collection('spaces')
+        .snapshots()
+        .listen((snap) {
+      final spaces = snap.docs.map(BimSpace.fromSnapshot).toList();
+      // Floors first (by elevation), then rooms by name, so dropdowns read top-down.
+      spaces.sort((a, b) {
+        if (a.kind != b.kind) return a.kind == BimSpaceKind.storey ? -1 : 1;
+        if (a.kind == BimSpaceKind.storey) return (a.elevation ?? 0).compareTo(b.elevation ?? 0);
+        return a.name.compareTo(b.name);
+      });
+      if (mounted) setState(() => _spaces = spaces);
+    }, onError: (e) => _logger.w('Spaces unavailable: $e'));
+  }
+
+  BimSpace? _spaceById(String? id) {
+    if (id == null) return null;
+    for (final s in _spaces) {
+      if (s.id == id) return s;
+    }
+    return null;
+  }
+
+  String _spaceLabel(BimSpace s) {
+    if (s.kind == BimSpaceKind.storey) return s.name;
+    final floor = _spaceById(s.parentId);
+    return floor == null ? s.name : '${s.name}  ·  ${floor.name}';
   }
 
   @override
   void dispose() {
+    _spacesSub?.cancel();
     _nameController.dispose();
     _typeController.dispose();
     _serialController.dispose();
@@ -75,7 +122,12 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
           name: _nameController.text.trim(),
           type: _typeController.text.trim(),
           serialNumber: _serialController.text.trim(),
-          locationId: _locationController.text.trim(),
+          // The picked room also fills the legacy free-text location when that was left empty.
+          locationId: _locationController.text.trim().isNotEmpty
+              ? _locationController.text.trim()
+              : (_spaceById(_formSpaceId)?.name ?? ''),
+          spaceId: _spaceById(_formSpaceId)?.id,
+          bimSource: 'manual',
           purchasePrice: double.tryParse(_purchasePriceController.text) ?? 0.0,
           purchaseDate: DateTime.now(),
           warrantyMonths: int.tryParse(_warrantyController.text) ?? 0,
@@ -266,7 +318,26 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
     _warrantyController.clear();
     _notesController.clear();
     _status = 'Active';
+    _formSpaceId = null;
   }
+
+  bool _isImported(Equipment e) => e.bimSource == 'cobie' || e.bimSource == 'ifc';
+
+  Widget _tag(IconData icon, String label, MaterialColor color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(color: color[50], borderRadius: BorderRadius.circular(20)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: color[700]),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(label,
+                style: GoogleFonts.poppins(fontSize: 11, color: color[800], fontWeight: FontWeight.w500),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ]),
+      );
+
+  void _push(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
   void _showSnackBar(String message) {
     if (mounted) {
@@ -310,6 +381,32 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _push(BimImportScreen(facilityId: widget.facilityId)),
+                  icon: const Icon(Icons.upload_file),
+                  label: Text('Import COBie / IFC', style: GoogleFonts.poppins()),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _push(SpacesScreen(facilityId: widget.facilityId)),
+                  icon: const Icon(Icons.meeting_room_outlined),
+                  label: Text('Floors & Rooms', style: GoogleFonts.poppins()),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _push(BimModelsScreen(facilityId: widget.facilityId)),
+                  icon: const Icon(Icons.view_in_ar_outlined),
+                  label: Text('BIM Models', style: GoogleFonts.poppins()),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           _buildFilterSection(padding, fontSizeSubtitle),
           const SizedBox(height: 24),
           if (_showForm) _buildForm(padding, fontSizeTitle, fontSizeSubtitle),
@@ -327,14 +424,27 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
             stream: _buildEquipmentStream(),
             builder: (context, snapshot) {
               _logger.i('StreamBuilder snapshot: connectionState=${snapshot.connectionState}, hasError=${snapshot.hasError}, docCount=${snapshot.data?.docs.length ?? 0}');
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
               if (snapshot.hasError) {
                 _logger.e('Firestore error: ${snapshot.error}');
                 return Text('Error: ${snapshot.error}', style: GoogleFonts.poppins());
               }
-              final docs = snapshot.data!.docs;
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              // Type, source and space are filtered here rather than in the query, so imported types
+              // (e.g. a COBie type name) still match and no extra composite indexes are needed.
+              final docs = snapshot.data!.docs.where((d) {
+                final e = Equipment.fromSnapshot(d);
+                if (_typeFilter != 'All' && e.type != _typeFilter) return false;
+                if (_sourceFilter == 'BIM import' && !(e.bimSource == 'cobie' || e.bimSource == 'ifc')) return false;
+                if (_sourceFilter == 'Manual' && (e.bimSource == 'cobie' || e.bimSource == 'ifc')) return false;
+                if (_spaceFilter != 'All') {
+                  // A floor filter also includes the rooms on that floor.
+                  final space = _spaceById(e.spaceId);
+                  if (space == null || (space.id != _spaceFilter && space.parentId != _spaceFilter)) return false;
+                }
+                return true;
+              }).toList();
               if (docs.isEmpty) {
                 return Center(
                   child: Column(
@@ -370,6 +480,13 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   Widget _buildFilterSection(double padding, double fontSize) {
     final isMobile = MediaQuery.of(context).size.width <= 600;
 
+    final filters = <Widget>[
+      _buildFilterDropdown('Status', _statusFilter, ['All', 'Active', 'Inactive', 'Under Repair', 'Decommissioned'], (value) => setState(() => _statusFilter = value!), fontSize),
+      _buildFilterDropdown('Type', _typeFilter, ['All', 'Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'IT Equipment'], (value) => setState(() => _typeFilter = value!), fontSize),
+      _buildFilterDropdown('Source', _sourceFilter, ['All', 'Manual', 'BIM import'], (value) => setState(() => _sourceFilter = value!), fontSize),
+      if (_spaces.isNotEmpty) _buildSpaceFilter(fontSize),
+    ];
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -377,22 +494,84 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       child: Padding(
         padding: EdgeInsets.all(padding),
         child: isMobile
-            ? Wrap(
-                spacing: 16,
-                runSpacing: 16,
+            ? Column(
                 children: [
-                  _buildFilterDropdown('Status', _statusFilter, ['All', 'Active', 'Inactive', 'Under Repair', 'Decommissioned'], (value) => setState(() => _statusFilter = value!), fontSize),
-                  _buildFilterDropdown('Type', _typeFilter, ['All', 'Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'IT Equipment'], (value) => setState(() => _typeFilter = value!), fontSize),
+                  for (final f in filters) ...[f, const SizedBox(height: 12)],
                 ],
               )
             : Row(
                 children: [
-                  Expanded(child: _buildFilterDropdown('Status', _statusFilter, ['All', 'Active', 'Inactive', 'Under Repair', 'Decommissioned'], (value) => setState(() => _statusFilter = value!), fontSize)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildFilterDropdown('Type', _typeFilter, ['All', 'Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'IT Equipment'], (value) => setState(() => _typeFilter = value!), fontSize)),
+                  for (var i = 0; i < filters.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 16),
+                    Expanded(flex: filters.length == 4 && i == 3 ? 2 : 1, child: filters[i]),
+                  ],
                 ],
               ),
       ),
+    );
+  }
+
+  Widget _buildSpaceFilter(double fontSize) {
+    // A stale selection (space deleted) falls back to All instead of crashing the dropdown.
+    final value = _spaceFilter == 'All' || _spaceById(_spaceFilter) != null ? _spaceFilter : 'All';
+    return DropdownButtonFormField<String>(
+      key: ValueKey('space_filter_${_spaces.length}'),
+      initialValue: value,
+      isExpanded: true,
+      items: [
+        DropdownMenuItem(value: 'All', child: Text('All', style: GoogleFonts.poppins(fontSize: fontSize))),
+        for (final s in _spaces)
+          DropdownMenuItem(
+            value: s.id,
+            child: Text(
+              s.kind == BimSpaceKind.storey ? '${s.name} (whole floor)' : _spaceLabel(s),
+              style: GoogleFonts.poppins(fontSize: fontSize),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: (v) => setState(() => _spaceFilter = v ?? 'All'),
+      decoration: InputDecoration(
+        labelText: 'Floor / Room',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        filled: true,
+        fillColor: Colors.grey[100],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+      ),
+      style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
+    );
+  }
+
+  Widget _buildFormSpacePicker(double fontSize) {
+    if (_spaces.isEmpty) {
+      return _buildTextField(_locationController, 'Location (optional)', fontSize);
+    }
+    return DropdownButtonFormField<String?>(
+      initialValue: _spaceById(_formSpaceId)?.id,
+      isExpanded: true,
+      items: [
+        DropdownMenuItem<String?>(value: null, child: Text('Not assigned', style: GoogleFonts.poppins(fontSize: fontSize))),
+        for (final s in _spaces)
+          DropdownMenuItem<String?>(
+            value: s.id,
+            child: Text(_spaceLabel(s), style: GoogleFonts.poppins(fontSize: fontSize), overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: (v) => setState(() => _formSpaceId = v),
+      decoration: InputDecoration(
+        labelText: 'Floor / Room (optional)',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+        ),
+        filled: true,
+        fillColor: Colors.grey[100],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+      ),
+      style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
     );
   }
 
@@ -470,6 +649,20 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                 color: Colors.grey[600],
               ),
             ),
+            if (_spaceById(equipment.spaceId) != null || _isImported(equipment))
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (_spaceById(equipment.spaceId) != null)
+                      _tag(Icons.meeting_room_outlined, _spaceLabel(_spaceById(equipment.spaceId)!), Colors.blueGrey),
+                    if (_isImported(equipment))
+                      _tag(Icons.view_in_ar_outlined, equipment.bimSource == 'cobie' ? 'COBie' : 'IFC', Colors.indigo),
+                  ],
+                ),
+              ),
           ],
         ),
         children: [
@@ -478,13 +671,24 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildDetailRow('Location ID', equipment.locationId.isEmpty ? 'N/A' : equipment.locationId, fontSize),
+                if (_spaceById(equipment.spaceId) != null)
+                  _buildDetailRow('Floor / Room', _spaceLabel(_spaceById(equipment.spaceId)!), fontSize)
+                else
+                  _buildDetailRow('Location ID', equipment.locationId.isEmpty ? 'N/A' : equipment.locationId, fontSize),
+                if (equipment.typeName != null && equipment.typeName != equipment.type) _buildDetailRow('Product type', equipment.typeName!, fontSize),
+                if (equipment.manufacturer != null) _buildDetailRow('Manufacturer', equipment.manufacturer!, fontSize),
+                if (equipment.modelNumber != null) _buildDetailRow('Model', equipment.modelNumber!, fontSize),
+                if (equipment.systemName != null) _buildDetailRow('System', equipment.systemName!, fontSize),
+                if (equipment.classification != null) _buildDetailRow('Classification', equipment.classification!, fontSize),
+                if (_isImported(equipment)) _buildDetailRow('BIM source', equipment.bimSource == 'cobie' ? 'COBie import' : 'IFC import', fontSize),
+                if (equipment.isBimLinked) _buildDetailRow('IFC GlobalId', equipment.bimGlobalId!, fontSize),
                 _buildDetailRow('Purchase Price', '\$${equipment.purchasePrice.toStringAsFixed(2)}', fontSize),
                 _buildDetailRow('Warranty', '${equipment.warrantyMonths} months', fontSize),
                 _buildDetailRow('Created', equipment.createdAt != null ? DateFormat.yMMMd().format(equipment.createdAt!) : 'Unknown date', fontSize),
                 if (equipment.notes.isNotEmpty) _buildDetailRow('Notes', equipment.notes, fontSize),
                 if (equipment.attachments.isNotEmpty) _buildAttachmentsSection(equipment.attachments, fontSize),
                 if (equipment.maintenanceHistory.isNotEmpty) _buildHistorySection(equipment.maintenanceHistory, fontSize),
+                EquipmentActivitySection(facilityId: widget.facilityId, equipmentId: equipment.id, fontSize: fontSize),
                 const SizedBox(height: 12),
                 _buildActionButtons(equipment),
               ],
@@ -608,9 +812,28 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   }
 
   Widget _buildActionButtons(Equipment equipment) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
+    final ref = EquipmentRef.fromEquipment(equipment);
+    return Wrap(
+      alignment: WrapAlignment.end,
+      spacing: 4,
+      runSpacing: 4,
       children: [
+        if (equipment.isBimLinked)
+          TextButton.icon(
+            onPressed: () => _push(BimViewerScreen(facilityId: widget.facilityId, focusGlobalId: equipment.bimGlobalId)),
+            icon: const Icon(Icons.threed_rotation_rounded, size: 16, color: Colors.indigo),
+            label: Text('Show in 3D', style: GoogleFonts.poppins(color: Colors.indigo)),
+          ),
+        TextButton.icon(
+          onPressed: () => _push(WorkOrderScreen(facilityId: widget.facilityId, initialEquipment: ref)),
+          icon: const Icon(Icons.build_outlined, size: 16, color: Colors.blueGrey),
+          label: Text('New Work Order', style: GoogleFonts.poppins(color: Colors.blueGrey)),
+        ),
+        TextButton.icon(
+          onPressed: () => _push(RequestScreen(facilityId: widget.facilityId, initialEquipment: ref)),
+          icon: const Icon(Icons.report_problem_outlined, size: 16, color: Colors.blueGrey),
+          label: Text('Report Problem', style: GoogleFonts.poppins(color: Colors.blueGrey)),
+        ),
         TextButton.icon(
           onPressed: () => _showUpdateStatusDialog(equipment),
           icon: const Icon(Icons.edit, size: 16, color: Colors.blueGrey),
@@ -663,7 +886,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                         const SizedBox(height: 16),
                         _buildTextField(_serialController, 'Serial Number (optional)', fontSizeSubtitle),
                         const SizedBox(height: 16),
-                        _buildTextField(_locationController, 'Location ID (optional)', fontSizeSubtitle),
+                        _buildFormSpacePicker(fontSizeSubtitle),
                       ],
                     )
                   : Row(
@@ -684,7 +907,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                             children: [
                               _buildTypeDropdown(fontSizeSubtitle),
                               const SizedBox(height: 16),
-                              _buildTextField(_locationController, 'Location ID (optional)', fontSizeSubtitle),
+                              _buildFormSpacePicker(fontSizeSubtitle),
                             ],
                           ),
                         ),
@@ -963,9 +1186,6 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
 
     if (_statusFilter != 'All') {
       query = query.where('status', isEqualTo: _statusFilter);
-    }
-    if (_typeFilter != 'All') {
-      query = query.where('type', isEqualTo: _typeFilter);
     }
 
     return query.orderBy('createdAt', descending: true).snapshots();

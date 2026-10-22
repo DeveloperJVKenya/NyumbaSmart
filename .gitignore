@@ -44,3 +44,6 @@ lib/firebase_options.dart     # ✅ Firebase auto-generated options
 # Google Maps API key config (see the matching *.example files)
 ios/Runner/Maps.xcconfig
 web/maps_config.js
+
+# Credentials kept out of assets/ so they are never bundled into app builds
+secrets/

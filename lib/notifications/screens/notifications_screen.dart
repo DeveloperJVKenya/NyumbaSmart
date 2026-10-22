@@ -78,7 +78,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         AppSpacing.xxl,
                       ),
                       itemCount: filtered.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                       itemBuilder: (context, index) => _digestCard(filtered[index]),
                     );
                   },

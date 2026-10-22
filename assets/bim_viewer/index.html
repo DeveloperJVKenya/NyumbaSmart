@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BIM Viewer</title>
+<!--
+  CMMS 3D model viewer. One self-contained page (no relative imports) so it works when the app loads it
+  as an HTML string: in an iframe srcdoc on web and in a WebView on Android/iOS/macOS.
+
+  Host -> viewer messages (JSON): {type:'load', url, select?, colors?}, {type:'select', globalId|null},
+  {type:'colors', colors:{globalId:'#rrggbb'}}, {type:'xray', on}, {type:'reset'}
+  Viewer -> host messages (JSON): {type:'ready'}, {type:'progress', stage, fraction}, {type:'loaded', elements},
+  {type:'selected', globalId, name, ifcType} (globalId null when cleared), {type:'error', message}
+-->
+<style>
+  :root { --primary:#4f46e5; --text:#1e1b4b; --muted:#64748b; --bg:#eef2ff; --card:#ffffff; }
+  html, body { margin:0; height:100%; overflow:hidden; background:var(--bg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  canvas { display:block; width:100%; height:100%; touch-action:none; outline:none; }
+  #status { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:var(--card); color:var(--text);
+            padding:18px 22px; border-radius:16px; box-shadow:0 12px 32px rgba(79,70,229,.15); width:min(320px,80vw); text-align:center; font-size:14px; }
+  #status.error { color:#b91c1c; }
+  .bar { height:6px; background:#e0e7ff; border-radius:3px; margin-top:12px; overflow:hidden; }
+  .bar > div { height:100%; width:0; background:var(--primary); transition:width .2s; }
+  .hint { position:absolute; left:12px; bottom:10px; font-size:11px; color:var(--muted); pointer-events:none; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="status"><div id="msg">Starting viewer…</div><div class="bar"><div id="prog"></div></div></div>
+<div class="hint" id="hint" hidden>Drag to orbit · right-drag or two fingers to pan · scroll or pinch to zoom · tap to select</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as WebIFC from 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.77/web-ifc-api.js';
+
+const WASM_PATH = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.77/';
+
+// ---------------------------------------------------------------- host bridge
+function post(msg) {
+  const s = JSON.stringify(msg);
+  if (window.CmmsBridge && window.CmmsBridge.postMessage) window.CmmsBridge.postMessage(s); // webview_flutter channel
+  else if (window.parent !== window) window.parent.postMessage({ cmmsViewer: true, payload: s }, '*'); // web iframe
+}
+window.cmmsViewer = { receive: (m) => handle(typeof m === 'string' ? JSON.parse(m) : m) };
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (d && d.cmmsHost) handle(typeof d.payload === 'string' ? JSON.parse(d.payload) : d.payload);
+});
+
+const statusEl = document.getElementById('status');
+function setStatus(text, fraction, isError) {
+  if (text == null) { statusEl.hidden = true; return; }
+  statusEl.hidden = false;
+  statusEl.classList.toggle('error', !!isError);
+  document.getElementById('msg').textContent = text;
+  document.getElementById('prog').style.width = `${Math.round((fraction ?? 0) * 100)}%`;
+  document.querySelector('.bar').style.display = isError ? 'none' : '';
+}
+
+// ---------------------------------------------------------------- IFC -> meshes
+// BEGIN ifc-meshes (kept free of DOM/three.js so it can be unit-tested in Node)
+const SKIPPED_TYPES = new Set([WebIFC.IFCSPACE, WebIFC.IFCOPENINGELEMENT]);
+
+/** Streams every element with geometry. onElement({expressID, globalId, name, ifcType, parts}) where each
+ *  part is {geometryExpressID, vertexData (x,y,z,nx,ny,nz interleaved), indices, matrix (16, column-major), color}. */
+function extractIfcMeshes(api, modelID, onElement, onProgress) {
+  let count = 0;
+  api.StreamAllMeshes(modelID, (mesh, index, total) => {
+    const type = api.GetLineType(modelID, mesh.expressID);
+    if (SKIPPED_TYPES.has(type)) return;
+    const line = api.GetLine(modelID, mesh.expressID);
+    const parts = [];
+    for (let i = 0; i < mesh.geometries.size(); i++) {
+      const pg = mesh.geometries.get(i);
+      const g = api.GetGeometry(modelID, pg.geometryExpressID);
+      parts.push({
+        geometryExpressID: pg.geometryExpressID,
+        vertexData: api.GetVertexArray(g.GetVertexData(), g.GetVertexDataSize()).slice(),
+        indices: api.GetIndexArray(g.GetIndexData(), g.GetIndexDataSize()).slice(),
+        matrix: Array.from(pg.flatTransformation),
+        color: { r: pg.color.x, g: pg.color.y, b: pg.color.z, a: pg.color.w },
+      });
+      g.delete();
+    }
+    count++;
+    onElement({
+      expressID: mesh.expressID,
+      globalId: line?.GlobalId?.value ?? null,
+      name: line?.Name?.value ?? null,
+      ifcType: api.GetNameFromTypeCode(type),
+      parts,
+    });
+    if (onProgress && total) onProgress(index / total);
+  });
+  return count;
+}
+// END ifc-meshes
+
+// ---------------------------------------------------------------- three.js scene
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xeef2ff);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 5000);
+camera.position.set(20, 15, 20);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8fb5, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(30, 60, 20);
+scene.add(sun);
+
+const modelGroup = new THREE.Group();
+scene.add(modelGroup);
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / Math.max(h, 1);
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+// ---------------------------------------------------------------- model state
+const meshesByExpressId = new Map(); // expressID -> Mesh[]
+const elementByGlobalId = new Map(); // globalId -> {expressID, name, ifcType}
+const infoByExpressId = new Map();   // expressID -> {globalId, name, ifcType}
+const materialCache = new Map();
+let overlayColors = {};              // globalId -> '#rrggbb'
+let xray = false;
+let selectedExpressId = null;
+let api = null, modelID = null;
+
+function material(key, make) {
+  if (!materialCache.has(key)) materialCache.set(key, make());
+  return materialCache.get(key);
+}
+const baseMaterial = (c) => material(`b${c.r.toFixed(3)},${c.g.toFixed(3)},${c.b.toFixed(3)},${c.a.toFixed(2)}`,
+  () => new THREE.MeshLambertMaterial({ color: new THREE.Color(c.r, c.g, c.b), transparent: c.a < 1, opacity: c.a, side: THREE.DoubleSide }));
+const ghostMaterial = () => material('ghost',
+  () => new THREE.MeshLambertMaterial({ color: 0xc7d2fe, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }));
+const overlayMaterial = (hex) => material(`o${hex}`,
+  () => new THREE.MeshLambertMaterial({ color: new THREE.Color(hex), side: THREE.DoubleSide }));
+const selectedMaterial = () => material('selected',
+  () => new THREE.MeshLambertMaterial({ color: 0xf59e0b, emissive: 0x7c2d12, emissiveIntensity: 0.35, side: THREE.DoubleSide }));
+
+function applyMaterials() {
+  for (const [expressID, meshes] of meshesByExpressId) {
+    const gid = infoByExpressId.get(expressID)?.globalId;
+    const overlay = gid ? overlayColors[gid] : null;
+    for (const m of meshes) {
+      if (expressID === selectedExpressId) m.material = selectedMaterial();
+      else if (overlay) m.material = overlayMaterial(overlay);
+      else if (xray) m.material = ghostMaterial();
+      else m.material = m.userData.base;
+      m.renderOrder = (xray && !overlay && expressID !== selectedExpressId) ? 1 : 0;
+    }
+  }
+}
+
+function boxOf(objects) {
+  const box = new THREE.Box3();
+  for (const o of objects) box.expandByObject(o);
+  return box;
+}
+
+function frame(box, padding = 1.4) {
+  if (box.isEmpty()) return;
+  const center = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.5);
+  const dist = (radius * padding) / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2));
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  if (dir.lengthSq() === 0) dir.set(1, 0.8, 1).normalize();
+  controls.target.copy(center);
+  camera.position.copy(center.clone().add(dir.multiplyScalar(dist)));
+  camera.near = Math.max(dist / 1000, 0.01);
+  camera.far = dist * 20 + radius * 4;
+  camera.updateProjectionMatrix();
+}
+
+function select(expressID, notify) {
+  selectedExpressId = expressID;
+  applyMaterials();
+  const info = expressID == null ? null : infoByExpressId.get(expressID);
+  if (expressID != null) frame(boxOf(meshesByExpressId.get(expressID) ?? []), 2.5);
+  if (notify) {
+    post(info ? { type: 'selected', globalId: info.globalId, name: info.name, ifcType: info.ifcType }
+              : { type: 'selected', globalId: null });
+  }
+}
+
+// ---------------------------------------------------------------- loading
+async function download(url) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    throw new Error('Could not download the model. The storage bucket may need CORS enabled for the viewer '
+      + '(see storage-cors.json in the project). Details: ' + e.message);
+  }
+  if (!res.ok) throw new Error(`Download failed (${res.status}).`);
+  const total = Number(res.headers.get('content-length')) || 0;
+  if (!res.body || !total) return new Uint8Array(await res.arrayBuffer());
+  const reader = res.body.getReader();
+  const out = new Uint8Array(total);
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    out.set(value, received);
+    received += value.length;
+    const f = received / total;
+    setStatus(`Downloading model… ${Math.round(f * 100)}%`, f * 0.5);
+    post({ type: 'progress', stage: 'download', fraction: f });
+  }
+  return out;
+}
+
+async function load(msg) {
+  try {
+    setStatus('Downloading model…', 0);
+    const bytes = await download(msg.url);
+
+    setStatus('Starting IFC engine…', 0.5);
+    if (!api) {
+      api = new WebIFC.IfcAPI();
+      api.SetWasmPath(WASM_PATH, true);
+      await api.Init(undefined, true); // single-threaded: shared memory isn't available in WebViews
+    }
+    if (modelID != null) { api.CloseModel(modelID); modelGroup.clear(); meshesByExpressId.clear(); elementByGlobalId.clear(); infoByExpressId.clear(); }
+    modelID = api.OpenModel(bytes, { COORDINATE_TO_ORIGIN: true });
+
+    setStatus('Building 3D model…', 0.6);
+    await new Promise((r) => setTimeout(r, 0)); // let the status paint before the heavy synchronous work
+
+    const geometryCache = new Map();
+    const elements = extractIfcMeshes(api, modelID, (el) => {
+      const meshes = [];
+      for (const p of el.parts) {
+        let geom = geometryCache.get(p.geometryExpressID);
+        if (!geom) {
+          const v = p.vertexData, n = v.length / 6;
+          const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+          for (let i = 0; i < n; i++) {
+            pos[i * 3] = v[i * 6]; pos[i * 3 + 1] = v[i * 6 + 1]; pos[i * 3 + 2] = v[i * 6 + 2];
+            nor[i * 3] = v[i * 6 + 3]; nor[i * 3 + 1] = v[i * 6 + 4]; nor[i * 3 + 2] = v[i * 6 + 5];
+          }
+          geom = new THREE.BufferGeometry();
+          geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          geom.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+          geom.setIndex(new THREE.BufferAttribute(p.indices, 1));
+          geometryCache.set(p.geometryExpressID, geom);
+        }
+        const mesh = new THREE.Mesh(geom, baseMaterial(p.color));
+        mesh.userData.base = mesh.material;
+        mesh.userData.expressID = el.expressID;
+        mesh.matrixAutoUpdate = false;
+        mesh.matrix.fromArray(p.matrix);
+        mesh.matrixWorldNeedsUpdate = true;
+        modelGroup.add(mesh);
+        meshes.push(mesh);
+      }
+      meshesByExpressId.set(el.expressID, meshes);
+      infoByExpressId.set(el.expressID, { globalId: el.globalId, name: el.name, ifcType: el.ifcType });
+      if (el.globalId) elementByGlobalId.set(el.globalId, el.expressID);
+    }, (f) => post({ type: 'progress', stage: 'geometry', fraction: f }));
+
+    modelGroup.updateMatrixWorld(true);
+    overlayColors = msg.colors ?? {};
+    applyMaterials();
+    frame(boxOf(modelGroup.children));
+    setStatus(null);
+    document.getElementById('hint').hidden = false;
+    post({ type: 'loaded', elements });
+
+    if (msg.select && elementByGlobalId.has(msg.select)) select(elementByGlobalId.get(msg.select), true);
+  } catch (e) {
+    console.error(e);
+    setStatus(e.message || String(e), 0, true);
+    post({ type: 'error', message: e.message || String(e) });
+  }
+}
+
+function handle(msg) {
+  switch (msg?.type) {
+    case 'load': load(msg); break;
+    case 'select': select(msg.globalId && elementByGlobalId.has(msg.globalId) ? elementByGlobalId.get(msg.globalId) : null, false); break;
+    case 'colors': overlayColors = msg.colors ?? {}; applyMaterials(); break;
+    case 'xray': xray = !!msg.on; applyMaterials(); break;
+    case 'reset': selectedExpressId = null; applyMaterials(); frame(boxOf(modelGroup.children)); break;
+  }
+}
+
+// ---------------------------------------------------------------- picking (tap, not drag)
+const raycaster = new THREE.Raycaster();
+let down = null;
+canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointerup', (e) => {
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) { down = null; return; }
+  down = null;
+  const rect = canvas.getBoundingClientRect();
+  const p = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(p, camera);
+  // In x-ray mode, ghosted elements are skipped so equipment behind walls can be picked.
+  const targets = xray ? modelGroup.children.filter((m) => m.material !== ghostMaterial()) : modelGroup.children;
+  const hit = raycaster.intersectObjects(targets, false)[0];
+  select(hit ? hit.object.userData.expressID : null, true);
+});
+
+setStatus('Waiting for model…', 0);
+post({ type: 'ready' });
+</script>
+</body>
+</html>

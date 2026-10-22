@@ -5,7 +5,8 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  # webview_flutter (BIM 3D viewer) requires Dart 3.10+, so the floor matches what the app already resolves to.
+  sdk: '>=3.10.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -66,22 +67,20 @@ dependencies:
   # Audio
   audioplayers: ^6.5.0
   
-  # Cryptography & JWT
-  crypto: ^3.0.6
-  pointycastle: ^4.0.0
-  
   # Web
   web: ^1.1.1
   flutter_secure_storage: ^11.0.0
-  googleapis_auth: ^2.0.0
   font_awesome_flutter: ^11.0.0
+
+  # BIM 3D viewer (Android/iOS/macOS; web uses an iframe)
+  webview_flutter: ^4.14.1
 
 flutter:
   assets:
     - assets/icons/icon.png
     - assets/icons/
     - assets/sounds/
-    - assets/service-account.json
+    - assets/bim_viewer/
     - assets/
   uses-material-design: true
 

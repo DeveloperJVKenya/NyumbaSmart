@@ -19,6 +19,9 @@ import 'package:cmms/display%20screens/inventory_screen.dart';
 import 'package:cmms/display%20screens/vendor_screen.dart';
 import 'package:cmms/display%20screens/kpi_screen.dart';
 import 'package:cmms/display%20screens/report_screen.dart';
+import 'package:cmms/screens/bim/bim_models_screen.dart';
+import 'package:cmms/screens/bim/bim_viewer_screen.dart';
+import 'package:cmms/screens/bim/spaces_screen.dart';
 import 'package:cmms/screens/settings_screen.dart';
 import 'package:cmms/developer/developer_screen.dart';
 import 'package:cmms/notifications/widgets/notification_bell_action.dart';
@@ -66,6 +69,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
   // Static so the Building Information submenu stays expanded across
   // rebuilds/navigations, matching the previous behavior.
   static bool _isBuildingInfoExpanded = false;
+  static bool _isAssetsBimExpanded = false;
 
   void _handleDeveloperIconTap(bool isMobile) async {
     _logger.i('App icon clicked by developer, navigating to DeveloperScreen');
@@ -241,26 +245,28 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
   List<String> _getMenuItemsForRole(String role, String organization) {
     final Map<String, List<String>> jvAlmacisMenus = {
       'Admin': [
-        'Facilities', 'Locations', 'Building Information', 'Scope of Work',
+        'Facilities', 'Locations', 'Building Information', 'Assets & BIM', 'Scope of Work',
         'Preventive Maintenance', 'Reports', 'Work on Request', 'Work Orders',
-        'Billing', 'Report', 'Settings',
+        'Price Lists', 'Billing', 'Inventory and Parts', 'Vendors', 'KPIs', 'Report', 'Settings',
       ],
       'Technician': [
-        'Facilities', 'Locations', 'Building Information', 'Preventive Maintenance',
+        'Facilities', 'Locations', 'Building Information', 'Assets & BIM', 'Preventive Maintenance',
         'Scope of Work', 'Reports', 'Work on Request', 'Work Orders', 'Billing',
+        'Inventory and Parts', 'Vendors', 'KPIs',
         'Report', 'Settings',
       ],
     };
 
     final Map<String, List<String>> clientOrganizationMenus = {
       'Admin': [
-        'Facilities', 'Locations', 'Building Information', 'Scope of Work',
+        'Facilities', 'Locations', 'Building Information', 'Assets & BIM', 'Scope of Work',
         'Preventive Maintenance', 'Reports', 'Work on Request', 'Work Orders',
-        'Billing', 'Report', 'Settings',
+        'Price Lists', 'Billing', 'Inventory and Parts', 'Vendors', 'KPIs', 'Report', 'Settings',
       ],
       'Technician': [
-        'Facilities', 'Locations', 'Building Information', 'Preventive Maintenance',
+        'Facilities', 'Locations', 'Building Information', 'Assets & BIM', 'Preventive Maintenance',
         'Scope of Work', 'Reports', 'Work on Request', 'Work Orders', 'Billing',
+        'Inventory and Parts', 'Vendors', 'KPIs',
         'Report', 'Settings',
       ],
     };
@@ -281,6 +287,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
       {'title': 'Facilities', 'icon': Icons.business_rounded, 'isSubItem': false},
       {'title': 'Locations', 'icon': Icons.location_on_rounded, 'isSubItem': false},
       {'title': 'Building Information', 'icon': Icons.info_rounded, 'isSubItem': false, 'isParent': true},
+      {'title': 'Assets & BIM', 'icon': Icons.view_in_ar_rounded, 'isSubItem': false, 'isParent': true},
       {'title': 'Scope of Work', 'icon': Icons.event_rounded, 'isSubItem': false},
       {'title': 'Preventive Maintenance', 'icon': Icons.build_circle_rounded, 'isSubItem': false},
       {'title': 'Reports', 'icon': Icons.bar_chart_rounded, 'isSubItem': false},
@@ -302,6 +309,13 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
       {'title': 'Drawings', 'icon': Icons.brush_rounded},
     ];
 
+    final assetsBimSubItems = [
+      {'title': 'BIM Models', 'icon': Icons.view_in_ar_outlined},
+      {'title': '3D Viewer', 'icon': Icons.threed_rotation_rounded},
+      {'title': 'Floors & Rooms', 'icon': Icons.meeting_room_rounded},
+      {'title': 'Equipment Supplied', 'icon': Icons.construction_rounded},
+    ];
+
     final allowedItems = _getMenuItemsForRole(role, organization);
     final List<Widget> menuWidgets = [];
 
@@ -311,19 +325,27 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
       final icon = menuItem['icon'] as IconData;
       final isParent = menuItem['isParent'] as bool? ?? false;
 
-      if (isParent && itemTitle == 'Building Information') {
+      if (isParent && (itemTitle == 'Building Information' || itemTitle == 'Assets & BIM')) {
+        final isBim = itemTitle == 'Assets & BIM';
+        final expanded = isBim ? _isAssetsBimExpanded : _isBuildingInfoExpanded;
         menuWidgets.add(_menuTile(
           icon: icon,
           title: itemTitle,
           trailing: Icon(
-            _isBuildingInfoExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+            expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
             color: AppColors.textSecondary,
           ),
-          onTap: () => setState(() => _isBuildingInfoExpanded = !_isBuildingInfoExpanded),
+          onTap: () => setState(() {
+            if (isBim) {
+              _isAssetsBimExpanded = !_isAssetsBimExpanded;
+            } else {
+              _isBuildingInfoExpanded = !_isBuildingInfoExpanded;
+            }
+          }),
         ));
 
-        if (_isBuildingInfoExpanded) {
-          for (var subItem in buildingInfoSubItems) {
+        if (expanded) {
+          for (var subItem in isBim ? assetsBimSubItems : buildingInfoSubItems) {
             final subTitle = subItem['title'] as String;
             final subIcon = subItem['icon'] as IconData;
             menuWidgets.add(_menuTile(
@@ -378,7 +400,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
                     ),
                   ),
                 ),
-                if (trailing != null) trailing,
+                ?trailing,
               ],
             ),
           ),
@@ -401,6 +423,10 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
       'Building Survey': () => BuildingSurveyScreen(facilityId: widget.facilityId, selectedSubSection: ''),
       'Documentations': () => DocumentationsScreen(facilityId: widget.facilityId),
       'Drawings': () => DrawingsScreen(facilityId: widget.facilityId),
+      'BIM Models': () => BimModelsScreen(facilityId: widget.facilityId),
+      '3D Viewer': () => BimViewerScreen(facilityId: widget.facilityId),
+      'Floors & Rooms': () => SpacesScreen(facilityId: widget.facilityId),
+      'Equipment Supplied': () => EquipmentSuppliedScreen(facilityId: widget.facilityId),
     };
 
     final screenBuilder = screenMap[title];

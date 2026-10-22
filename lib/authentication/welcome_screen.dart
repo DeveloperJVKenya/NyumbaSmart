@@ -115,7 +115,7 @@ class WelcomeScreenState extends State<WelcomeScreen> {
                     transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
                     layoutBuilder: (currentChild, previousChildren) => Stack(
                       fit: StackFit.expand,
-                      children: [...previousChildren, if (currentChild != null) currentChild],
+                      children: [...previousChildren, ?currentChild],
                     ),
                     child: SizedBox(
                       key: ValueKey(_currentIndex),

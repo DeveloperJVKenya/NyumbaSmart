@@ -47,6 +47,49 @@ service cloud.firestore {
       return isDeveloper() || isJVAlmacisUser() || facilityOrganization(facilityId) == getUserOrganization();
     }
 
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    // Top-level records that name their facility (Work_Orders, BillingData, Reports, …). Uses the
+    // field directly so list queries filtered by facilityId can be checked against it.
+    function canAccessRecord(data) {
+      return canAccessFacility(data.facilityId);
+    }
+
+    function facilityUnchanged() {
+      return request.resource.data.facilityId == resource.data.facilityId;
+    }
+
+    // Uploaded documents (Reports, PriceList, Drawings, …): the uploader creates them for a facility
+    // they can access; the uploader or an admin/developer edits or deletes them.
+    function canCreateUpload() {
+      return signedIn() && request.resource.data.userId == request.auth.uid &&
+        canAccessRecord(request.resource.data);
+    }
+
+    function canManageUpload() {
+      return signedIn() && canAccessRecord(resource.data) &&
+        (resource.data.userId == request.auth.uid || isAdmin() || isDeveloper());
+    }
+
+    // The role/organization a user may give themselves on Users/{uid}: only what their Admins,
+    // Developers or Technicians record says — records only admins/developers can write. Mirrors
+    // RoleService._resolve in lib/providers/auth_providers.dart (Admin > Developer > Technician).
+    function roleOrgBackedByRecord(uid, role, org) {
+      let adminPath = /databases/$(database)/documents/Admins/$(uid);
+      let techPath = /databases/$(database)/documents/Technicians/$(uid);
+      let devPath = /databases/$(database)/documents/Developers/$(uid);
+      return (exists(adminPath) && role == 'Admin' && org == get(adminPath).data.get('organization', '-')) ||
+        (!exists(adminPath) && exists(devPath) && role == 'Technician' && org == 'JV Almacis') ||
+        (!exists(adminPath) && !exists(devPath) && exists(techPath) && role == 'Technician' &&
+          org == get(techPath).data.get('organization', '-'));
+    }
+
     // 🔧 UPDATED: SystemNotifications collection rules - Enhanced for system updates
     match /SystemNotifications/{notificationId} {
       allow read: if request.auth != null; // All authenticated users can read system notifications
@@ -99,7 +142,8 @@ service cloud.firestore {
     // Organizations collection rules
     match /Organizations/{organizationId} {
       allow read: if request.auth != null;
-      allow write, update, delete: if isDeveloper() || isAdmin();
+      // Was any admin; a client admin could edit other organizations.
+      allow write: if isDeveloper() || (isAdmin() && isJVAlmacisUser());
     }
 
     // 🔧 UPDATED: Facilities collection rules with organization-based access
@@ -126,14 +170,36 @@ service cloud.firestore {
       );
     }
 
-    // Users: Allow users to manage their own data, Developers to read/write all, Admins to read and update specific fields
+    // Users. role/organization drive isAdmin(), isTechnician() and organization scoping everywhere,
+    // so users can no longer set them freely on their own profile (previously anyone could make
+    // themselves Admin, or join "JV Almacis" and see every client's facilities).
     match /Users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      allow read, write: if isDeveloper();
-      allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId); // Allow read for the user themselves
+      allow read: if isSelf(userId) || isDeveloper() || isAdmin() || isTechnician();
+
+      // Sign-up (and the FCM-token upsert that can race it) creates an unassigned profile only.
+      allow create: if isSelf(userId) &&
+        request.resource.data.get('role', '-') == '-' &&
+        request.resource.data.get('organization', '-') == '-';
+
+      // Own profile edits are fine; role/organization may only move to what the user's
+      // Admins/Developers/Technicians record says (the app's automatic role correction).
+      allow update: if isSelf(userId) && (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'organization']) ||
+        roleOrgBackedByRecord(userId, request.resource.data.get('role', '-'), request.resource.data.get('organization', '-'))
+      );
+      allow delete: if isSelf(userId);
+
+      allow create, update, delete: if isDeveloper();
+
+      // Admins assign roles. JV Almacis admins may assign anything; a client admin only manages
+      // unassigned users or users of their own organization, and cannot grant Admin.
       allow update: if isAdmin() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'username', 'email', 'organization', 'createdAt']);
-      allow read: if isTechnician();
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'username', 'email', 'organization', 'createdAt']) &&
+        (isJVAlmacisUser() || (
+          resource.data.get('organization', '-') in [getUserOrganization(), '-'] &&
+          request.resource.data.get('organization', '-') in [getUserOrganization(), '-'] &&
+          request.resource.data.get('role', '-') in ['Technician', 'User', '-']
+        ));
     }
 
     match /Developers/{userId} {
@@ -146,61 +212,80 @@ service cloud.firestore {
     }
 
     match /Admins/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow read: if isDeveloper() || isAdmin();
-      allow read: if isTechnician();
-      allow write: if isDeveloper() || isAdmin();
+      allow read: if isSelf(userId) || isDeveloper() || isAdmin() || isTechnician();
+      // Was any admin, which let a client admin create a JV Almacis admin.
+      allow write: if isDeveloper() || (isAdmin() && isJVAlmacisUser());
     }
 
     match /Technicians/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && (
-        (isAdmin()) ||
-        isDeveloper()
-      );
+      allow read: if signedIn();
+      allow write: if isDeveloper() || (isAdmin() && isJVAlmacisUser());
+      // Client admins add/remove technicians of their own organization only
+      // (display screens/role_assignment_screen.dart writes the admin's organization).
+      allow create, update: if isAdmin() &&
+        request.resource.data.get('organization', '-') == getUserOrganization();
+      allow delete: if isAdmin() && resource.data.get('organization', '-') == getUserOrganization();
     }
 
     match /admin_logs/{logId} {
       allow read, write, delete: if isDeveloper() || isAdmin();
     }
 
+    // Uploaded documents: readable only by people with access to the record's facility (was: any
+    // signed-in user, any organization). Deletes now work: the old `write` rule checked the new
+    // document's userId, which a delete doesn't have, so every delete was refused.
     match /Reports/{reportId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && canAccessRecord(resource.data);
+      allow create: if canCreateUpload();
+      allow update: if canManageUpload() && facilityUnchanged();
+      allow delete: if canManageUpload();
     }
 
+    // Billing: JV Almacis admins upload and set payment status; the client organization's admin
+    // approves. Previously any signed-in user could approve or reject any organization's billing.
     match /BillingData/{billingId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update: if request.auth != null && (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus', 'approvalNotes', 'approvedBy', 'approvedAt']) ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+      allow read: if signedIn() && canAccessRecord(resource.data);
+      allow create: if canCreateUpload() && (isDeveloper() || (isAdmin() && isJVAlmacisUser()));
+      allow update: if signedIn() && canAccessRecord(resource.data) && (
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus', 'approvalNotes', 'approvedBy', 'approvedAt']) &&
+          (isDeveloper() || (isAdmin() && facilityOrganization(resource.data.facilityId) == getUserOrganization()))) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+          (isDeveloper() || (isAdmin() && isJVAlmacisUser())))
       );
+      allow delete: if signedIn() && canAccessRecord(resource.data) &&
+        (isDeveloper() || (isAdmin() && isJVAlmacisUser()));
     }
 
     match /BuildingSurveys/{surveyId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && canAccessRecord(resource.data);
+      allow create: if canCreateUpload();
+      allow update: if canManageUpload() && facilityUnchanged();
+      allow delete: if canManageUpload();
     }
 
     match /Documentations/{documentationId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && canAccessRecord(resource.data);
+      allow create: if canCreateUpload();
+      allow update: if canManageUpload() && facilityUnchanged();
+      allow delete: if canManageUpload();
     }
 
     match /Drawings/{drawingId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && canAccessRecord(resource.data);
+      allow create: if canCreateUpload();
+      allow update: if canManageUpload() && facilityUnchanged();
+      allow delete: if canManageUpload();
     }
 
     match /PriceList/{priceListId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && canAccessRecord(resource.data);
+      allow create: if canCreateUpload();
+      allow update: if canManageUpload() && facilityUnchanged();
+      allow delete: if canManageUpload();
     }
 
     match /Schedule_Maintenance/{scheduleId} {
-      allow read: if request.auth != null;
+      allow read: if signedIn() && canAccessRecord(resource.data);
       allow write: if request.auth != null && (
         request.resource.data.userId == request.auth.uid ||
         request.resource.data.createdBy == request.auth.uid
@@ -217,51 +302,83 @@ service cloud.firestore {
       );
     }
 
+    // Requests and work orders are scoped to the facility's organization (was: readable by any
+    // signed-in user, any organization). Who may change them is unchanged.
     match /Work_Requests/{requestId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.data.createdBy == request.auth.uid;
-      allow update: if request.auth != null && (
+      allow read: if signedIn() && canAccessRecord(resource.data);
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid &&
+        canAccessRecord(request.resource.data);
+      allow update: if signedIn() && canAccessRecord(resource.data) && facilityUnchanged() && (
         resource.data.createdBy == request.auth.uid ||
         isDeveloper() || isAdmin() || isTechnician()
       );
-      allow delete: if request.auth != null && (
+      allow delete: if signedIn() && canAccessRecord(resource.data) && (
         resource.data.createdBy == request.auth.uid ||
         isDeveloper() || isAdmin()
       );
     }
 
     match /Work_Orders/{workOrderId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.data.createdBy == request.auth.uid;
-      allow update: if request.auth != null && (
+      allow read: if signedIn() && canAccessRecord(resource.data);
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid &&
+        canAccessRecord(request.resource.data);
+      allow update: if signedIn() && canAccessRecord(resource.data) && facilityUnchanged() && (
         resource.data.createdBy == request.auth.uid ||
         isDeveloper() || isAdmin() || isTechnician()
       );
-      allow delete: if request.auth != null && (
+      allow delete: if signedIn() && canAccessRecord(resource.data) && (
         resource.data.createdBy == request.auth.uid ||
         isDeveloper() || isAdmin()
       );
     }
 
     // Legacy nested structure (keeping for backward compatibility)
+    // Organization-scoped (was: any signed-in user, any facility).
     match /facilities/{facilityId}/requests/{requestId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if signedIn() && canAccessFacility(facilityId);
     }
 
     match /facilities/{facilityId}/work_orders/{workOrderId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if signedIn() && canAccessFacility(facilityId);
     }
 
+    // Equipment is scoped to the facility's organization (was: any signed-in user, any facility).
+    // Technicians still create/update (status changes, work-order history); only admins and
+    // developers delete, since imported BIM records and their history would be lost.
     match /facilities/{facilityId}/equipment/{equipmentId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create, update: if request.auth != null && canAccessFacility(facilityId);
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
     }
 
     match /facilities/{facilityId}/inventory/{inventoryId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if signedIn() && canAccessFacility(facilityId);
     }
 
     match /facilities/{facilityId}/assets/{assetId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if signedIn() && canAccessFacility(facilityId);
+    }
+
+    // BIM: storeys/rooms and import records. Unlike the legacy blocks above, these are scoped to the
+    // facility's organization via canAccessFacility(). Imports are an admin/developer action.
+    match /facilities/{facilityId}/spaces/{spaceId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create, update: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
+    match /facilities/{facilityId}/bimModels/{modelId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper()) &&
+        request.resource.data.uploadedBy == request.auth.uid;
+      allow update: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
     }
 
     // Scope of Work documents uploaded per facility (Excel/PDF), plus the OCR/parsing
@@ -376,11 +493,11 @@ service cloud.firestore {
     }
 
     // 🔧 FIXED: Enhanced Notifications rules (legacy collection)
+    // Legacy collection: the app no longer writes it (Cloud Functions use the Admin SDK, which
+    // bypasses rules). Writes were open to any signed-in user, allowing fake alerts.
     match /Notifications/{notificationId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
-      allow update: if request.auth != null;
-      allow delete: if isDeveloper() || isAdmin();
+      allow write: if isDeveloper() || isAdmin();
     }
 
     // 🔧 UPDATED: TestNotifications rules - More permissive for testing
@@ -394,14 +511,14 @@ service cloud.firestore {
       );
     }
 
+    // Was keyed on a Users.facilities list that nothing in the app writes, so technicians could not
+    // read vendors and nobody could save one. Now scoped like other facility records: anyone with
+    // access to the facility reads and logs service history; admins/developers add and remove.
     match /Vendors/{vendorId} {
-      allow read: if request.auth != null && (
-        isAdmin() || isDeveloper() ||
-        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.facilities.hasAny([resource.data.facilityId])
-      );
-      allow write: if request.auth != null && (
-        isAdmin() || isDeveloper()
-      ) && request.resource.data.facilityId in get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.facilities;
+      allow read: if signedIn() && canAccessRecord(resource.data);
+      allow create: if signedIn() && canAccessRecord(request.resource.data) && (isAdmin() || isDeveloper());
+      allow update: if signedIn() && canAccessRecord(resource.data) && facilityUnchanged();
+      allow delete: if signedIn() && canAccessRecord(resource.data) && (isAdmin() || isDeveloper());
     }
 
     match /TaskProgress/{taskId} {
