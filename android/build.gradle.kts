@@ -1,6 +1,8 @@
 allprojects {
     repositories {
         google()
+        // Google's Maven Central mirror first: Maven Central itself (Cloudflare-fronted) stalls on some networks.
+        maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }
         mavenCentral()
     }
 }

@@ -51,6 +51,11 @@ class NotificationService {
     await _requestPermissions();
     await _registerFcmToken();
 
+    // firebase_messaging 17 deprecates getToken()/onTokenRefresh in favour of register()/onRegistered,
+    // which return a Firebase Installation ID (FID) instead of an FCM registration token. Every Cloud
+    // Function sends with `token: user.fcmToken`, so moving to FIDs needs a matching server change;
+    // until then these stay on the (still working) token API.
+    // ignore: deprecated_member_use
     _messaging.onTokenRefresh.listen((newToken) async {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
@@ -90,7 +95,12 @@ class NotificationService {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      final token = kIsWeb ? await _messaging.getToken(vapidKey: _webVapidKey) : await _messaging.getToken();
+      // Token API on purpose; see the note on onTokenRefresh in initialize().
+      final token = kIsWeb
+          // ignore: deprecated_member_use
+          ? await _messaging.getToken(vapidKey: _webVapidKey)
+          // ignore: deprecated_member_use
+          : await _messaging.getToken();
       if (token == null) return;
 
       await _firestore.collection('Users').doc(user.uid).set({
