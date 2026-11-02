@@ -19,10 +19,12 @@ const List<BrandStep> _kEntrySteps = [
 
 class OrganizationSelectionScreen extends ConsumerStatefulWidget {
   final Function(String organizationId, String organizationName) onOrganizationSelected;
+  final VoidCallback? onBack;
 
   const OrganizationSelectionScreen({
     super.key,
     required this.onOrganizationSelected,
+    this.onBack,
   });
 
   @override
@@ -136,7 +138,16 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: BrandStepper(steps: _kEntrySteps, current: 0, compact: true),
+          child: Row(
+            children: [
+              if (widget.onBack != null)
+                _GlassNavButton(icon: Icons.logout_rounded, onPressed: widget.onBack!, tooltip: 'Sign out')
+              else
+                const SizedBox(width: 40),
+              const SizedBox(width: 12),
+              Expanded(child: BrandStepper(steps: _kEntrySteps, current: 0, compact: true)),
+            ],
+          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -390,6 +401,37 @@ class _GlassOrgCard extends StatelessWidget {
                 color: hovered ? AppColors.accentLight : Colors.white.withValues(alpha: 0.45),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassNavButton extends StatelessWidget {
+  const _GlassNavButton({required this.icon, required this.onPressed, this.tooltip});
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onPressed,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Icon(icon, color: Colors.white.withValues(alpha: 0.8), size: 19),
           ),
         ),
       ),

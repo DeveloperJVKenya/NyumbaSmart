@@ -22,6 +22,7 @@ class FacilityScreen extends StatefulWidget {
   final bool isSelectionActive;
   final String? userOrganization; // User's organization for filtering
   final bool isServiceProvider; // Whether user is a service provider
+  final VoidCallback? onBack;
 
   const FacilityScreen({
     super.key,
@@ -30,6 +31,7 @@ class FacilityScreen extends StatefulWidget {
     required this.isSelectionActive,
     this.userOrganization,
     this.isServiceProvider = false,
+    this.onBack,
   });
 
   @override
@@ -559,48 +561,82 @@ class FacilityScreenState extends State<FacilityScreen> {
   }
 
   Widget _buildLegacyBody(bool isMobile, bool isDesktop, double contentWidth) {
-    return Container(
-      decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
-      child: SafeArea(
-        child: Center(
-          child: SizedBox(
-            width: contentWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (!_isAddingFacility && !_isNewUser) ...[
-                  Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.isServiceProvider && widget.userOrganization != null ? '${widget.userOrganization} Facilities' : 'Your Facilities',
-                          style: GoogleFonts.poppins(fontSize: isMobile ? 20 : 26, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                        ),
-                        const SizedBox(height: 6),
-                        Text('Select a facility to manage its maintenance tasks', style: GoogleFonts.poppins(fontSize: isMobile ? 13 : 15, color: AppColors.textSecondary)),
-                        if (widget.userOrganization != null && widget.userOrganization!.isNotEmpty && widget.userOrganization != '-') ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(AppRadius.pill)),
-                            child: Text('Organization: ${widget.userOrganization}', style: GoogleFonts.poppins(fontSize: isMobile ? 11.5 : 13, color: AppColors.primaryDark, fontWeight: FontWeight.w500)),
+    final hasSelectedFacility = widget.selectedFacilityId != null && widget.selectedFacilityId!.isNotEmpty;
+    return SafeArea(
+      child: Center(
+        child: SizedBox(
+          width: contentWidth,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!_isAddingFacility && !_isNewUser) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.isServiceProvider && widget.userOrganization != null
+                                      ? '${widget.userOrganization} Facilities'
+                                      : 'Facilities',
+                                  style: BrandFonts.display(
+                                    fontSize: isMobile ? 22 : 26,
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  hasSelectedFacility ? 'Switch facility or manage the active one' : 'Select a facility to get started',
+                                  style: GoogleFonts.poppins(fontSize: isMobile ? 12.5 : 13.5, color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
                           ),
+                          if (widget.userOrganization != null && widget.userOrganization!.isNotEmpty && widget.userOrganization != '-')
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(AppRadius.pill),
+                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.corporate_fare_rounded, size: 13, color: AppColors.primaryDark),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    widget.userOrganization!,
+                                    style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.primaryDark, fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(height: 3, width: 48, decoration: BoxDecoration(gradient: BrandColors.accentBar, borderRadius: BorderRadius.circular(2))),
+                    ],
                   ),
-                ],
-                Expanded(
-                  child: _isAddingFacility
-                      ? _buildAddFacilityForm()
-                      : _isNewUser
-                          ? _buildNewUserMessage()
-                          : Padding(padding: const EdgeInsets.symmetric(horizontal: 20.0), child: _buildFacilitiesList(isMobile)),
                 ),
+                const SizedBox(height: 4),
               ],
-            ),
+              Expanded(
+                child: _isAddingFacility
+                    ? _buildAddFacilityForm()
+                    : _isNewUser
+                        ? _buildNewUserMessage()
+                        : Padding(padding: const EdgeInsets.symmetric(horizontal: 20.0), child: _buildFacilitiesList(isMobile)),
+              ),
+            ],
           ),
         ),
       ),
@@ -620,7 +656,20 @@ class FacilityScreenState extends State<FacilityScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: FadeSlideIn(
-                      child: BrandStepper(steps: _kEntrySteps, current: 1, compact: true),
+                      child: Row(
+                        children: [
+                          if (widget.onBack != null)
+                            _GlassNavButton(
+                              icon: Icons.arrow_back_rounded,
+                              onPressed: widget.onBack!,
+                              tooltip: 'Back',
+                            )
+                          else
+                            const SizedBox(width: 40),
+                          const SizedBox(width: 12),
+                          Expanded(child: BrandStepper(steps: _kEntrySteps, current: 1, compact: true)),
+                        ],
+                      ),
                     ),
                   ),
                   Padding(
@@ -835,6 +884,37 @@ class _FacilityCard extends StatelessWidget {
               const Spacer(),
               Text('Added: ${facility.createdAt.toLocal().toString().split(' ')[0]}', style: GoogleFonts.poppins(fontSize: 11, color: fgMuted)),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassNavButton extends StatelessWidget {
+  const _GlassNavButton({required this.icon, required this.onPressed, this.tooltip});
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onPressed,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Icon(icon, color: Colors.white.withValues(alpha: 0.8), size: 19),
           ),
         ),
       ),

@@ -229,6 +229,7 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
     if (isOrganizationSelectionActive) {
       return OrganizationSelectionScreen(
         onOrganizationSelected: _onOrganizationSelected,
+        onBack: _exitOrGoToLogin,
       );
     }
 
@@ -238,6 +239,12 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
       isSelectionActive: isFacilitySelectionActive,
       userOrganization: isServiceProviderOrg ? _selectedOrganizationName : organization,
       isServiceProvider: isServiceProviderOrg,
+      onBack: isFacilitySelectionActive
+          ? () => _handleBackNavigation(
+                isOrganizationSelectionActive: false,
+                isServiceProviderOrg: isServiceProviderOrg,
+              )
+          : null,
     );
   }
 }
