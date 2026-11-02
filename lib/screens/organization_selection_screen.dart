@@ -133,9 +133,23 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
   }
 
   Widget _buildSelectionView() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    return LayoutBuilder(builder: (context, c) {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: SizedBox(
+          width: c.maxWidth.clamp(0.0, 760.0),
+          height: c.maxHeight,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _buildSelectionChildren(),
+          ),
+        ),
+      );
+    });
+  }
+
+  List<Widget> _buildSelectionChildren() {
+    return [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           child: Row(
@@ -266,8 +280,7 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
             },
           ),
         ),
-      ],
-    );
+    ];
   }
 
   Widget _buildAddOrganizationForm() {

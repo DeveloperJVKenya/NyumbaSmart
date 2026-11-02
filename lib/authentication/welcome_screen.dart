@@ -146,17 +146,7 @@ class WelcomeScreenState extends State<WelcomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 14),
-                    Center(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.pushNamed(context, '/needAccount'),
-                        style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
-                        icon: const Icon(Icons.help_outline, size: 18),
-                        label: Text(
-                          'Need an Account?',
-                          style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ),
+                    Center(child: _GlassCta(onPressed: () => Navigator.pushNamed(context, '/needAccount'))),
                     const SizedBox(height: 18),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -192,49 +182,69 @@ class WelcomeScreenState extends State<WelcomeScreen> {
     final subtitleSize = isMobile ? 14.0 : isTablet ? 15.5 : 17.0;
 
     if (slide.image == 'assets/nyumbasmart.jpg') {
-      // Same solid backdrop as the Scaffold — deliberately static, no
-      // gradient wash behind the logo slide.
-      return ColoredBox(
-        color: AppColors.primaryDark,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF0F172A)],
+            stops: [0.0, 0.5, 1.0],
+          ),
+        ),
+        child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(AppRadius.xl),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 24, offset: const Offset(0, 10)),
-                  ],
-                ),
-                child: Image.asset(
-                  slide.image!,
-                  height: isMobile ? 90.0 : isTablet ? 130.0 : 170.0,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    slide.title,
-                    style: GoogleFonts.poppins(fontSize: titleSize, fontWeight: FontWeight.bold, color: Colors.white),
-                    textAlign: TextAlign.center,
+            // Decorative glow blobs
+            Positioned(top: -60, right: -40,
+              child: Container(width: 260, height: 260,
+                decoration: BoxDecoration(shape: BoxShape.circle,
+                  color: AppColors.accent.withValues(alpha: 0.08)))),
+            Positioned(bottom: -80, left: -60,
+              child: Container(width: 300, height: 300,
+                decoration: BoxDecoration(shape: BoxShape.circle,
+                  color: AppColors.primary.withValues(alpha: 0.1)))),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                    boxShadow: [
+                      BoxShadow(color: AppColors.accent.withValues(alpha: 0.2), blurRadius: 32, offset: const Offset(0, 12)),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    slide.subtitle,
-                    style: GoogleFonts.poppins(fontSize: subtitleSize, color: Colors.white.withValues(alpha: 0.9)),
-                    textAlign: TextAlign.center,
+                  child: Image.asset(
+                    slide.image!,
+                    height: isMobile ? 96.0 : isTablet ? 136.0 : 176.0,
+                    fit: BoxFit.contain,
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 32),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        slide.title,
+                        style: GoogleFonts.plusJakartaSans(
+                            fontSize: titleSize + 2, fontWeight: FontWeight.w800,
+                            color: Colors.white, letterSpacing: -0.5),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        slide.subtitle,
+                        style: GoogleFonts.poppins(fontSize: subtitleSize,
+                            color: Colors.white.withValues(alpha: 0.75), height: 1.5),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -257,13 +267,20 @@ class WelcomeScreenState extends State<WelcomeScreen> {
       fit: StackFit.expand,
       children: [
         imageLayer,
-        DecoratedBox(
+        // Cinematic multi-stop gradient — top stays photo-bright,
+        // bottom fades to near-black for text legibility.
+        const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.75)],
-              stops: const [0.4, 1.0],
+              colors: [
+                Colors.transparent,
+                Color(0x15000000),
+                Color(0x70000000),
+                Color(0xD8000000),
+              ],
+              stops: [0.0, 0.35, 0.68, 1.0],
             ),
           ),
         ),
@@ -272,20 +289,27 @@ class WelcomeScreenState extends State<WelcomeScreen> {
           right: 0,
           bottom: 190.0,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            padding: const EdgeInsets.symmetric(horizontal: 28.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   slide.title,
-                  style: GoogleFonts.poppins(fontSize: titleSize, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: GoogleFonts.plusJakartaSans(
+                      fontSize: titleSize, fontWeight: FontWeight.w800,
+                      color: Colors.white, letterSpacing: -0.3, height: 1.2),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 10),
                 Text(
                   slide.subtitle,
-                  style: GoogleFonts.poppins(fontSize: subtitleSize, color: Colors.white.withValues(alpha: 0.9)),
+                  style: GoogleFonts.poppins(
+                      fontSize: subtitleSize,
+                      color: Colors.white.withValues(alpha: 0.82),
+                      height: 1.5),
                   textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -330,6 +354,45 @@ class _GradientCta extends StatelessWidget {
                 Text(label, style: GoogleFonts.poppins(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassCta extends StatelessWidget {
+  final VoidCallback onPressed;
+  const _GlassCta({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        onTap: onPressed,
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            color: Colors.white.withValues(alpha: 0.12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.person_add_outlined, color: Colors.white.withValues(alpha: 0.9), size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Need an Account?',
+                style: GoogleFonts.poppins(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: 15, fontWeight: FontWeight.w500),
+              ),
+            ],
           ),
         ),
       ),

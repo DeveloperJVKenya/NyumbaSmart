@@ -22,6 +22,8 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _emailFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
   final Logger _logger = Logger();
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -106,6 +108,65 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _showForgotPassword() async {
+    final ctrl = TextEditingController(text: _emailController.text.trim());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Reset Password',
+            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Enter your email address and we\'ll send you a reset link.',
+                style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textSecondary)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: 'Email address',
+                prefixIcon: const Icon(Icons.email_outlined),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            child: const Text('Send Link', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final email = ctrl.text.trim();
+    if (email.isEmpty) return;
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Reset link sent to $email'),
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.message ?? 'Failed to send reset email.'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
   void _navigateToDashboard(String role) {
     // Clears the whole stack (Welcome/Login/Registration) instead of just
     // replacing the top route, so the back button can't land on a stale
@@ -122,6 +183,8 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -140,41 +203,58 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: cardWidth),
                 child: AppCard(
-                  padding: const EdgeInsets.all(28),
+                  padding: const EdgeInsets.all(32),
                   child: Form(
                     key: _formKey,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Brand header
                         Center(
                           child: Container(
-                            width: 64,
-                            height: 64,
+                            width: 72,
+                            height: 72,
                             decoration: BoxDecoration(
                               gradient: AppColors.primaryGradient,
-                              borderRadius: BorderRadius.circular(AppRadius.lg),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.3),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.lock_outline_rounded, color: Colors.white, size: 30),
+                            child: Center(
+                              child: Image.asset('assets/icons/icon.png', width: 40, height: 40,
+                                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.lock_outline_rounded, color: Colors.white, size: 32)),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 22),
                         Text(
                           'Welcome Back',
-                          style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          style: GoogleFonts.plusJakartaSans(
+                              fontSize: 26, fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary, letterSpacing: -0.5),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 5),
                         Text(
-                          'Sign in to continue to NyumbaSmart',
-                          style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textSecondary),
+                          'Sign in to NyumbaSmart CMMS',
+                          style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textSecondary),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 30),
                         AppTextField(
                           controller: _emailController,
-                          label: 'Email',
+                          label: 'Email address',
                           icon: Icons.email_outlined,
                           keyboardType: TextInputType.emailAddress,
+                          focusNode: _emailFocusNode,
+                          textInputAction: TextInputAction.next,
+                          onFieldSubmitted: (_) =>
+                              FocusScope.of(context).requestFocus(_passwordFocusNode),
                           validator: (value) {
                             if (value == null || value.isEmpty) return 'Please enter your email';
                             if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) return 'Enter a valid email';
@@ -187,6 +267,9 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
                           label: 'Password',
                           icon: Icons.lock_outline,
                           obscureText: _obscurePassword,
+                          focusNode: _passwordFocusNode,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) { if (!_isLoading) _handleLogin(); },
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
@@ -199,27 +282,49 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
                             return null;
                           },
                         ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _showForgotPassword,
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                            ),
+                            child: Text('Forgot password?',
+                                style: GoogleFonts.poppins(
+                                    fontSize: 12.5, color: AppColors.primary,
+                                    fontWeight: FontWeight.w500)),
+                          ),
+                        ),
                         if (_errorMessage != null) ...[
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 8),
                           AppErrorBanner(message: _errorMessage!),
                         ],
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
                         AppGradientButton(
-                          label: 'Login',
+                          label: 'Sign In',
+                          icon: Icons.login_rounded,
                           isLoading: _isLoading,
                           onPressed: _isLoading ? null : _handleLogin,
                         ),
-                        const SizedBox(height: 16),
-                        Center(
-                          child: TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) => const RegistrationScreen()),
-                              );
-                            },
-                            child: const Text('Need an account? Sign Up'),
-                          ),
+                        const SizedBox(height: 18),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text("Don't have an account?",
+                                style: GoogleFonts.poppins(
+                                    fontSize: 13, color: AppColors.textSecondary)),
+                            TextButton(
+                              onPressed: () => Navigator.push(context,
+                                  MaterialPageRoute(builder: (_) => const RegistrationScreen())),
+                              style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.only(left: 4)),
+                              child: Text('Sign Up',
+                                  style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.primary)),
+                            ),
+                          ],
                         ),
                       ],
                     ),

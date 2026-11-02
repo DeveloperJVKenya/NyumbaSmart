@@ -25,6 +25,9 @@ class RegistrationScreenState extends State<RegistrationScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final Logger _logger = Logger(printer: PrettyPrinter());
+  final FocusNode _usernameFocusNode = FocusNode();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -35,6 +38,9 @@ class RegistrationScreenState extends State<RegistrationScreen> {
     _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _usernameFocusNode.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -131,51 +137,69 @@ class RegistrationScreenState extends State<RegistrationScreen> {
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: cardWidth),
                 child: AppCard(
-                  padding: const EdgeInsets.all(28),
+                  padding: const EdgeInsets.all(32),
                   child: Form(
                     key: _formKey,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Brand header
                         Center(
                           child: Container(
-                            width: 64,
-                            height: 64,
+                            width: 72,
+                            height: 72,
                             decoration: BoxDecoration(
                               gradient: AppColors.primaryGradient,
-                              borderRadius: BorderRadius.circular(AppRadius.lg),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.3),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 30),
+                            child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 32),
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 22),
                         Text(
-                          'Join NyumbaSmart',
-                          style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          'Create Account',
+                          style: GoogleFonts.plusJakartaSans(
+                              fontSize: 26, fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary, letterSpacing: -0.5),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 5),
                         Text(
-                          'Register to manage facilities.',
-                          style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textSecondary),
+                          'Join NyumbaSmart facility management',
+                          style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textSecondary),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 30),
                         AppTextField(
                           controller: _usernameController,
-                          label: 'Username',
+                          label: 'Full name',
                           icon: Icons.person_outline,
+                          focusNode: _usernameFocusNode,
+                          textInputAction: TextInputAction.next,
+                          onFieldSubmitted: (_) =>
+                              FocusScope.of(context).requestFocus(_emailFocusNode),
                           validator: (value) {
-                            if (value == null || value.trim().isEmpty) return 'Please enter a username';
+                            if (value == null || value.trim().isEmpty) return 'Please enter your name';
                             return null;
                           },
                         ),
                         const SizedBox(height: 16),
                         AppTextField(
                           controller: _emailController,
-                          label: 'Email',
+                          label: 'Email address',
                           icon: Icons.email_outlined,
                           keyboardType: TextInputType.emailAddress,
+                          focusNode: _emailFocusNode,
+                          textInputAction: TextInputAction.next,
+                          onFieldSubmitted: (_) =>
+                              FocusScope.of(context).requestFocus(_passwordFocusNode),
                           validator: (value) {
                             if (value == null || value.isEmpty || !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
                               return 'Please enter a valid email address';
@@ -189,6 +213,9 @@ class RegistrationScreenState extends State<RegistrationScreen> {
                           label: 'Password',
                           icon: Icons.lock_outline,
                           obscureText: _obscurePassword,
+                          focusNode: _passwordFocusNode,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) { if (!_isLoading) _signUp(); },
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
@@ -204,26 +231,35 @@ class RegistrationScreenState extends State<RegistrationScreen> {
                           },
                         ),
                         if (_errorMessage != null) ...[
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           AppErrorBanner(message: _errorMessage!),
                         ],
                         const SizedBox(height: 24),
                         AppGradientButton(
-                          label: 'Sign Up',
+                          label: 'Create Account',
+                          icon: Icons.person_add_alt_1_rounded,
                           isLoading: _isLoading,
                           onPressed: _isLoading ? null : _signUp,
                         ),
-                        const SizedBox(height: 16),
-                        Center(
-                          child: TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                              );
-                            },
-                            child: const Text('Already have an account? Log In'),
-                          ),
+                        const SizedBox(height: 18),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('Already have an account?',
+                                style: GoogleFonts.poppins(
+                                    fontSize: 13, color: AppColors.textSecondary)),
+                            TextButton(
+                              onPressed: () => Navigator.push(context,
+                                  MaterialPageRoute(builder: (_) => const LoginScreen())),
+                              style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.only(left: 4)),
+                              child: Text('Sign In',
+                                  style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.primary)),
+                            ),
+                          ],
                         ),
                       ],
                     ),

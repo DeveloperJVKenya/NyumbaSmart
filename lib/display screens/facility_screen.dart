@@ -648,7 +648,7 @@ class FacilityScreenState extends State<FacilityScreen> {
       child: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: isDesktop ? contentWidth : double.infinity),
+            constraints: const BoxConstraints(maxWidth: 760),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
