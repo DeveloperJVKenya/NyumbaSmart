@@ -8,6 +8,13 @@ import 'package:cmms/services/geocoding_service.dart';
 import 'package:cmms/widgets/location_picker_map.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/theme/app_widgets.dart';
+import 'package:cmms/widgets/brand/brand_kit.dart';
+
+const List<BrandStep> _kEntrySteps = [
+  BrandStep('Organization', Icons.business_rounded),
+  BrandStep('Facility', Icons.location_city_rounded),
+  BrandStep('Dashboard', Icons.dashboard_rounded),
+];
 
 class FacilityScreen extends StatefulWidget {
   final String? selectedFacilityId;
@@ -35,10 +42,12 @@ class FacilityScreenState extends State<FacilityScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final ScrollController _scrollController = ScrollController();
   bool _isAddingFacility = false;
   LocationPickResult? _pickedLocation;
+  String _searchQuery = '';
 
   late Stream<QuerySnapshot<Map<String, dynamic>>> _facilitiesStream;
 
@@ -63,6 +72,7 @@ class FacilityScreenState extends State<FacilityScreen> {
     _nameController.dispose();
     _locationController.dispose();
     _addressController.dispose();
+    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -529,63 +539,231 @@ class FacilityScreenState extends State<FacilityScreen> {
     return ScaffoldMessenger(
       key: _messengerKey,
       child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
-          child: SafeArea(
-            child: Center(
-              child: SizedBox(
-                width: contentWidth,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (!_isAddingFacility && !_isNewUser) ...[
-                      Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.isServiceProvider && widget.userOrganization != null ? '${widget.userOrganization} Facilities' : 'Your Facilities',
-                              style: GoogleFonts.poppins(fontSize: isMobile ? 20 : 26, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                            ),
-                            const SizedBox(height: 6),
-                            Text('Select a facility to manage its maintenance tasks', style: GoogleFonts.poppins(fontSize: isMobile ? 13 : 15, color: AppColors.textSecondary)),
-                            if (widget.userOrganization != null && widget.userOrganization!.isNotEmpty && widget.userOrganization != '-') ...[
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(AppRadius.pill)),
-                                child: Text('Organization: ${widget.userOrganization}', style: GoogleFonts.poppins(fontSize: isMobile ? 11.5 : 13, color: AppColors.primaryDark, fontWeight: FontWeight.w500)),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                    Expanded(
-                      child: _isAddingFacility
-                          ? _buildAddFacilityForm()
-                          : _isNewUser
-                              ? _buildNewUserMessage()
-                              : Padding(padding: const EdgeInsets.symmetric(horizontal: 20.0), child: _buildFacilitiesList(isMobile)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+        backgroundColor: widget.isSelectionActive ? BrandColors.ink : null,
+        body: widget.isSelectionActive
+            ? _buildBrandSelectionBody(isMobile, isDesktop, contentWidth)
+            : _buildLegacyBody(isMobile, isDesktop, contentWidth),
         floatingActionButton: _isAddingFacility || _isNewUser
             ? null
             : FloatingActionButton.extended(
                 onPressed: () => setState(() => _isAddingFacility = true),
-                backgroundColor: AppColors.primary,
-                icon: const Icon(Icons.add_rounded, color: Colors.white),
-                label: Text('Add Facility', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+                backgroundColor: widget.isSelectionActive ? AppColors.accent : AppColors.primary,
+                foregroundColor: widget.isSelectionActive ? AppColors.textPrimary : Colors.white,
+                icon: const Icon(Icons.add_rounded),
+                label: Text('Add Facility', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                 elevation: 4,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
               ),
       ),
+    );
+  }
+
+  Widget _buildLegacyBody(bool isMobile, bool isDesktop, double contentWidth) {
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+      child: SafeArea(
+        child: Center(
+          child: SizedBox(
+            width: contentWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (!_isAddingFacility && !_isNewUser) ...[
+                  Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.isServiceProvider && widget.userOrganization != null ? '${widget.userOrganization} Facilities' : 'Your Facilities',
+                          style: GoogleFonts.poppins(fontSize: isMobile ? 20 : 26, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                        ),
+                        const SizedBox(height: 6),
+                        Text('Select a facility to manage its maintenance tasks', style: GoogleFonts.poppins(fontSize: isMobile ? 13 : 15, color: AppColors.textSecondary)),
+                        if (widget.userOrganization != null && widget.userOrganization!.isNotEmpty && widget.userOrganization != '-') ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                            child: Text('Organization: ${widget.userOrganization}', style: GoogleFonts.poppins(fontSize: isMobile ? 11.5 : 13, color: AppColors.primaryDark, fontWeight: FontWeight.w500)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+                Expanded(
+                  child: _isAddingFacility
+                      ? _buildAddFacilityForm()
+                      : _isNewUser
+                          ? _buildNewUserMessage()
+                          : Padding(padding: const EdgeInsets.symmetric(horizontal: 20.0), child: _buildFacilitiesList(isMobile)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBrandSelectionBody(bool isMobile, bool isDesktop, double contentWidth) {
+    return BrandBackdrop(
+      child: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: isDesktop ? contentWidth : double.infinity),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (!_isAddingFacility && !_isNewUser) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: FadeSlideIn(
+                      child: BrandStepper(steps: _kEntrySteps, current: 1, compact: true),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (widget.userOrganization != null && widget.userOrganization!.isNotEmpty && widget.userOrganization != '-')
+                          BrandEyebrow(label: widget.userOrganization!, icon: Icons.corporate_fare_rounded),
+                        const SizedBox(height: 12),
+                        Text(
+                          widget.isServiceProvider && widget.userOrganization != null && widget.userOrganization != '-'
+                              ? '${widget.userOrganization} Facilities'
+                              : 'Select Facility',
+                          style: BrandFonts.display(fontSize: 30),
+                        ),
+                        const SizedBox(height: 10),
+                        const BrandAccentBar(width: 72),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Choose a facility to manage its maintenance tasks',
+                          style: BrandFonts.body(fontSize: 13.5, color: Colors.white.withValues(alpha: 0.72)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: BrandSearchField(
+                      controller: _searchController,
+                      hint: 'Search facilities…',
+                      onChanged: (q) => setState(() => _searchQuery = q.toLowerCase()),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                Expanded(
+                  child: _isAddingFacility
+                      ? _buildAddFacilityForm()
+                      : _isNewUser
+                          ? _buildNewUserMessage()
+                          : _buildBrandFacilitiesList(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBrandFacilitiesList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _facilitiesStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: AppSkeletonList(count: 5, itemHeight: 96),
+          );
+        }
+
+        if (snapshot.hasError) {
+          logger.e('Firestore error: ${snapshot.error}');
+          return Center(
+            child: Text('Error loading facilities', style: BrandFonts.body(color: AppColors.error)),
+          );
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+
+        if (docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.location_city_rounded, size: 64, color: Colors.white.withValues(alpha: 0.25)),
+                const SizedBox(height: 16),
+                Text(
+                  widget.userOrganization != null && widget.userOrganization != '-'
+                      ? 'No facilities for ${widget.userOrganization}'
+                      : 'No facilities added yet',
+                  style: BrandFonts.display(fontSize: 18, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Tap the + button to add a new facility',
+                  style: BrandFonts.body(color: Colors.white.withValues(alpha: 0.65)),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final facilities = docs.map((doc) => Facility.fromFirestore(doc)).toList();
+
+        final filtered = _searchQuery.isEmpty
+            ? facilities
+            : facilities
+                .where((f) =>
+                    f.name.toLowerCase().contains(_searchQuery) ||
+                    f.location.toLowerCase().contains(_searchQuery))
+                .toList();
+
+        if (filtered.isEmpty && _searchQuery.isNotEmpty) {
+          return Center(
+            child: Text(
+              'No facilities match "$_searchQuery"',
+              style: BrandFonts.body(color: Colors.white.withValues(alpha: 0.65)),
+            ),
+          );
+        }
+
+        logger.i('Fetched ${facilities.length} facilities from Firestore for organization: ${widget.userOrganization ?? 'all'}');
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+          itemCount: filtered.length,
+          itemBuilder: (context, index) {
+            final facility = filtered[index];
+            final isSelected = facility.id == widget.selectedFacilityId;
+            return FadeSlideIn(
+              delay: Duration(milliseconds: 55 * index),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: HoverLift(
+                  builder: (ctx, hovered) => _GlassFacilityCard(
+                    facility: facility,
+                    isSelected: isSelected,
+                    hovered: hovered,
+                    onTap: () {
+                      widget.onFacilitySelected(facility.id);
+                      logger.i('Selected facility: ${facility.name}, ID: ${facility.id}');
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -656,6 +834,100 @@ class _FacilityCard extends StatelessWidget {
               ],
               const Spacer(),
               Text('Added: ${facility.createdAt.toLocal().toString().split(' ')[0]}', style: GoogleFonts.poppins(fontSize: 11, color: fgMuted)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassFacilityCard extends StatelessWidget {
+  final Facility facility;
+  final bool isSelected;
+  final bool hovered;
+  final VoidCallback onTap;
+
+  const _GlassFacilityCard({
+    required this.facility,
+    required this.isSelected,
+    required this.hovered,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor = isSelected ? AppColors.accentLight : (hovered ? AppColors.accentLight.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12));
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppColors.primary.withValues(alpha: 0.28)
+                : Colors.white.withValues(alpha: hovered ? 0.14 : 0.07),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: accentColor),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.accentLight.withValues(alpha: 0.2)
+                      : Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                child: Icon(
+                  Icons.location_city_rounded,
+                  color: isSelected ? AppColors.accentLight : Colors.white.withValues(alpha: 0.7),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      facility.name,
+                      style: BrandFonts.body(fontSize: 15.5, fontWeight: FontWeight.w700, color: Colors.white, height: 1.2),
+                    ),
+                    if (facility.location.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on_rounded, size: 13, color: Colors.white.withValues(alpha: 0.55)),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              facility.location,
+                              style: BrandFonts.body(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.65)),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isSelected)
+                Icon(Icons.check_circle_rounded, size: 20, color: AppColors.accentLight)
+              else
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: hovered ? AppColors.accentLight : Colors.white.withValues(alpha: 0.45),
+                ),
             ],
           ),
         ),

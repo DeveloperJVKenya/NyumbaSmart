@@ -9,6 +9,13 @@ import 'package:cmms/models/user_model.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/theme/app_widgets.dart';
+import 'package:cmms/widgets/brand/brand_kit.dart';
+
+const List<BrandStep> _kEntrySteps = [
+  BrandStep('Organization', Icons.business_rounded),
+  BrandStep('Facility', Icons.location_city_rounded),
+  BrandStep('Dashboard', Icons.dashboard_rounded),
+];
 
 class OrganizationSelectionScreen extends ConsumerStatefulWidget {
   final Function(String organizationId, String organizationName) onOrganizationSelected;
@@ -27,12 +34,12 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   bool _isAddingOrganization = false;
   bool _isSaving = false;
+  String _searchQuery = '';
 
-  // Built once and reused so a parent rebuild doesn't tear down and
-  // re-attach the Firestore listener (StreamBuilder tears down its
-  // subscription whenever it's handed a *new* Stream instance).
+  // Built once so a parent rebuild doesn't tear down and re-attach the listener.
   late final Stream<QuerySnapshot> _organizationsStream = FirebaseFirestore.instance
       .collection('Organizations')
       .where('isActive', isEqualTo: true)
@@ -42,14 +49,12 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   /// Organization creation is available to Admins on the JV Almacis
-  /// (contractor/service-provider) side — the same access rule used for
-  /// editing a facility's location — since they're the ones onboarding new
-  /// client organizations. Editing/deactivating stays in the Developer
-  /// backend tool for now.
+  /// (contractor/service-provider) side — same access rule as facility location edits.
   bool _canAddOrganization(UserRoleInfo? roleInfo) {
     if (roleInfo == null) return false;
     return roleInfo.role == UserRole.admin && roleInfo.isServiceProviderOrg;
@@ -61,7 +66,10 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
     setState(() => _isSaving = true);
     try {
       final name = _nameController.text.trim();
-      final existing = await FirebaseFirestore.instance.collection('Organizations').where('name', isEqualTo: name).get();
+      final existing = await FirebaseFirestore.instance
+          .collection('Organizations')
+          .where('name', isEqualTo: name)
+          .get();
       if (existing.docs.isNotEmpty) {
         _showSnackBar('An organization with this name already exists');
         return;
@@ -91,101 +99,118 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
 
   void _showSnackBar(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message, style: GoogleFonts.poppins())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message, style: GoogleFonts.poppins())),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = AppBreakpoints.isMobile(screenWidth);
-    final isDesktop = AppBreakpoints.isDesktop(screenWidth);
-    final contentWidth = isDesktop ? screenWidth * 0.7 : screenWidth;
     final roleInfo = ref.watch(currentUserRoleProvider).value;
     final canAdd = _canAddOrganization(roleInfo);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+      backgroundColor: BrandColors.ink,
+      body: BrandBackdrop(
         child: SafeArea(
-          child: Center(
-            child: SizedBox(
-              width: contentWidth,
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: _isAddingOrganization ? _buildAddOrganizationForm() : _buildSelectionView(isMobile),
-              ),
-            ),
-          ),
+          child: _isAddingOrganization ? _buildAddOrganizationForm() : _buildSelectionView(),
         ),
       ),
       floatingActionButton: canAdd && !_isAddingOrganization
           ? FloatingActionButton.extended(
               onPressed: () => setState(() => _isAddingOrganization = true),
-              backgroundColor: AppColors.primary,
-              icon: const Icon(Icons.add_rounded, color: Colors.white),
-              label: Text('Add Organization', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+              backgroundColor: AppColors.accent,
+              foregroundColor: AppColors.textPrimary,
+              icon: const Icon(Icons.add_rounded),
+              label: Text('Add Organization', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
             )
           : null,
     );
   }
 
-  Widget _buildSelectionView(bool isMobile) {
+  Widget _buildSelectionView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Select Client Organization',
-          style: GoogleFonts.poppins(fontSize: isMobile ? 20 : 26, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          child: BrandStepper(steps: _kEntrySteps, current: 0, compact: true),
         ),
-        const SizedBox(height: 6),
-        Text(
-          'Choose a client organization to manage its facilities',
-          style: GoogleFonts.poppins(fontSize: isMobile ? 13 : 15, color: AppColors.textSecondary),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const BrandEyebrow(label: 'Facility Management · CMMS', icon: Icons.corporate_fare_rounded),
+              const SizedBox(height: 12),
+              Text('Select Organization', style: BrandFonts.display(fontSize: 30)),
+              const SizedBox(height: 10),
+              const BrandAccentBar(width: 72),
+              const SizedBox(height: 8),
+              Text(
+                'Choose a client organization to manage its facilities',
+                style: BrandFonts.body(fontSize: 13.5, color: Colors.white.withValues(alpha: 0.72)),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: AppSpacing.lg),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: BrandSearchField(
+            controller: _searchController,
+            hint: 'Search organizations…',
+            onChanged: (q) => setState(() => _searchQuery = q.toLowerCase()),
+          ),
+        ),
+        const SizedBox(height: 16),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: _organizationsStream,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const AppSkeletonList(count: 5, itemHeight: 108);
+                return const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: AppSkeletonList(count: 5, itemHeight: 76),
+                );
               }
 
               if (snapshot.hasError) {
                 logger.e('Firestore error: ${snapshot.error}');
                 return Center(
-                  child: Text('Error: ${snapshot.error}', style: GoogleFonts.poppins(color: AppColors.error)),
+                  child: Text('Error: ${snapshot.error}', style: BrandFonts.body(color: AppColors.error)),
                 );
               }
 
               final docs = snapshot.data?.docs ?? [];
-
-              // Excludes JV Almacis (the internal service-provider
-              // org) from this app-launch selection only.
-              final clientOrganizations = docs
+              final allOrgs = docs
                   .map((doc) => Organization.fromFirestore(doc))
                   .where((org) => org.name != 'JV Almacis')
                   .toList()
                 ..sort((a, b) => a.name.compareTo(b.name));
 
-              if (clientOrganizations.isEmpty) {
+              final filtered = _searchQuery.isEmpty
+                  ? allOrgs
+                  : allOrgs
+                      .where((o) =>
+                          o.name.toLowerCase().contains(_searchQuery) ||
+                          (o.description?.toLowerCase().contains(_searchQuery) ?? false))
+                      .toList();
+
+              if (allOrgs.isEmpty) {
                 return Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.business_rounded, size: 64, color: AppColors.textSecondary.withValues(alpha: 0.4)),
+                      Icon(Icons.business_rounded, size: 64, color: Colors.white.withValues(alpha: 0.25)),
                       const SizedBox(height: 16),
-                      Text(
-                        'No client organizations available',
-                        style: GoogleFonts.poppins(fontSize: isMobile ? 16 : 18, color: AppColors.textSecondary),
-                      ),
+                      Text('No client organizations available', style: BrandFonts.display(fontSize: 18, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 8),
                       Text(
                         'Contact your administrator to add client organizations',
-                        style: GoogleFonts.poppins(fontSize: isMobile ? 13 : 15, color: AppColors.textSecondary.withValues(alpha: 0.8)),
+                        style: BrandFonts.body(color: Colors.white.withValues(alpha: 0.65)),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -193,26 +218,37 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
                 );
               }
 
-              logger.i('Fetched ${clientOrganizations.length} client organizations for app launch selection (excluding JV Almacis)');
+              if (filtered.isEmpty) {
+                return Center(
+                  child: Text(
+                    'No organizations match "$_searchQuery"',
+                    style: BrandFonts.body(color: Colors.white.withValues(alpha: 0.65)),
+                  ),
+                );
+              }
 
-              return GridView.builder(
-                padding: const EdgeInsets.only(bottom: 88),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 420,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  mainAxisExtent: 118,
-                ),
-                itemCount: clientOrganizations.length,
+              logger.i('Fetched ${allOrgs.length} client organizations for app launch selection (excluding JV Almacis)');
+
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                itemCount: filtered.length,
                 itemBuilder: (context, index) {
-                  final organization = clientOrganizations[index];
-                  return _OrganizationCard(
-                    organization: organization,
-                    isMobile: isMobile,
-                    onTap: () {
-                      widget.onOrganizationSelected(organization.id, organization.name);
-                      logger.i('Selected client organization: ${organization.name}, ID: ${organization.id}');
-                    },
+                  final org = filtered[index];
+                  return FadeSlideIn(
+                    delay: Duration(milliseconds: 55 * index),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: HoverLift(
+                        builder: (ctx, hovered) => _GlassOrgCard(
+                          organization: org,
+                          hovered: hovered,
+                          onTap: () {
+                            widget.onOrganizationSelected(org.id, org.name);
+                            logger.i('Selected client organization: ${org.name}, ID: ${org.id}');
+                          },
+                        ),
+                      ),
+                    ),
                   );
                 },
               );
@@ -225,6 +261,7 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
 
   Widget _buildAddOrganizationForm() {
     return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       child: Form(
         key: _formKey,
         child: Column(
@@ -234,41 +271,58 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
               children: [
                 IconButton(
                   onPressed: () => setState(() => _isAddingOrganization = false),
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  color: AppColors.textPrimary,
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                 ),
-                Text(
-                  'Add New Organization',
-                  style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                ),
+                const SizedBox(width: 4),
+                Text('New Organization', style: BrandFonts.display(fontSize: 22)),
               ],
             ),
-            const SizedBox(height: 16),
-            AppTextField(
-              controller: _nameController,
-              label: 'Organization Name *',
-              icon: Icons.business_rounded,
-              validator: (value) => (value == null || value.trim().isEmpty) ? 'Enter an organization name' : null,
+            const SizedBox(height: 4),
+            const Padding(
+              padding: EdgeInsets.only(left: 48),
+              child: BrandAccentBar(width: 60),
             ),
-            const SizedBox(height: 16),
-            AppTextField(controller: _descriptionController, label: 'Description (optional)', icon: Icons.notes_rounded),
-            const SizedBox(height: 32),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 16,
-              runSpacing: 12,
-              children: [
-                OutlinedButton(
-                  onPressed: () => setState(() => _isAddingOrganization = false),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: BorderSide(color: AppColors.textSecondary.withValues(alpha: 0.35)),
-                    minimumSize: const Size(0, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+              ),
+              child: Column(
+                children: [
+                  _GlassFormField(
+                    controller: _nameController,
+                    label: 'Organization Name',
+                    icon: Icons.business_rounded,
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter an organization name' : null,
                   ),
-                  child: const Text('Cancel'),
+                  const SizedBox(height: 16),
+                  _GlassFormField(
+                    controller: _descriptionController,
+                    label: 'Description (optional)',
+                    icon: Icons.notes_rounded,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                BrandCta(
+                  label: 'Cancel',
+                  primary: false,
+                  onPressed: () => setState(() => _isAddingOrganization = false),
                 ),
-                AppGradientButton(label: 'Add Organization', isLoading: _isSaving, onPressed: _isSaving ? null : _addOrganization),
+                const SizedBox(width: 12),
+                BrandCta(
+                  label: 'Add Organization',
+                  icon: Icons.add_rounded,
+                  loading: _isSaving,
+                  onPressed: _isSaving ? null : _addOrganization,
+                ),
               ],
             ),
           ],
@@ -278,12 +332,12 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
   }
 }
 
-class _OrganizationCard extends StatelessWidget {
+class _GlassOrgCard extends StatelessWidget {
   final Organization organization;
-  final bool isMobile;
+  final bool hovered;
   final VoidCallback onTap;
 
-  const _OrganizationCard({required this.organization, required this.isMobile, required this.onTap});
+  const _GlassOrgCard({required this.organization, required this.hovered, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -292,50 +346,97 @@ class _OrganizationCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.lg),
         onTap: onTap,
-        child: AppCard(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: hovered ? 0.14 : 0.07),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(
+              color: hovered
+                  ? AppColors.accentLight.withValues(alpha: 0.55)
+                  : Colors.white.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceAlt,
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                    ),
-                    child: const Icon(Icons.business_rounded, color: AppColors.primary),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
+              BrandMonogram(name: organization.name, size: 44),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
                       organization.name,
-                      style: GoogleFonts.poppins(fontSize: isMobile ? 15 : 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                      overflow: TextOverflow.ellipsis,
+                      style: BrandFonts.body(fontSize: 15.5, fontWeight: FontWeight.w700, color: Colors.white, height: 1.2),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
-                    child: Text('Client', style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.success)),
-                  ),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textSecondary, size: 14),
-                ],
-              ),
-              if (organization.description != null && organization.description!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  organization.description!,
-                  style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                    if (organization.description != null && organization.description!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        organization.description!,
+                        style: BrandFonts.body(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.65)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
                 ),
-              ],
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: hovered ? AppColors.accentLight : Colors.white.withValues(alpha: 0.45),
+              ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassFormField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final String? Function(String?)? validator;
+
+  const _GlassFormField({required this.controller, required this.label, required this.icon, this.validator});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      validator: validator,
+      style: BrandFonts.body(color: Colors.white),
+      cursorColor: AppColors.accentLight,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: BrandFonts.body(fontSize: 13, color: Colors.white.withValues(alpha: 0.7)),
+        prefixIcon: Icon(icon, color: AppColors.accentLight, size: 20),
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.06),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: AppColors.accentLight, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: AppColors.error),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: AppColors.error, width: 1.5),
         ),
       ),
     );

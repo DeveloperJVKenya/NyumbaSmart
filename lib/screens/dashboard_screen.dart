@@ -215,28 +215,7 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ],
                 child: _buildMainContent(isOrganizationSelectionActive, isFacilitySelectionActive, isServiceProviderOrg, organization),
               )
-            : Scaffold(
-                key: _scaffoldKey,
-                appBar: AppBar(
-                  title: Text(
-                    isOrganizationSelectionActive ? 'Select Organization' : 'Select Facility',
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 22),
-                  ),
-                  flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
-                  leading: IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 26),
-                    onPressed: () => _handleBackNavigation(
-                      isOrganizationSelectionActive: isOrganizationSelectionActive,
-                      isServiceProviderOrg: isServiceProviderOrg,
-                    ),
-                    tooltip: 'Back',
-                  ),
-                ),
-                body: DecoratedBox(
-                  decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
-                  child: _buildMainContent(isOrganizationSelectionActive, isFacilitySelectionActive, isServiceProviderOrg, organization),
-                ),
-              ),
+            : _buildMainContent(isOrganizationSelectionActive, isFacilitySelectionActive, isServiceProviderOrg, organization),
       ),
     );
   }
