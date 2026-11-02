@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cmms/theme/app_theme.dart';
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -7,371 +8,309 @@ class AboutScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: Text(
-          'About',
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
-        ),
-        backgroundColor: Colors.blueGrey,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+          color: AppColors.textPrimary,
           onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+        ),
+        title: Text('About NyumbaSmart',
+            style: GoogleFonts.plusJakartaSans(
+                fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+        child: Column(
+          children: [
+            // App hero banner
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                boxShadow: [
+                  BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.22),
+                      blurRadius: 20,
+                      offset: const Offset(0, 6)),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+                    ),
+                    child: const Icon(Icons.business_center_rounded, color: Colors.white, size: 36),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('NyumbaSmart',
+                      style: GoogleFonts.plusJakartaSans(
+                          fontSize: 26, fontWeight: FontWeight.w800,
+                          color: Colors.white, letterSpacing: -0.5)),
+                  const SizedBox(height: 6),
+                  Text('Facility Management CMMS',
+                      style: GoogleFonts.poppins(
+                          fontSize: 13.5, color: Colors.white.withValues(alpha: 0.8))),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                    ),
+                    child: Text('Version 2.0.0 · Build 2026',
+                        style: GoogleFonts.poppins(
+                            fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            _card(
+              icon: Icons.info_outline_rounded,
+              color: AppColors.primary,
+              title: 'About the App',
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+                child: Text(
+                  'NyumbaSmart is an enterprise-grade CMMS built for multi-tenant facility management. '
+                  'It enables organizations to digitize work orders, track assets, run preventive '
+                  'maintenance programs, manage billing, and visualize facilities in 3D through BIM integration. '
+                  'Developed by JV Almacis Consultancy & Integrated Services.',
+                  style: GoogleFonts.poppins(
+                      fontSize: 13.5, color: AppColors.textSecondary, height: 1.65),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            _card(
+              icon: Icons.star_rounded,
+              color: const Color(0xFFFF922B),
+              title: 'Key Features',
+              child: Column(
+                children: const [
+                  _FeatureTile(
+                    icon: Icons.assignment_rounded, color: Color(0xFF4C6EF5),
+                    title: 'Work Orders', subtitle: 'Create, assign and track corrective maintenance tasks'),
+                  _FeatureTile(
+                    icon: Icons.event_repeat_rounded, color: Color(0xFF12B886),
+                    title: 'Preventive Maintenance', subtitle: 'Schedule recurring tasks with auto-reminders', last: false),
+                  _FeatureTile(
+                    icon: Icons.inventory_2_rounded, color: Color(0xFFFF922B),
+                    title: 'Asset Management', subtitle: 'Full asset lifecycle with QR scan and history'),
+                  _FeatureTile(
+                    icon: Icons.view_in_ar_rounded, color: Color(0xFF9775FA),
+                    title: 'BIM & 3D Viewer', subtitle: 'Interactive model viewer for spatial facility data'),
+                  _FeatureTile(
+                    icon: Icons.bar_chart_rounded, color: Color(0xFF339AF0),
+                    title: 'Reports & KPIs', subtitle: 'Real-time dashboards and exportable reports'),
+                  _FeatureTile(
+                    icon: Icons.notifications_active_rounded, color: Color(0xFFFF6B6B),
+                    title: 'Smart Notifications', subtitle: 'Push and in-app alerts for assignments and deadlines', last: true),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            _card(
+              icon: Icons.code_rounded,
+              color: const Color(0xFF748FFC),
+              title: 'Technical Stack',
+              child: Column(
+                children: [
+                  _techRow('Platform', 'Flutter (Web · Android · iOS)'),
+                  _techDiv(),
+                  _techRow('Backend', 'Firebase Cloud Services'),
+                  _techDiv(),
+                  _techRow('Database', 'Cloud Firestore'),
+                  _techDiv(),
+                  _techRow('Auth', 'Firebase Authentication'),
+                  _techDiv(),
+                  _techRow('State', 'Flutter Riverpod'),
+                  _techDiv(),
+                  _techRow('Fonts', 'Plus Jakarta Sans · Poppins'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            _card(
+              icon: Icons.business_rounded,
+              color: const Color(0xFF12B886),
+              title: 'Developer',
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _devRow(Icons.apartment_rounded, 'JV Almacis Consultancy & Integrated Services'),
+                    const SizedBox(height: 10),
+                    _devRow(Icons.location_on_rounded, 'Nairobi, Kenya'),
+                    const SizedBox(height: 10),
+                    _devRow(Icons.email_rounded, 'info@jvalmacis.co.ke'),
+                    const SizedBox(height: 16),
+                    Text('© 2026 JV Almacis. All rights reserved.',
+                        style: GoogleFonts.poppins(
+                            fontSize: 12, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      body: _buildBody(context),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          // App Logo and Title
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.blueGrey[100],
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.build_circle,
-                      size: 80,
-                      color: Colors.blueGrey[700],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'CMMS',
-                    style: GoogleFonts.poppins(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Computerized Maintenance Management System',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      color: Colors.grey[600],
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.blueGrey[50],
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.blueGrey[200]!),
-                    ),
-                    child: Text(
-                      'Version 1.0.0',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueGrey[700],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // Application Description
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'About This Application',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'CMMS is a comprehensive maintenance management solution designed to streamline facility maintenance operations. Our application helps organizations efficiently manage their maintenance tasks, track equipment, schedule preventive maintenance, and ensure optimal facility performance.',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      height: 1.6,
-                      color: Colors.grey[700],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // Features
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Key Features',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  _buildFeatureItem(
-                    Icons.build,
-                    'Maintenance Management',
-                    'Schedule and track preventive and corrective maintenance tasks',
-                  ),
-                  
-                  _buildFeatureItem(
-                    Icons.location_city,
-                    'Facility Management',
-                    'Manage multiple facilities and their locations with integrated maps',
-                  ),
-                  
-                  _buildFeatureItem(
-                    Icons.notifications,
-                    'Smart Notifications',
-                    'Automated notifications for upcoming maintenance tasks',
-                  ),
-                  
-                  _buildFeatureItem(
-                    Icons.analytics,
-                    'Reporting & Analytics',
-                    'Comprehensive reports and analytics for maintenance operations',
-                  ),
-                  
-                  _buildFeatureItem(
-                    Icons.people,
-                    'User Management',
-                    'Role-based access control and user management',
-                  ),
-                  
-                  _buildFeatureItem(
-                    Icons.cloud,
-                    'Cloud-Based',
-                    'Secure cloud storage with real-time synchronization',
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // Organization Information
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Organization',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  Row(
-                    children: [
-                      Icon(Icons.business, color: Colors.blueGrey[700]),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Swedish Embassy',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Diplomatic Mission',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  Row(
-                    children: [
-                      Icon(Icons.location_on, color: Colors.blueGrey[700]),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Nairobi, Kenya',
-                          style: GoogleFonts.poppins(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  Row(
-                    children: [
-                      Icon(Icons.copyright, color: Colors.blueGrey[700]),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '© 2025 Swedish Embassy. All rights reserved.',
-                          style: GoogleFonts.poppins(),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // Technical Information
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Technical Information',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  _buildTechItem('Platform', 'Flutter (Cross-platform)'),
-                  _buildTechItem('Backend', 'Firebase Cloud Services'),
-                  _buildTechItem('Database', 'Cloud Firestore'),
-                  _buildTechItem('Authentication', 'Firebase Auth'),
-                  _buildTechItem('Storage', 'Firebase Storage'),
-                  _buildTechItem('Maps', 'Google Maps Integration'),
-                ],
-              ),
-            ),
-          ),
+  Widget _card({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required Widget child,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
         ],
       ),
-    );
-  }
-
-  Widget _buildFeatureItem(IconData icon, String title, String description) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.blueGrey[100],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: Colors.blueGrey[700], size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: Row(
               children: [
-                Text(
-                  title,
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(9),
                   ),
+                  child: Icon(icon, color: color, size: 17),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
+                const SizedBox(width: 10),
+                Text(title,
+                    style: GoogleFonts.plusJakartaSans(
+                        fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
               ],
             ),
           ),
+          const Divider(height: 1, color: Color(0xFFE5E7EB)),
+          child,
         ],
       ),
     );
   }
 
-  Widget _buildTechItem(String label, String value) {
+  static Widget _techRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         children: [
           SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-          ),
-          Text(
-            ': ',
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
-            ),
+            width: 88,
+            child: Text(label,
+                style: GoogleFonts.poppins(
+                    fontSize: 12.5, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: GoogleFonts.poppins(fontSize: 12),
-            ),
+            child: Text(value,
+                style: GoogleFonts.poppins(
+                    fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
+    );
+  }
+
+  static Widget _techDiv() =>
+      const Divider(height: 1, indent: 16, endIndent: 0, color: Color(0xFFF3F4F6));
+
+  static Widget _devRow(IconData icon, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(value,
+              style: GoogleFonts.poppins(
+                  fontSize: 13.5, color: AppColors.textPrimary, height: 1.5)),
+        ),
+      ],
+    );
+  }
+}
+
+class _FeatureTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final bool last;
+
+  const _FeatureTile({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    this.last = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
+          child: Row(
+            children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, color: color, size: 18),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: GoogleFonts.poppins(
+                            fontSize: 13.5, fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: GoogleFonts.poppins(
+                            fontSize: 12, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!last)
+          const Divider(height: 1, indent: 65, endIndent: 0, color: Color(0xFFF3F4F6)),
+      ],
     );
   }
 }
