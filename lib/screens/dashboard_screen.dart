@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/display%20screens/facility_screen.dart';
+import 'package:cmms/screens/dashboard_home_screen.dart';
 import 'package:cmms/screens/organization_selection_screen.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:logger/logger.dart';
@@ -35,6 +36,7 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   String? _selectedFacilityId;
+  String? _selectedFacilityName;
   String? _selectedOrganizationId;
   String? _selectedOrganizationName;
 
@@ -52,9 +54,12 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
     logger.i('Selected organization: $organizationName (ID: $organizationId)');
   }
 
-  void _onFacilitySelected(String facilityId) {
-    setState(() => _selectedFacilityId = facilityId);
-    logger.i('Selected facility: $facilityId');
+  void _onFacilitySelected(String facilityId, String facilityName) {
+    setState(() {
+      _selectedFacilityId = facilityId;
+      _selectedFacilityName = facilityName;
+    });
+    logger.i('Selected facility: $facilityName ($facilityId)');
 
     final screenWidth = MediaQuery.of(context).size.width;
     if (AppBreakpoints.isMobile(screenWidth)) {
@@ -193,6 +198,7 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
             ? ResponsiveScreenWrapper(
                 title: currentRole == '-' ? 'Dashboard' : '$currentRole Dashboard',
                 facilityId: _selectedFacilityId!,
+                facilityName: _selectedFacilityName,
                 currentRole: currentRole,
                 organization: organization,
                 selectedOrganizationName: displayOrganizationName,
@@ -213,7 +219,12 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                     ),
                 ],
-                child: _buildMainContent(isOrganizationSelectionActive, isFacilitySelectionActive, isServiceProviderOrg, organization),
+                child: DashboardHomeScreen(
+                  facilityId: _selectedFacilityId!,
+                  facilityName: _selectedFacilityName ?? '',
+                  organization: displayOrganizationName ?? organization,
+                  role: currentRole,
+                ),
               )
             : _buildMainContent(isOrganizationSelectionActive, isFacilitySelectionActive, isServiceProviderOrg, organization),
       ),

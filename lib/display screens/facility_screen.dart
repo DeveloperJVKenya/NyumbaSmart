@@ -18,7 +18,7 @@ const List<BrandStep> _kEntrySteps = [
 
 class FacilityScreen extends StatefulWidget {
   final String? selectedFacilityId;
-  final void Function(String) onFacilitySelected;
+  final void Function(String, String) onFacilitySelected;
   final bool isSelectionActive;
   final String? userOrganization; // User's organization for filtering
   final bool isServiceProvider; // Whether user is a service provider
@@ -157,7 +157,7 @@ class FacilityScreenState extends State<FacilityScreen> {
         );
 
         final ref = await FirebaseFirestore.instance.collection('Facilities').add(facility.toFirestore());
-        widget.onFacilitySelected(ref.id);
+        widget.onFacilitySelected(ref.id, facility.name);
         _nameController.clear();
         _locationController.clear();
         _addressController.clear();
@@ -416,7 +416,7 @@ class FacilityScreenState extends State<FacilityScreen> {
               isInteractable: isInteractable,
               onTap: isInteractable
                   ? () {
-                      widget.onFacilitySelected(facility.id);
+                      widget.onFacilitySelected(facility.id, facility.name);
                       logger.i('Selected facility: ${facility.name}, ID: ${facility.id}, Organization: ${facility.organization}');
                     }
                   : null,
@@ -803,7 +803,7 @@ class FacilityScreenState extends State<FacilityScreen> {
                     isSelected: isSelected,
                     hovered: hovered,
                     onTap: () {
-                      widget.onFacilitySelected(facility.id);
+                      widget.onFacilitySelected(facility.id, facility.name);
                       logger.i('Selected facility: ${facility.name}, ID: ${facility.id}');
                     },
                   ),
