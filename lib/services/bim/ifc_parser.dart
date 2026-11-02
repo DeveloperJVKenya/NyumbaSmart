@@ -7,9 +7,9 @@ import 'package:cmms/services/bim/cobie_parser.dart';
 /// via `compute(parseIfcBytes, bytes)`.
 ///
 /// Reads the *data* side of an IFC (ISO 10303-21 / STEP) file — storeys, spaces and maintainable
-/// equipment with their manufacturer, model, serial, system and classification — and produces the
-/// same [CobiePreview] the COBie importer does, so both go through one review screen and one import
-/// service. Geometry is skipped entirely; only the handful of entity types listed below are decoded.
+/// equipment with their manufacturer, model, serial, system, classification, lifecycle dates,
+/// space areas, and MEP system groupings — and produces the same [CobiePreview] the COBie importer
+/// does, so both go through one review screen and one import service. Geometry is skipped entirely.
 ///
 /// Supports IFC2X3, IFC4 and IFC4X3. In IFC2X3 equipment is exported as generic classes
 /// (IfcFlowTerminal, IfcFlowMovingDevice, …); the specific kind is then taken from the type object
@@ -23,7 +23,10 @@ class IfcParseResult {
   /// IfcBuilding name, when present. Shown on the review screen so staff can confirm the file.
   final String? buildingName;
 
-  IfcParseResult({required this.preview, this.schemaVersion, this.buildingName});
+  /// IfcSite name, when present.
+  final String? siteName;
+
+  IfcParseResult({required this.preview, this.schemaVersion, this.buildingName, this.siteName});
 }
 
 /// Top-level so it can be passed to `compute()`.
@@ -103,6 +106,10 @@ const Map<String, (String, String)> _equipmentClasses = {
   'IFCFLOWTREATMENTDEVICE': ('Treatment Device', 'Mechanical'),
   'IFCENERGYCONVERSIONDEVICE': ('Energy Conversion Device', 'Mechanical'),
   'IFCDISTRIBUTIONCONTROLELEMENT': ('Control Element', 'Mechanical'),
+  // Revit ITA and some other authoring tools export unclassified elements as IfcBuildingElementProxy.
+  // These include switchboards, security panels and other equipment that Revit cannot map to a
+  // proper IFC type. Treat them as generic equipment so they are not silently skipped.
+  'IFCBUILDINGELEMENTPROXY': ('Equipment', 'Unclassified'),
 };
 
 /// IFC2X3-style generic classes whose specific kind is taken from the assigned type object.
@@ -124,6 +131,7 @@ const Set<String> _systemClasses = {
 };
 
 const Set<String> _otherKeptClasses = {
+  'IFCSITE',
   'IFCBUILDING',
   'IFCBUILDINGSTOREY',
   'IFCSPACE',
@@ -139,6 +147,11 @@ const Set<String> _otherKeptClasses = {
   'IFCRELASSIGNSTOGROUP',
   'IFCSIUNIT',
   'IFCCONVERSIONBASEDUNIT',
+  // Quantity sets: space areas and element heights from Qto_ sheets
+  'IFCELEMENTQUANTITY',
+  'IFCQUANTITYREAL',
+  'IFCQUANTITYAREA',
+  'IFCQUANTITYLENGTH',
 };
 
 class _Ref {
@@ -254,7 +267,7 @@ class IfcParser {
   static IfcParseResult _build(Map<int, _Entity> e, String? schema, List<String> warnings) {
     Iterable<MapEntry<int, _Entity>> ofType(String t) => e.entries.where((x) => x.value.type == t);
 
-    // ---- Units: storey elevations are stored in metres ----
+    // ---- Units: storey elevations and areas are stored in metres / m² ----
     var lengthScale = 1.0;
     for (final u in e.values) {
       if (u.type == 'IFCSIUNIT' && u.enumValue(1) == 'LENGTHUNIT') {
@@ -274,6 +287,7 @@ class IfcParser {
         break;
       }
     }
+    final areaScale = lengthScale * lengthScale;
 
     // ---- Relationships ----
     final aggregateParent = <int, int>{}; // child -> parent
@@ -313,11 +327,17 @@ class IfcParser {
     }
 
     final psetsOf = <int, List<int>>{}; // object -> property sets
+    final qtySetsOf = <int, List<int>>{}; // object -> element quantity sets
     for (final r in ofType('IFCRELDEFINESBYPROPERTIES')) {
       final p = r.value.ref(5);
       if (p == null) continue;
+      final pEnt = e[p];
       for (final c in r.value.refs(4)) {
-        (psetsOf[c] ??= []).add(p);
+        if (pEnt?.type == 'IFCELEMENTQUANTITY') {
+          (qtySetsOf[c] ??= []).add(p);
+        } else {
+          (psetsOf[c] ??= []).add(p);
+        }
       }
     }
 
@@ -333,12 +353,14 @@ class IfcParser {
       }
     }
 
-    final systemOf = <int, String>{};
+    final systemOf = <int, String>{}; // element expressID -> system name
+    final systemEntities = <int, _Entity>{}; // system expressID -> entity
     for (final r in ofType('IFCRELASSIGNSTOGROUP')) {
       final group = e[r.value.ref(6)];
       if (group == null || !_systemClasses.contains(group.type)) continue;
       final name = group.str(2);
       if (name == null) continue;
+      systemEntities[r.value.ref(6)!] = group;
       for (final c in r.value.refs(4)) {
         systemOf.putIfAbsent(c, () => name);
       }
@@ -376,6 +398,34 @@ class IfcParser {
       return null;
     }
 
+    // Quantity lookup: lower-case quantity name -> value (in file units), per element quantity set.
+    final qtyCache = <int, Map<String, double>>{};
+    Map<String, double> qty(int id) => qtyCache.putIfAbsent(id, () {
+          final qs = e[id];
+          final out = <String, double>{};
+          if (qs == null || qs.type != 'IFCELEMENTQUANTITY') return out;
+          for (final qid in qs.refs(5)) {
+            final q = e[qid];
+            if (q == null) continue;
+            if (q.type != 'IFCQUANTITYREAL' && q.type != 'IFCQUANTITYAREA' && q.type != 'IFCQUANTITYLENGTH') continue;
+            final name = q.str(0);
+            final value = q.number(3);
+            if (name != null && value != null) out[name.toLowerCase()] = value;
+          }
+          return out;
+        });
+
+    double? qtyVal(int element, List<String> names, {bool isArea = false}) {
+      final sets = qtySetsOf[element] ?? const [];
+      for (final n in names) {
+        for (final s in sets) {
+          final v = qty(s)[n];
+          if (v != null) return v * (isArea ? areaScale : lengthScale);
+        }
+      }
+      return null;
+    }
+
     // ---- Spatial structure ----
     final spaces = <CobieSpaceDraft>[];
     final docIdOf = <int, String>{}; // IFC id -> Firestore doc id (storeys + spaces)
@@ -384,24 +434,58 @@ class IfcParser {
 
     final storeys = ofType('IFCBUILDINGSTOREY').toList()
       ..sort((a, b) => (a.value.number(9) ?? 0).compareTo(b.value.number(9) ?? 0));
+
+    // Absolute elevations (metres). We capture the minimum to compute relative heights below.
+    double? minElevationM;
+
     for (final s in storeys) {
       final ent = s.value;
-      final name = ent.str(2) ?? ent.str(7) ?? 'Storey #${s.key}';
+      final rawName = ent.str(2) ?? ent.str(7) ?? 'Storey #${s.key}';
+      // Strip Revit discipline prefix (e.g. "CL_" in EE/ME files) so that the same physical
+      // floor in AR, EE and ME models maps to the same Firestore document id.
+      final name = _normaliseStoreyName(rawName);
       final gid = validIfcGlobalId(ent.str(0) ?? '');
-      final docId = bimDocId('floor', gid, name);
+      // Use name-based docId (not GlobalId) so the same floor from different discipline IFC
+      // files (AR, EE, ME) all write to one Firestore record instead of creating duplicates.
+      final docId = bimDocId('floor', null, name);
       if (!seenSpaceDocIds.add(docId)) continue;
       docIdOf[s.key] = docId;
       nameOf[s.key] = name;
       final longName = ent.str(7);
       final elevation = ent.number(9);
+      final elevM = elevation == null ? null : _round(elevation * lengthScale);
+      if (elevM != null && (minElevationM == null || elevM < minElevationM)) {
+        minElevationM = elevM;
+      }
       spaces.add(CobieSpaceDraft(
         docId: docId,
         isStorey: true,
         name: name,
         description: (longName != null && longName != name) ? longName : ent.str(3),
-        elevation: elevation == null ? null : _round(elevation * lengthScale),
+        elevation: elevM,
         globalId: gid,
       ));
+    }
+
+    // Replace absolute elevation with height relative to the lowest storey (Gap 6).
+    // This keeps sorting intact while showing sensible labels (±0.00 m, +3.50 m, …).
+    if (minElevationM != null) {
+      for (var i = 0; i < spaces.length; i++) {
+        final sp = spaces[i];
+        if (!sp.isStorey || sp.elevation == null) continue;
+        spaces[i] = CobieSpaceDraft(
+          docId: sp.docId,
+          isStorey: sp.isStorey,
+          name: sp.name,
+          description: sp.description,
+          floorName: sp.floorName,
+          parentDocId: sp.parentDocId,
+          elevation: _round(sp.elevation! - minElevationM),
+          globalId: sp.globalId,
+          grossArea: sp.grossArea,
+          usageType: sp.usageType,
+        );
+      }
     }
 
     for (final s in ofType('IFCSPACE')) {
@@ -422,6 +506,29 @@ class IfcParser {
       }
       final storeyId = (parent != null && e[parent]?.type == 'IFCBUILDINGSTOREY') ? parent : null;
 
+      // Gross floor area from Qto_SpaceBaseQuantities.GrossFloorArea (IFC4) or property sets.
+      double? grossArea = qtyVal(s.key, const ['grossfloorarea', 'grossarea', 'netarea'], isArea: true);
+      if (grossArea == null) {
+        final areaStr = prop(s.key, const ['grossfloorarea', 'grossarea', 'area', 'nfa']);
+        if (areaStr != null) {
+          final parsed = double.tryParse(areaStr);
+          if (parsed != null) grossArea = _round(parsed * areaScale);
+        }
+      } else {
+        grossArea = _round(grossArea);
+      }
+
+      // Usage type: IfcSpace.PredefinedType enum (arg 9 in IFC4, arg 8 in IFC2X3).
+      final predefined = ent.enumValue(9) ?? ent.enumValue(8);
+      String? usageType = (predefined != null &&
+              predefined != 'NOTDEFINED' &&
+              predefined != 'USERDEFINED' &&
+              predefined.isNotEmpty)
+          ? _friendlySpaceType(predefined)
+          : null;
+      // Fall back to a property if PredefinedType gives nothing useful.
+      usageType ??= prop(s.key, const ['spacetype', 'roomtype', 'usagetype', 'occupancy']);
+
       spaces.add(CobieSpaceDraft(
         docId: docId,
         isStorey: false,
@@ -430,6 +537,8 @@ class IfcParser {
         floorName: storeyId == null ? null : nameOf[storeyId],
         parentDocId: storeyId == null ? null : docIdOf[storeyId],
         globalId: gid,
+        grossArea: grossArea,
+        usageType: usageType,
       ));
     }
 
@@ -437,6 +546,9 @@ class IfcParser {
     final equipment = <CobieEquipmentDraft>[];
     final seenEquipmentIds = <String>{};
     var withoutLocation = 0;
+
+    // system name -> equipment doc ids (for collecting CobieMepSystemDraft)
+    final systemEquipmentDocIds = <String, List<String>>{};
 
     for (final x in e.entries) {
       final cls = _equipmentClasses[x.value.type];
@@ -468,6 +580,21 @@ class IfcParser {
 
       final tag = prop(id, const ['tagnumber', 'assetidentifier', 'assettag', 'mark']) ?? ent.str(7);
 
+      final sysName = systemOf[id];
+      if (sysName != null) (systemEquipmentDocIds[sysName] ??= []).add(docId);
+
+      // Lifecycle dates from Psets (IFC4 dates are IfcDate = ISO string inside IFCDATE('…'))
+      final installDate = _parseDate(prop(id, const [
+        'installationdate', 'installeddate', 'manufacturedate', 'productiondate',
+      ]));
+      final wStart = _parseDate(prop(id, const [
+        'warrantystartdate', 'warrantystarttime', 'warrantystart',
+      ]));
+      final wEnd = _parseDate(prop(id, const [
+        'warrantyenddate', 'warrantyendtime', 'warrantyend',
+      ]));
+      final lifeYears = _expectedLifeYears(prop, id);
+
       equipment.add(CobieEquipmentDraft(
         docId: docId,
         name: name,
@@ -475,40 +602,79 @@ class IfcParser {
         type: category,
         typeName: typeName,
         manufacturer: prop(id, const ['manufacturer']),
-        modelNumber: prop(id, const ['modelnumber', 'modellabel', 'modelreference', 'articlenumber']),
+        modelNumber: prop(id, const ['modelnumber', 'modellabel', 'modelreference', 'articlenumber', 'reference']),
         classification: classificationOf[id] ?? (typeOf[id] == null ? null : classificationOf[typeOf[id]!]),
-        systemName: systemOf[id],
+        systemName: sysName,
         spaceName: container == null ? null : nameOf[container],
         spaceDocId: spaceDocId,
         serialNumber: prop(id, const ['serialnumber']) ?? '',
         warrantyMonths: _warrantyMonths(prop, id),
         notes: ent.str(3) ?? '',
         globalId: gid,
+        installationDate: installDate,
+        warrantyStart: wStart,
+        warrantyEnd: wEnd,
+        expectedLifeYears: lifeYears,
+      ));
+    }
+
+    // ---- MEP Systems ----
+    final systems = <CobieMepSystemDraft>[];
+    final seenSystemIds = <String>{};
+    for (final entry in systemEntities.entries) {
+      final ent = entry.value;
+      final name = ent.str(2);
+      if (name == null) continue;
+      final docId = bimDocId('system', null, name);
+      if (!seenSystemIds.add(docId)) continue;
+      // Category from PredefinedType enum (position varies by IFC version and entity type)
+      final predefined = ent.enumValue(9) ?? ent.enumValue(8);
+      final category = (predefined != null && predefined != 'NOTDEFINED' && predefined != 'USERDEFINED')
+          ? predefined.toLowerCase().replaceAll('_', ' ')
+          : null;
+      systems.add(CobieMepSystemDraft(
+        docId: docId,
+        name: name,
+        category: category,
+        equipmentDocIds: systemEquipmentDocIds[name] ?? const [],
       ));
     }
 
     // ---- Warnings ----
     final storeyCount = spaces.where((s) => s.isStorey).length;
-    if (storeyCount == 0) {
-      warnings.add('No building storeys (IfcBuildingStorey) were found.');
-    }
-    if (spaces.length == storeyCount) {
-      warnings.add('No rooms (IfcSpace) were found. Equipment will be linked to floors only. '
-          'In Revit, export with "Export rooms/spaces" enabled to include them.');
-    }
-    if (equipment.isEmpty) {
-      warnings.add('No maintainable equipment (pumps, fans, boards, terminals, fixtures…) was found. '
-          'Architectural-only models usually contain none; ask for the MEP model.');
-    } else if (withoutLocation > 0) {
-      warnings.add('$withoutLocation of ${equipment.length} equipment items are not placed on a floor or room.');
+    if (storeyCount == 0 && equipment.isEmpty) {
+      // Likely a 2D drawing-sheet export (e.g. Revit DR-AR files) with no spatial structure.
+      warnings.add('This file appears to be a 2D drawing sheet — no building storeys or equipment were found. '
+          'Please import the 3D model file (M3) instead.');
+    } else {
+      if (storeyCount == 0) {
+        warnings.add('No building storeys (IfcBuildingStorey) were found.');
+      }
+      if (spaces.length == storeyCount) {
+        warnings.add('No rooms (IfcSpace) were found. Equipment will be linked to floors only. '
+            'In Revit, export with "Export rooms/spaces" enabled to include them.');
+      }
+      if (equipment.isEmpty) {
+        warnings.add('No maintainable equipment (pumps, fans, boards, terminals, fixtures…) was found. '
+            'Architectural-only models usually contain none; ask for the MEP model.');
+      } else if (withoutLocation > 0) {
+        warnings.add('$withoutLocation of ${equipment.length} equipment items are not placed on a floor or room.');
+      }
     }
 
     final buildings = ofType('IFCBUILDING').map((b) => b.value.str(2) ?? b.value.str(7)).whereType<String>();
+    final sites = ofType('IFCSITE').map((s) => s.value.str(2) ?? s.value.str(7)).whereType<String>();
 
     return IfcParseResult(
-      preview: CobiePreview(spaces: spaces, equipment: equipment, warnings: warnings),
+      preview: CobiePreview(
+        spaces: spaces,
+        equipment: equipment,
+        systems: systems,
+        warnings: warnings,
+      ),
       schemaVersion: schema,
       buildingName: buildings.isEmpty ? null : buildings.first,
+      siteName: sites.isEmpty ? null : sites.first,
     );
   }
 
@@ -528,7 +694,40 @@ class IfcParser {
     return 0;
   }
 
+  static int? _expectedLifeYears(String? Function(int, List<String>) prop, int id) {
+    final raw = prop(id, const ['expectedlife', 'servicelife', 'designlife']);
+    if (raw == null) return null;
+    final n = double.tryParse(raw);
+    if (n == null || n <= 0) return null;
+    final unit = (prop(id, const ['expectedlifeunit', 'servicelifeunit', 'durationunit']) ?? '').toLowerCase();
+    if (unit.contains('month')) return (n / 12).round();
+    if (unit.contains('day')) return (n / 365).round();
+    return n.round(); // default: years
+  }
+
+  static DateTime? _parseDate(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final dt = DateTime.tryParse(raw.trim());
+    if (dt != null) return DateTime.utc(dt.year, dt.month, dt.day);
+    return null;
+  }
+
+  static String _friendlySpaceType(String predefined) {
+    // Convert USERDEFINED_OFFICE → Office, PARKING → Parking, etc.
+    return predefined
+        .toLowerCase()
+        .replaceAll('_', ' ')
+        .replaceFirstMapped(RegExp(r'^.'), (m) => m.group(0)!.toUpperCase());
+  }
+
   static double _round(double v) => (v * 1000).roundToDouble() / 1000;
+
+  /// Strip Revit discipline prefixes such as "CL_" from storey names so that the same physical
+  /// floor exported from the AR, EE and ME models resolves to the same Firestore document id.
+  static String _normaliseStoreyName(String name) {
+    // Remove leading uppercase-letter + underscore segment(s): "CL_GF_R_I" → "GF_R_I"
+    return name.replaceFirst(RegExp(r'^[A-Z]{1,4}_'), '');
+  }
 
   static String? _valueText(Object? v) {
     if (v == null) return null;
@@ -573,7 +772,6 @@ class IfcParser {
           i++;
         }
         i++;
-        // A comment before a statement shouldn't become part of it.
         if (_skipWs(b, start, commentStart) == commentStart) start = i + 1;
       } else if (c == 0x3B /* ; */) {
         onStatement(start, i);

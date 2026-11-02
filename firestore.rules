@@ -381,6 +381,48 @@ service cloud.firestore {
         (isAdmin() || isDeveloper());
     }
 
+    match /facilities/{facilityId}/bimSystems/{systemId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create, update: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
+    match /facilities/{facilityId}/bimContacts/{contactId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create, update: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
+    match /facilities/{facilityId}/bimSpares/{spareId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create, update: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
+    // 3D annotation pins placed by users in the BIM viewer.
+    match /facilities/{facilityId}/bimAnnotations/{annotationId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create: if request.auth != null && canAccessFacility(facilityId) &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow update: if request.auth != null && canAccessFacility(facilityId) &&
+        (resource.data.createdBy == request.auth.uid || isAdmin() || isDeveloper());
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (resource.data.createdBy == request.auth.uid || isAdmin() || isDeveloper());
+    }
+
+    // Per-element 3D position overrides saved from the viewer's reposition tool.
+    match /facilities/{facilityId}/bimElementOverrides/{globalId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow write: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
     // Scope of Work documents uploaded per facility (Excel/PDF), plus the OCR/parsing
     // review queue nested underneath each document.
     match /facilities/{facilityId}/scope_of_work_documents/{docId} {

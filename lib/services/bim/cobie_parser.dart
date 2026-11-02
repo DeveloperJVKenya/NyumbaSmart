@@ -11,12 +11,40 @@
 typedef CobieWorkbook = Map<String, List<Map<String, String>>>;
 
 final RegExp _globalIdPattern = RegExp(r'^[0-9A-Za-z_$]{22}$');
+final RegExp _uuidPattern = RegExp(
+    r'^\{?[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}\}?$');
 
-String? validIfcGlobalId(String raw) => _validGlobalId(raw);
+/// IFC GlobalId encoding alphabet (base-64, not standard base64url).
+const _ifcBase64 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_\$';
 
-String? _validGlobalId(String raw) {
+/// Converts a 32-hex-char UUID (no braces/hyphens) to a 22-char IFC GlobalId.
+String? _hexToIfcGuid(String hex) {
+  try {
+    var n = BigInt.parse(hex, radix: 16);
+    final chars = List<String>.filled(22, '0');
+    final base = BigInt.from(64);
+    for (var i = 21; i >= 0; i--) {
+      chars[i] = _ifcBase64[(n % base).toInt()];
+      n ~/= base;
+    }
+    return chars.join();
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Validates and normalises an IFC GlobalId from any source format:
+/// - 22-char base64 IFC format (standard): returned as-is.
+/// - UUID format `{xxxxxxxx-xxxx-...}` (some COBie exporters): converted to IFC base64.
+/// Returns null when the value cannot be recognised.
+String? validIfcGlobalId(String raw) {
   final s = raw.trim();
-  return _globalIdPattern.hasMatch(s) ? s : null;
+  if (_globalIdPattern.hasMatch(s)) return s;
+  if (_uuidPattern.hasMatch(s)) {
+    final hex = s.replaceAll(RegExp(r'[{}\-]'), '').toLowerCase();
+    return _hexToIfcGuid(hex);
+  }
+  return null;
 }
 
 String _slug(String s) => s
@@ -52,6 +80,12 @@ class CobieSpaceDraft {
   final double? elevation; // storeys only
   final String? globalId;
 
+  /// Gross floor area in m² from Qto_SpaceBaseQuantities or COBie Space.GrossArea.
+  final double? grossArea;
+
+  /// IFC IfcSpace PredefinedType or COBie Space.UsageType.
+  final String? usageType;
+
   /// Exact storey doc id when the source states the link directly (IFC IfcRelAggregates).
   /// COBie leaves this null and the import service resolves [floorName] instead.
   final String? parentDocId;
@@ -64,6 +98,8 @@ class CobieSpaceDraft {
     this.floorName,
     this.elevation,
     this.globalId,
+    this.grossArea,
+    this.usageType,
     this.parentDocId,
   });
 }
@@ -84,6 +120,14 @@ class CobieEquipmentDraft {
   final String notes;
   final String? globalId;
 
+  // Lifecycle dates: set when available from the source file.
+  final DateTime? installationDate;
+  final DateTime? warrantyStart;
+  final DateTime? warrantyEnd;
+
+  /// Expected service life in years (COBie Type.ExpectedLife or IFC Pset).
+  final int? expectedLifeYears;
+
   /// Exact storey/room doc id when the source states the link directly
   /// (IFC IfcRelContainedInSpatialStructure). COBie leaves this null and [spaceName] is used.
   final String? spaceDocId;
@@ -103,6 +147,10 @@ class CobieEquipmentDraft {
     required this.warrantyMonths,
     required this.notes,
     this.globalId,
+    this.installationDate,
+    this.warrantyStart,
+    this.warrantyEnd,
+    this.expectedLifeYears,
     this.spaceDocId,
   });
 }
@@ -128,16 +176,93 @@ class CobieJobDraft {
   });
 }
 
+/// An MEP system (HVAC circuit, electrical distribution circuit, plumbing loop, etc.).
+/// Sourced from COBie System sheet or IFC IfcSystem/IfcDistributionSystem.
+/// Stored in facilities/{facilityId}/bimSystems/{docId}.
+class CobieMepSystemDraft {
+  final String docId;
+  final String name;
+
+  /// IFC PredefinedType or COBie System.Category.
+  final String? category;
+
+  /// Doc ids of all [CobieEquipmentDraft]s assigned to this system.
+  final List<String> equipmentDocIds;
+
+  CobieMepSystemDraft({
+    required this.docId,
+    required this.name,
+    this.category,
+    required this.equipmentDocIds,
+  });
+}
+
+/// A manufacturer or contractor contact from the COBie Contact sheet.
+/// Stored in facilities/{facilityId}/bimContacts/{docId}.
+class CobieContactDraft {
+  final String docId;
+  final String name;
+  final String? company;
+  final String? email;
+  final String? phone;
+
+  /// Category: Manufacturer, Installer, Contractor, Operator, Supplier, etc.
+  final String? category;
+  final String? description;
+
+  CobieContactDraft({
+    required this.docId,
+    required this.name,
+    this.company,
+    this.email,
+    this.phone,
+    this.category,
+    this.description,
+  });
+}
+
+/// A spare part record from the COBie Spare/Resource sheet.
+/// Stored in facilities/{facilityId}/bimSpares/{docId}.
+class CobieSparesDraft {
+  final String docId;
+  final String name;
+
+  /// COBie Type name this spare part belongs to.
+  final String? typeName;
+  final String? category;
+  final String? partNumber;
+  final String? supplier;
+  final String? description;
+  final int? setNumber;
+
+  CobieSparesDraft({
+    required this.docId,
+    required this.name,
+    this.typeName,
+    this.category,
+    this.partNumber,
+    this.supplier,
+    this.description,
+    this.setNumber,
+  });
+}
+
 class CobiePreview {
   final List<CobieSpaceDraft> spaces;
   final List<CobieEquipmentDraft> equipment;
   final List<CobieJobDraft> jobs;
+  final List<CobieMepSystemDraft> systems;
+  final List<CobieContactDraft> contacts;
+  final List<CobieSparesDraft> spares;
   final List<String> warnings;
 
   CobiePreview({
     required this.spaces,
     required this.equipment,
     this.jobs = const [],
+    this.systems = const [],
+    this.contacts = const [],
+    this.spares = const [],
     required this.warnings,
   });
 
@@ -152,7 +277,11 @@ class _TypeInfo {
   final String? modelNumber;
   final String? category;
   final int warrantyMonths;
-  _TypeInfo(this.name, this.manufacturer, this.modelNumber, this.category, this.warrantyMonths);
+  final int? expectedLifeYears;
+  final DateTime? warrantyStart;
+  final DateTime? warrantyEnd;
+  _TypeInfo(this.name, this.manufacturer, this.modelNumber, this.category,
+      this.warrantyMonths, this.expectedLifeYears, this.warrantyStart, this.warrantyEnd);
 }
 
 class CobieParser {
@@ -196,6 +325,42 @@ class CobieParser {
     return rounded < 1 ? 1 : rounded;
   }
 
+  /// Parses an ISO 8601 date string to DateTime (UTC midnight). Returns null for empty or unparseable.
+  static DateTime? _parseDate(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+    // ISO 8601 date or datetime
+    final dt = DateTime.tryParse(s);
+    if (dt != null) return DateTime.utc(dt.year, dt.month, dt.day);
+    // Some exporters write DD/MM/YYYY or MM/DD/YYYY - try common patterns
+    final parts = s.split(RegExp(r'[/\-.]'));
+    if (parts.length == 3) {
+      final ints = parts.map(int.tryParse).toList();
+      if (ints.every((v) => v != null)) {
+        // Heuristic: if first part > 31 it's a year
+        final y = ints[0]! > 31 ? ints[0]! : ints[2]!;
+        final m = ints[1]!;
+        final d = ints[0]! > 31 ? ints[2]! : ints[0]!;
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          return DateTime.tryParse('$y-${m.toString().padLeft(2, '0')}-${d.toString().padLeft(2, '0')}');
+        }
+      }
+    }
+    return null;
+  }
+
+  static int? _expectedLifeYears(Map<String, String> row) {
+    final n = double.tryParse(_v(row, 'expectedlife'));
+    if (n == null || n <= 0) return null;
+    final unit = _v(row, 'durationunit').toLowerCase();
+    if (unit.contains('year') || unit.isEmpty) return n.round();
+    if (unit.contains('month')) return (n / 12).round();
+    if (unit.contains('week')) return (n / 52).round();
+    if (unit.contains('day')) return (n / 365).round();
+    return n.round();
+  }
+
   static CobiePreview parse(CobieWorkbook wb) {
     final warnings = <String>[];
 
@@ -216,7 +381,7 @@ class CobieParser {
         warnings.add('A Floor row has no Name and was skipped.');
         continue;
       }
-      final gid = _validGlobalId(_v(row, 'extidentifier'));
+      final gid = validIfcGlobalId(_v(row, 'extidentifier'));
       final id = bimDocId('floor', gid, name);
       if (floorNames.contains(name.toLowerCase()) || !seenSpaceIds.add(id)) {
         warnings.add('Duplicate Floor "$name" was skipped.');
@@ -245,13 +410,18 @@ class CobieParser {
       if (floorName != null && !floorNames.contains(floorName.toLowerCase())) {
         warnings.add('Space "$name" refers to Floor "$floorName", which is not in the Floor sheet.');
       }
-      final gid = _validGlobalId(_v(row, 'extidentifier'));
+      final gid = validIfcGlobalId(_v(row, 'extidentifier'));
       final id = bimDocId('space', gid, name);
       if (spaceNames.contains(name.toLowerCase()) || !seenSpaceIds.add(id)) {
         warnings.add('Duplicate Space "$name" was skipped.');
         continue;
       }
       spaceNames.add(name.toLowerCase());
+
+      // Area: GrossArea column (m²). Some exporters use 'grossarea', others 'netarea'.
+      final grossAreaStr = _opt(row, 'grossarea') ?? _opt(row, 'area');
+      final grossArea = grossAreaStr == null ? null : double.tryParse(grossAreaStr);
+
       spaces.add(CobieSpaceDraft(
         docId: id,
         isStorey: false,
@@ -259,6 +429,8 @@ class CobieParser {
         description: _opt(row, 'description'),
         floorName: floorName,
         globalId: gid,
+        grossArea: grossArea,
+        usageType: _opt(row, 'usagetype') ?? _opt(row, 'roomtype'),
       ));
     }
 
@@ -273,17 +445,24 @@ class CobieParser {
         _opt(row, 'modelnumber'),
         _opt(row, 'category'),
         _warrantyMonths(row),
+        _expectedLifeYears(row),
+        _parseDate(_opt(row, 'warrantystartdate')),
+        _parseDate(_opt(row, 'warrantyenddate')),
       );
     }
 
-    // Systems: component name -> system name
-    final systemOf = <String, String>{};
+    // Systems: component name -> system info
+    final systemNameOf = <String, String>{}; // component name -> system name
+    final systemCategoryOf = <String, String>{}; // system name -> category
+    final systemComponents = <String, List<String>>{}; // system name -> component doc ids (filled after components)
     for (final row in _sheet(wb, 'system')) {
       final sysName = _v(row, 'name');
       if (sysName.isEmpty) continue;
+      final cat = _opt(row, 'category');
+      if (cat != null) systemCategoryOf[sysName] = cat;
       for (final c in _v(row, 'componentnames').split(',')) {
         final key = c.trim().toLowerCase();
-        if (key.isNotEmpty) systemOf.putIfAbsent(key, () => sysName);
+        if (key.isNotEmpty) systemNameOf.putIfAbsent(key, () => sysName);
       }
     }
 
@@ -306,7 +485,7 @@ class CobieParser {
       if (spaceName != null && !spaceNames.contains(spaceName.toLowerCase())) {
         warnings.add('Component "$name" refers to Space "$spaceName", which is not in the Space sheet.');
       }
-      final gid = _validGlobalId(_v(row, 'extidentifier'));
+      final gid = validIfcGlobalId(_v(row, 'extidentifier'));
       final id = bimDocId('cobie', gid, name);
       if (!seenComponentNames.add(name.toLowerCase()) || !seenEquipmentIds.add(id)) {
         warnings.add('Duplicate Component "$name" was skipped.');
@@ -314,6 +493,16 @@ class CobieParser {
       }
       final tag = _v(row, 'tagnumber');
       final assetId = _v(row, 'assetidentifier');
+
+      final sysName = systemNameOf[name.toLowerCase()];
+      if (sysName != null) (systemComponents[sysName] ??= []).add(id);
+
+      // Lifecycle dates: Component sheet columns take priority over Type sheet
+      final installDate = _parseDate(_opt(row, 'installationdate')) ??
+          _parseDate(_opt(row, 'installeddate'));
+      final wStart = _parseDate(_opt(row, 'warrantystartdate')) ?? info?.warrantyStart;
+      final wEnd = _parseDate(_opt(row, 'warrantyenddate')) ?? info?.warrantyEnd;
+
       equipment.add(CobieEquipmentDraft(
         docId: id,
         name: name,
@@ -323,12 +512,32 @@ class CobieParser {
         manufacturer: info?.manufacturer,
         modelNumber: info?.modelNumber,
         classification: info?.category,
-        systemName: systemOf[name.toLowerCase()],
+        systemName: sysName,
         spaceName: spaceName,
         serialNumber: _v(row, 'serialnumber'),
         warrantyMonths: info?.warrantyMonths ?? 0,
         notes: _v(row, 'description'),
         globalId: gid,
+        installationDate: installDate,
+        warrantyStart: wStart,
+        warrantyEnd: wEnd,
+        expectedLifeYears: info?.expectedLifeYears,
+      ));
+    }
+
+    // Systems -> CobieMepSystemDraft
+    final systems = <CobieMepSystemDraft>[];
+    final seenSystemIds = <String>{};
+    for (final row in _sheet(wb, 'system')) {
+      final name = _v(row, 'name');
+      if (name.isEmpty) continue;
+      final id = bimDocId('system', null, name);
+      if (!seenSystemIds.add(id)) continue;
+      systems.add(CobieMepSystemDraft(
+        docId: id,
+        name: name,
+        category: _opt(row, 'category'),
+        equipmentDocIds: systemComponents[name] ?? const [],
       ));
     }
 
@@ -350,7 +559,6 @@ class CobieParser {
         warnings.add('Job "$name" has no usable Frequency/FrequencyUnit and was skipped.');
         continue;
       }
-      // A Job is unique per Type + Name in COBie.
       final id = bimDocId('cobie_job', null, '$typeName $name');
       if (!seenJobIds.add(id)) {
         warnings.add('Duplicate Job "$name" for Type "$typeName" was skipped.');
@@ -369,12 +577,65 @@ class CobieParser {
       ));
     }
 
+    // Contacts (COBie Contact sheet)
+    final contacts = <CobieContactDraft>[];
+    final seenContactIds = <String>{};
+    for (final row in _sheet(wb, 'contact')) {
+      final name = _opt(row, 'firstname') != null || _opt(row, 'lastname') != null
+          ? '${_v(row, 'firstname')} ${_v(row, 'lastname')}'.trim()
+          : _opt(row, 'name') ?? _opt(row, 'email') ?? '';
+      if (name.isEmpty) continue;
+      final id = bimDocId('contact', null, name);
+      if (!seenContactIds.add(id)) continue;
+      contacts.add(CobieContactDraft(
+        docId: id,
+        name: name,
+        company: _opt(row, 'company') ?? _opt(row, 'organization'),
+        email: _opt(row, 'email'),
+        phone: _opt(row, 'phone') ?? _opt(row, 'phonenumber'),
+        category: _opt(row, 'category') ?? _opt(row, 'role'),
+        description: _opt(row, 'description'),
+      ));
+    }
+
+    // Spares / Resources (COBie Spare sheet — sometimes also called Resource)
+    final spares = <CobieSparesDraft>[];
+    final seenSpareIds = <String>{};
+    for (final sheetName in const ['spare', 'resource']) {
+      for (final row in _sheet(wb, sheetName)) {
+        final name = _v(row, 'name');
+        if (name.isEmpty) continue;
+        final typeName = _opt(row, 'typename') ?? _opt(row, 'type');
+        final id = bimDocId('spare', null, '${typeName ?? ''}/$name');
+        if (!seenSpareIds.add(id)) continue;
+        final setNumStr = _opt(row, 'setnumber');
+        spares.add(CobieSparesDraft(
+          docId: id,
+          name: name,
+          typeName: typeName,
+          category: _opt(row, 'category'),
+          partNumber: _opt(row, 'partnumber') ?? _opt(row, 'articlenumber'),
+          supplier: _opt(row, 'suppliers') ?? _opt(row, 'supplier'),
+          description: _opt(row, 'description'),
+          setNumber: setNumStr == null ? null : int.tryParse(setNumStr),
+        ));
+      }
+    }
+
     final withoutGuid = equipment.where((e) => e.globalId == null).length;
     if (equipment.isNotEmpty && withoutGuid > 0) {
       warnings.add('$withoutGuid of ${equipment.length} components have no valid IFC GlobalId in ExtIdentifier. '
           'They will be matched by name on re-import.');
     }
 
-    return CobiePreview(spaces: spaces, equipment: equipment, jobs: jobs, warnings: warnings);
+    return CobiePreview(
+      spaces: spaces,
+      equipment: equipment,
+      jobs: jobs,
+      systems: systems,
+      contacts: contacts,
+      spares: spares,
+      warnings: warnings,
+    );
   }
 }

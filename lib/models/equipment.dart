@@ -41,6 +41,20 @@ class Equipment {
   /// Uniclass / OmniClass / etc. code, when the client uses one.
   final String? classification;
 
+  // --- Lifecycle dates (imported from IFC Psets or COBie Component/Type sheets) ---
+
+  /// Date the asset was physically installed at the facility.
+  final DateTime? installationDate;
+
+  /// Date the manufacturer warranty started (often same as installationDate).
+  final DateTime? warrantyStartDate;
+
+  /// Date the manufacturer warranty expires.
+  final DateTime? warrantyEndDate;
+
+  /// Expected service life in years from the Type specification.
+  final int? expectedLifeYears;
+
   Equipment({
     required this.id,
     required this.equipmentId,
@@ -67,6 +81,10 @@ class Equipment {
     this.typeName,
     this.systemName,
     this.classification,
+    this.installationDate,
+    this.warrantyStartDate,
+    this.warrantyEndDate,
+    this.expectedLifeYears,
   });
 
   bool get isBimLinked => bimGlobalId != null && bimGlobalId!.isNotEmpty;
@@ -103,6 +121,10 @@ class Equipment {
       typeName: data['typeName'] as String?,
       systemName: data['systemName'] as String?,
       classification: data['classification'] as String?,
+      installationDate: (data['installationDate'] as Timestamp?)?.toDate(),
+      warrantyStartDate: (data['warrantyStartDate'] as Timestamp?)?.toDate(),
+      warrantyEndDate: (data['warrantyEndDate'] as Timestamp?)?.toDate(),
+      expectedLifeYears: data['expectedLifeYears'] as int?,
     );
   }
 
@@ -133,6 +155,10 @@ class Equipment {
       if (typeName != null) 'typeName': typeName,
       if (systemName != null) 'systemName': systemName,
       if (classification != null) 'classification': classification,
+      if (installationDate != null) 'installationDate': Timestamp.fromDate(installationDate!),
+      if (warrantyStartDate != null) 'warrantyStartDate': Timestamp.fromDate(warrantyStartDate!),
+      if (warrantyEndDate != null) 'warrantyEndDate': Timestamp.fromDate(warrantyEndDate!),
+      if (expectedLifeYears != null) 'expectedLifeYears': expectedLifeYears,
     };
   }
 }

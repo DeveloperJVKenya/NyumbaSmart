@@ -50,12 +50,13 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canManage = canManageBim(ref.watch(currentUserRoleProvider).value);
+    final roleInfo = ref.watch(currentUserRoleProvider).value;
+    final canManage = canManageBim(roleInfo);
     return ResponsiveScreenWrapper(
       title: 'Floors & Rooms',
       facilityId: widget.facilityId,
-      currentRole: 'User',
-      organization: '-',
+      currentRole: roleInfo?.roleLabel ?? '-',
+      organization: roleInfo?.organization ?? '-',
       floatingActionButton: canManage
           ? FloatingActionButton.extended(
               onPressed: () => _editSpace(null, const []),

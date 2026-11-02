@@ -109,12 +109,15 @@ class AppGradientButton extends StatelessWidget {
                               Icon(icon, color: Colors.white, size: 20),
                               const SizedBox(width: 8),
                             ],
-                            Text(
-                              label,
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                            Flexible(
+                              child: Text(
+                                label,
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -141,10 +144,8 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: padding,
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.card,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: [
           BoxShadow(
@@ -154,7 +155,15 @@ class AppCard extends StatelessWidget {
           ),
         ],
       ),
-      child: child,
+      child: Material(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: padding,
+          child: child,
+        ),
+      ),
     );
   }
 }

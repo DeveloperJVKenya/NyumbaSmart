@@ -15,6 +15,9 @@ class BimImportResult {
   final int equipmentUpdated;
   final int jobsCreated;
   final int jobsUpdated;
+  final int systemsWritten;
+  final int contactsWritten;
+  final int sparesWritten;
 
   BimImportResult({
     required this.modelId,
@@ -24,17 +27,20 @@ class BimImportResult {
     required this.equipmentUpdated,
     required this.jobsCreated,
     required this.jobsUpdated,
+    required this.systemsWritten,
+    required this.contactsWritten,
+    required this.sparesWritten,
   });
 }
 
 /// Writes a reviewed [CobiePreview] (from a COBie workbook or an IFC file) into Firestore:
-///   facilities/{facilityId}/bimModels/{modelId}   one record per import (revision history)
-///   facilities/{facilityId}/spaces/{docId}        storeys + rooms
-///   facilities/{facilityId}/equipment/{docId}     components
-///   facilities/{facilityId}/preventive_maintenance/{docId}   COBie Jobs (no due date is set, so
-///                                                 nothing is scheduled or notified until staff set one)
-/// and, when [sourceBytes] is given, keeps the original file at
-///   `facilities/{facilityId}/bim/{modelId}/source.<ext>`   (Storage)
+///   facilities/{facilityId}/bimModels/{modelId}           one record per import
+///   facilities/{facilityId}/spaces/{docId}                storeys + rooms
+///   facilities/{facilityId}/equipment/{docId}             components
+///   facilities/{facilityId}/bimSystems/{docId}            MEP systems
+///   facilities/{facilityId}/bimContacts/{docId}           manufacturer/contractor contacts
+///   facilities/{facilityId}/bimSpares/{docId}             spare parts
+///   facilities/{facilityId}/preventive_maintenance/{docId} COBie Jobs
 ///
 /// Re-import rules:
 ///  - Document ids are deterministic (see [bimDocId]), so a revised file updates the same documents.
@@ -60,7 +66,9 @@ class BimImportService {
     required String userId,
     BimSourceType sourceType = BimSourceType.cobie,
     String? schemaVersion,
+    String? siteName,
     Uint8List? sourceBytes,
+    void Function(String stage, double fraction)? onProgress,
   }) async {
     final facility = _db.collection('facilities').doc(facilityId);
     final models = facility.collection('bimModels');
@@ -75,6 +83,7 @@ class BimImportService {
     if (sourceBytes != null) {
       final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : sourceType.name;
       storagePath = 'facilities/$facilityId/bim/${modelRef.id}/source.$ext';
+      onProgress?.call('Uploading file to storage', 0.05);
       await _storage.ref(storagePath).putData(
             sourceBytes,
             SettableMetadata(
@@ -84,8 +93,10 @@ class BimImportService {
               customMetadata: {'originalName': fileName, 'uploadedBy': userId, 'facilityId': facilityId},
             ),
           );
+      onProgress?.call('Uploading file to storage', 0.15);
     }
 
+    onProgress?.call('Creating model record', 0.17);
     await modelRef.set(BimModel(
       id: modelRef.id,
       facilityId: facilityId,
@@ -93,6 +104,7 @@ class BimImportService {
       storagePath: storagePath,
       sourceType: sourceType,
       schemaVersion: schemaVersion,
+      siteName: siteName,
       revision: (previous.count ?? 0) + 1,
       status: BimImportStatus.processing,
       sizeBytes: sizeBytes,
@@ -104,11 +116,13 @@ class BimImportService {
       final writer = _BatchWriter(_db, _batchLimit);
 
       // ---- Spaces ----
+      onProgress?.call('Analyzing existing records', 0.20);
       final existingSpaces = (await facility.collection('spaces').get()).docs.map((d) => d.id).toSet();
       final storeyIdByName = <String, String>{
         for (final s in preview.spaces.where((s) => s.isStorey)) s.name.toLowerCase(): s.docId,
       };
 
+      onProgress?.call('Writing spaces (${preview.spaces.length})', 0.23);
       var spacesCreated = 0;
       var spacesUpdated = 0;
       for (final s in preview.spaces) {
@@ -123,6 +137,8 @@ class BimImportService {
             'elevation': s.elevation,
             'bimGlobalId': s.globalId,
             'bimModelId': modelRef.id,
+            if (s.grossArea != null) 'grossArea': s.grossArea,
+            if (s.usageType != null) 'usageType': s.usageType,
           });
           spacesUpdated++;
         } else {
@@ -139,6 +155,8 @@ class BimImportService {
               bimGlobalId: s.globalId,
               bimModelId: modelRef.id,
               createdAt: now,
+              grossArea: s.grossArea,
+              usageType: s.usageType,
             ).toMap(),
           );
           spacesCreated++;
@@ -146,8 +164,7 @@ class BimImportService {
       }
 
       // ---- Equipment ----
-      // Our ids are prefixed ("bim_" / "cobie_" / "ifc_"), so they can't collide with manually
-      // created (uuid) equipment. Only previously imported documents need an existence check.
+      onProgress?.call('Writing equipment (${preview.equipment.length})', 0.40);
       final existingEquipment = (await facility
               .collection('equipment')
               .where('bimSource', whereIn: ['cobie', 'ifc'])
@@ -161,7 +178,15 @@ class BimImportService {
 
       var equipmentCreated = 0;
       var equipmentUpdated = 0;
+      var equipIdx = 0;
       for (final e in preview.equipment) {
+        equipIdx++;
+        if (equipIdx == 1 || equipIdx % 200 == 0) {
+          onProgress?.call(
+            'Writing equipment ($equipIdx / ${preview.equipment.length})',
+            0.42 + 0.33 * equipIdx / preview.equipment.length,
+          );
+        }
         final ref = facility.collection('equipment').doc(e.docId);
         final spaceId = e.spaceDocId ?? (e.spaceName == null ? null : spaceIdByName[e.spaceName!.toLowerCase()]);
 
@@ -178,9 +203,12 @@ class BimImportService {
             'bimModelId': modelRef.id,
             'bimSource': bimSource,
             'updatedAt': Timestamp.fromDate(now),
-            // Only overwrite a location when the file actually states one.
             'spaceId': ?spaceId,
             if (e.serialNumber.isNotEmpty) 'serialNumber': e.serialNumber,
+            if (e.installationDate != null) 'installationDate': Timestamp.fromDate(e.installationDate!),
+            if (e.warrantyStart != null) 'warrantyStartDate': Timestamp.fromDate(e.warrantyStart!),
+            if (e.warrantyEnd != null) 'warrantyEndDate': Timestamp.fromDate(e.warrantyEnd!),
+            if (e.expectedLifeYears != null) 'expectedLifeYears': e.expectedLifeYears,
           };
           await writer.update(ref, update);
           equipmentUpdated++;
@@ -193,7 +221,7 @@ class BimImportService {
               name: e.name,
               type: e.type,
               serialNumber: e.serialNumber,
-              locationId: e.spaceName ?? '', // keeps the legacy location text useful
+              locationId: e.spaceName ?? '',
               purchasePrice: 0.0,
               warrantyMonths: e.warrantyMonths,
               status: 'Active',
@@ -219,17 +247,131 @@ class BimImportService {
               typeName: e.typeName.isEmpty ? null : e.typeName,
               systemName: e.systemName,
               classification: e.classification,
+              installationDate: e.installationDate,
+              warrantyStartDate: e.warrantyStart,
+              warrantyEndDate: e.warrantyEnd,
+              expectedLifeYears: e.expectedLifeYears,
             ).toMap(),
           );
           equipmentCreated++;
         }
       }
 
+      // ---- MEP Systems ----
+      var systemsWritten = 0;
+      if (preview.systems.isNotEmpty) {
+        onProgress?.call('Writing MEP systems (${preview.systems.length})', 0.78);
+        final existingSystems = (await facility.collection('bimSystems').get()).docs.map((d) => d.id).toSet();
+        for (final sys in preview.systems) {
+          final ref = facility.collection('bimSystems').doc(sys.docId);
+          if (existingSystems.contains(sys.docId)) {
+            await writer.update(ref, {
+              'name': sys.name,
+              if (sys.category != null) 'category': sys.category,
+              'equipmentIds': sys.equipmentDocIds,
+              'bimModelId': modelRef.id,
+            });
+          } else {
+            await writer.set(
+              ref,
+              BimSystem(
+                id: sys.docId,
+                facilityId: facilityId,
+                name: sys.name,
+                category: sys.category,
+                equipmentIds: sys.equipmentDocIds,
+                bimModelId: modelRef.id,
+                createdAt: now,
+              ).toMap(),
+            );
+          }
+          systemsWritten++;
+        }
+      }
+
+      // ---- Contacts ----
+      var contactsWritten = 0;
+      if (preview.contacts.isNotEmpty) {
+        onProgress?.call('Writing contacts (${preview.contacts.length})', 0.84);
+        final existingContacts = (await facility.collection('bimContacts').get()).docs.map((d) => d.id).toSet();
+        for (final c in preview.contacts) {
+          final ref = facility.collection('bimContacts').doc(c.docId);
+          if (existingContacts.contains(c.docId)) {
+            await writer.update(ref, {
+              'name': c.name,
+              if (c.company != null) 'company': c.company,
+              if (c.email != null) 'email': c.email,
+              if (c.phone != null) 'phone': c.phone,
+              if (c.category != null) 'category': c.category,
+              if (c.description != null) 'description': c.description,
+              'bimModelId': modelRef.id,
+            });
+          } else {
+            await writer.set(
+              ref,
+              BimContact(
+                id: c.docId,
+                facilityId: facilityId,
+                name: c.name,
+                company: c.company,
+                email: c.email,
+                phone: c.phone,
+                category: c.category,
+                description: c.description,
+                bimModelId: modelRef.id,
+                createdAt: now,
+              ).toMap(),
+            );
+          }
+          contactsWritten++;
+        }
+      }
+
+      // ---- Spares ----
+      var sparesWritten = 0;
+      if (preview.spares.isNotEmpty) {
+        onProgress?.call('Writing spare parts (${preview.spares.length})', 0.90);
+        final existingSpares = (await facility.collection('bimSpares').get()).docs.map((d) => d.id).toSet();
+        for (final sp in preview.spares) {
+          final ref = facility.collection('bimSpares').doc(sp.docId);
+          if (existingSpares.contains(sp.docId)) {
+            await writer.update(ref, {
+              'name': sp.name,
+              if (sp.typeName != null) 'typeName': sp.typeName,
+              if (sp.category != null) 'category': sp.category,
+              if (sp.partNumber != null) 'partNumber': sp.partNumber,
+              if (sp.supplier != null) 'supplier': sp.supplier,
+              if (sp.description != null) 'description': sp.description,
+              if (sp.setNumber != null) 'setNumber': sp.setNumber,
+              'bimModelId': modelRef.id,
+            });
+          } else {
+            await writer.set(
+              ref,
+              BimSpare(
+                id: sp.docId,
+                facilityId: facilityId,
+                name: sp.name,
+                typeName: sp.typeName,
+                category: sp.category,
+                partNumber: sp.partNumber,
+                supplier: sp.supplier,
+                description: sp.description,
+                setNumber: sp.setNumber,
+                bimModelId: modelRef.id,
+                createdAt: now,
+              ).toMap(),
+            );
+          }
+          sparesWritten++;
+        }
+      }
+
       // ---- Preventive maintenance tasks (COBie Jobs) ----
-      // Ids are prefixed "cobie_job_", so only previously imported tasks can match.
       var jobsCreated = 0;
       var jobsUpdated = 0;
       if (preview.jobs.isNotEmpty) {
+        onProgress?.call('Writing maintenance jobs (${preview.jobs.length})', 0.94);
         final pmCol = facility.collection('preventive_maintenance');
         final existingJobs = (await pmCol.where('origin', isEqualTo: PmTaskOrigin.excel.value).get())
             .docs
@@ -274,6 +416,7 @@ class BimImportService {
         }
       }
 
+      onProgress?.call('Finalizing', 0.97);
       await writer.flush();
 
       await modelRef.update({
@@ -281,9 +424,13 @@ class BimImportService {
         'spaceCount': preview.spaces.length,
         'equipmentCount': preview.equipment.length,
         'jobCount': preview.jobs.length,
+        'systemCount': preview.systems.length,
+        'contactCount': preview.contacts.length,
+        'sparesCount': preview.spares.length,
         'processedAt': Timestamp.fromDate(DateTime.now()),
       });
 
+      onProgress?.call('Complete', 1.0);
       return BimImportResult(
         modelId: modelRef.id,
         spacesCreated: spacesCreated,
@@ -292,6 +439,9 @@ class BimImportService {
         equipmentUpdated: equipmentUpdated,
         jobsCreated: jobsCreated,
         jobsUpdated: jobsUpdated,
+        systemsWritten: systemsWritten,
+        contactsWritten: contactsWritten,
+        sparesWritten: sparesWritten,
       );
     } catch (e) {
       await modelRef.update({

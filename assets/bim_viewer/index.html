@@ -5,13 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BIM Viewer</title>
 <!--
-  CMMS 3D model viewer. One self-contained page (no relative imports) so it works when the app loads it
-  as an HTML string: in an iframe srcdoc on web and in a WebView on Android/iOS/macOS.
-
-  Host -> viewer messages (JSON): {type:'load', url, select?, colors?}, {type:'select', globalId|null},
-  {type:'colors', colors:{globalId:'#rrggbb'}}, {type:'xray', on}, {type:'reset'}
-  Viewer -> host messages (JSON): {type:'ready'}, {type:'progress', stage, fraction}, {type:'loaded', elements},
-  {type:'selected', globalId, name, ifcType} (globalId null when cleared), {type:'error', message}
+  CMMS 3D model viewer.
+  Host -> viewer: load, select, colors, xray, reset, isolate, showSpaces,
+                  measure, annotate, annotations, transform, applyOverrides
+  Viewer -> host: ready, progress, loaded, selected, error,
+                  measurement, annotateAt, transformed, modeExited
 -->
 <style>
   :root { --primary:#4f46e5; --text:#1e1b4b; --muted:#64748b; --bg:#eef2ff; --card:#ffffff; }
@@ -23,6 +21,28 @@
   .bar { height:6px; background:#e0e7ff; border-radius:3px; margin-top:12px; overflow:hidden; }
   .bar > div { height:100%; width:0; background:var(--primary); transition:width .2s; }
   .hint { position:absolute; left:12px; bottom:10px; font-size:11px; color:var(--muted); pointer-events:none; }
+
+  /* Annotation pins — position is set via JS transform, so left/top start at 0 */
+  #ann-layer { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+  .ann-pin { position:absolute; left:0; top:0; display:none; flex-direction:column; align-items:center; }
+  .ann-pin-body { background:var(--primary); color:#fff; font-size:11px; padding:3px 8px; border-radius:8px;
+                  white-space:nowrap; max-width:160px; overflow:hidden; text-overflow:ellipsis;
+                  box-shadow:0 2px 6px rgba(0,0,0,.35); }
+  .ann-pin-stem { width:2px; height:9px; background:var(--primary); }
+  .ann-pin-dot  { width:7px; height:7px; background:var(--primary); border-radius:50%; }
+
+  /* Measure label — position set via JS transform */
+  #measure-label { position:absolute; left:0; top:0; display:none; background:#0f172a; color:#f8fafc;
+                   font-size:12px; padding:4px 10px; border-radius:8px; pointer-events:none;
+                   white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+
+  /* Mode hint banners */
+  .mode-hint { position:absolute; left:50%; transform:translateX(-50%);
+               background:rgba(15,23,42,.78); color:#f8fafc; font-size:12px; padding:5px 14px;
+               border-radius:20px; pointer-events:none; white-space:nowrap; }
+  #measure-hint   { bottom:36px; display:none; }
+  #transform-hint { top:60px;    display:none; }
+
 </style>
 <script type="importmap">
 { "imports": {
@@ -35,23 +55,64 @@
 <canvas id="c"></canvas>
 <div id="status"><div id="msg">Starting viewer…</div><div class="bar"><div id="prog"></div></div></div>
 <div class="hint" id="hint" hidden>Drag to orbit · right-drag or two fingers to pan · scroll or pinch to zoom · tap to select</div>
+<div id="ann-layer"></div>
+<div id="measure-label"></div>
+<div class="mode-hint" id="measure-hint"></div>
+<div class="mode-hint" id="transform-hint">Drag the coloured arrows to reposition · Esc to finish</div>
+<script>
+// Non-module global error catcher — forwards fatal errors to the host as a postMessage.
+function _postError(msg) {
+  const s = JSON.stringify({ type: 'error', message: msg });
+  if (window.CmmsBridge?.postMessage) window.CmmsBridge.postMessage(s);
+  else if (window.parent !== window) window.parent.postMessage({ cmmsViewer: true, payload: s }, '*');
+}
+window.addEventListener('error', (e) => {
+  console.error('[BIM viewer]', e.message, e.filename + ':' + e.lineno);
+  _postError(e.message || 'Viewer script error');
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[BIM viewer] unhandled rejection', e.reason);
+  _postError(String(e.reason) || 'Viewer promise error');
+});
+</script>
 <script type="module">
+// All imports must appear before any statements in an ES module.
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls }     from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import * as WebIFC from 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.77/web-ifc-api.js';
+
+// ---- console logger (terminal output only) ----
+function dbg(msg, level = 'ok') {
+  console[level === 'err' ? 'error' : level === 'warn' ? 'warn' : 'log']('[BIM]', msg);
+}
+dbg(`Module loaded — THREE r${THREE.REVISION}, web-ifc imported`);
 
 const WASM_PATH = 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.77/';
 
 // ---------------------------------------------------------------- host bridge
 function post(msg) {
+  // Skip verbose logging for high-frequency progress ticks to avoid DOM thrashing.
+  if (msg.type !== 'progress') {
+    dbg(`POST → ${msg.type}${msg.distanceText ? ' '+msg.distanceText : ''}`);
+  }
   const s = JSON.stringify(msg);
-  if (window.CmmsBridge && window.CmmsBridge.postMessage) window.CmmsBridge.postMessage(s); // webview_flutter channel
-  else if (window.parent !== window) window.parent.postMessage({ cmmsViewer: true, payload: s }, '*'); // web iframe
+  if (window.CmmsBridge && window.CmmsBridge.postMessage) {
+    window.CmmsBridge.postMessage(s);
+  } else if (window.parent !== window) {
+    window.parent.postMessage({ cmmsViewer: true, payload: s }, '*');
+  } else {
+    dbg('  NO channel available!', 'err');
+  }
 }
 window.cmmsViewer = { receive: (m) => handle(typeof m === 'string' ? JSON.parse(m) : m) };
 window.addEventListener('message', (e) => {
   const d = e.data;
-  if (d && d.cmmsHost) handle(typeof d.payload === 'string' ? JSON.parse(d.payload) : d.payload);
+  if (d && d.cmmsHost) {
+    const msg = typeof d.payload === 'string' ? JSON.parse(d.payload) : d.payload;
+    dbg(`RECV ← ${msg?.type}`);
+    handle(msg);
+  }
 });
 
 const statusEl = document.getElementById('status');
@@ -63,18 +124,20 @@ function setStatus(text, fraction, isError) {
   document.getElementById('prog').style.width = `${Math.round((fraction ?? 0) * 100)}%`;
   document.querySelector('.bar').style.display = isError ? 'none' : '';
 }
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 // ---------------------------------------------------------------- IFC -> meshes
-// BEGIN ifc-meshes (kept free of DOM/three.js so it can be unit-tested in Node)
-const SKIPPED_TYPES = new Set([WebIFC.IFCSPACE, WebIFC.IFCOPENINGELEMENT]);
+const SKIPPED_TYPES = new Set([WebIFC.IFCOPENINGELEMENT]);
+const SPACE_TYPES   = new Set([WebIFC.IFCSPACE]);
 
-/** Streams every element with geometry. onElement({expressID, globalId, name, ifcType, parts}) where each
- *  part is {geometryExpressID, vertexData (x,y,z,nx,ny,nz interleaved), indices, matrix (16, column-major), color}. */
 function extractIfcMeshes(api, modelID, onElement, onProgress) {
   let count = 0;
   api.StreamAllMeshes(modelID, (mesh, index, total) => {
     const type = api.GetLineType(modelID, mesh.expressID);
     if (SKIPPED_TYPES.has(type)) return;
+    const isSpace = SPACE_TYPES.has(type);
     const line = api.GetLine(modelID, mesh.expressID);
     const parts = [];
     for (let i = 0; i < mesh.geometries.size(); i++) {
@@ -95,15 +158,16 @@ function extractIfcMeshes(api, modelID, onElement, onProgress) {
       globalId: line?.GlobalId?.value ?? null,
       name: line?.Name?.value ?? null,
       ifcType: api.GetNameFromTypeCode(type),
+      isSpace,
       parts,
     });
     if (onProgress && total) onProgress(index / total);
   });
   return count;
 }
-// END ifc-meshes
 
 // ---------------------------------------------------------------- three.js scene
+dbg('Building Three.js scene…');
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -111,8 +175,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xeef2ff);
 const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 5000);
 camera.position.set(20, 15, 20);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
+const orbitCtrl = new OrbitControls(camera, canvas);
+orbitCtrl.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8fb5, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.4);
 sun.position.set(30, 60, 20);
@@ -121,70 +185,224 @@ scene.add(sun);
 const modelGroup = new THREE.Group();
 scene.add(modelGroup);
 
+// ---------------------------------------------------------------- TransformControls
+// We use a separate invisible pivot placed at the element's bounding-box centre.
+// This makes the gizmo appear on top of the element in 3D space, regardless of
+// where the element Group root sits (which is always 0,0,0 by default).
+const tcPivot = new THREE.Object3D();
+scene.add(tcPivot);
+const tc = new TransformControls(camera, canvas);
+tc.setMode('translate');
+tc.addEventListener('dragging-changed', (e) => { orbitCtrl.enabled = !e.value; });
+
+const _tcBasePos   = new THREE.Vector3(); // pivot world pos when tc was attached
+const _tcBaseGrpPos = new THREE.Vector3(); // element group.position when tc was attached
+let tcActiveExpId = null;
+
+tc.addEventListener('objectChange', () => {
+  if (tcActiveExpId == null) return;
+  const gid = infoByExpressId.get(tcActiveExpId)?.globalId;
+  const grp = elementGroupByExpId.get(tcActiveExpId);
+  if (!grp || !gid) return;
+  // Translate the element's group by the same delta the pivot moved.
+  const delta = new THREE.Vector3().subVectors(tcPivot.position, _tcBasePos);
+  grp.position.set(
+    _tcBaseGrpPos.x + delta.x,
+    _tcBaseGrpPos.y + delta.y,
+    _tcBaseGrpPos.z + delta.z,
+  );
+  post({ type: 'transformed', globalId: gid, dx: grp.position.x, dy: grp.position.y, dz: grp.position.z });
+});
+// Three.js r152+ changed TransformControls: it no longer extends Object3D itself.
+// Add tc.getHelper() (the visual gizmo Object3D) to the scene instead of tc directly.
+dbg(`tc.getHelper exists: ${typeof tc.getHelper}`);
+let tcHelper;
+try {
+  tcHelper = tc.getHelper();
+  dbg(`tcHelper type: ${tcHelper?.constructor?.name ?? typeof tcHelper}`);
+  scene.add(tcHelper);
+  dbg('tcHelper added to scene OK');
+} catch (ex) {
+  dbg(`tc.getHelper() FAILED: ${ex}`, 'err');
+}
+
+function attachTCToElement(expressID) {
+  const meshes = meshesByExpressId.get(expressID);
+  const grp    = elementGroupByExpId.get(expressID);
+  if (!meshes || !grp) { tc.detach(); tcActiveExpId = null; return; }
+
+  // Compute world-space bounding box centre of the element's meshes.
+  const box = new THREE.Box3();
+  for (const m of meshes) box.expandByObject(m);
+  if (box.isEmpty()) { tc.detach(); tcActiveExpId = null; return; }
+
+  box.getCenter(tcPivot.position);   // place pivot at visual centre
+  _tcBasePos.copy(tcPivot.position);
+  _tcBaseGrpPos.copy(grp.position);
+  tcActiveExpId = expressID;
+  tc.attach(tcPivot);
+}
+
+// Declared before resize() so these are never in the temporal dead zone when
+// resize() is called immediately at startup.
+let _overlayDirty   = true;
+let _firstValidResize = true;
+let _modelLoaded    = false; // true once load() successfully finishes
+
+// resize() is called every render frame to handle the srcdoc iframe timing:
+// clientWidth/Height may be 0 at script init if the browser hasn't laid out yet.
 function resize() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const w = canvas.clientWidth  || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+  if (w === 0 || h === 0) return;
+  if (renderer.domElement.width === w && renderer.domElement.height === h) return;
+  dbg(`resize → ${w}×${h}`);
   renderer.setSize(w, h, false);
   camera.aspect = w / Math.max(h, 1);
   camera.updateProjectionMatrix();
+  _overlayDirty = true;
+  // Re-frame the model if it was loaded while the canvas was still 0×0.
+  if (_firstValidResize && _modelLoaded) {
+    _firstValidResize = false;
+    const vm = visibleMeshList();
+    if (vm.length) {
+      dbg(`First valid resize with model — re-framing ${vm.length} meshes`);
+      frame(boxOf(vm));
+    }
+  } else {
+    _firstValidResize = false;
+  }
 }
 window.addEventListener('resize', resize);
 resize();
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
 
 // ---------------------------------------------------------------- model state
-const meshesByExpressId = new Map(); // expressID -> Mesh[]
-const elementByGlobalId = new Map(); // globalId -> {expressID, name, ifcType}
-const infoByExpressId = new Map();   // expressID -> {globalId, name, ifcType}
-const materialCache = new Map();
-let overlayColors = {};              // globalId -> '#rrggbb'
+const meshesByExpressId    = new Map();
+const elementGroupByExpId  = new Map();
+const elementByGlobalId    = new Map();
+const infoByExpressId      = new Map();
+const spaceExpressIds      = new Set();
+const storeyOfExpressId    = new Map();
+const materialCache        = new Map();
+let overlayColors = {};
 let xray = false;
+let showSpaces = false;
+let isolatedStoreyGid = null;
 let selectedExpressId = null;
 let api = null, modelID = null;
 
+// Flat mesh list cache — rebuilt once after each model load, reused for raycasting.
+let _meshCache = null;
+function allMeshes() {
+  if (!_meshCache) {
+    _meshCache = [];
+    for (const [, ms] of meshesByExpressId) for (const m of ms) _meshCache.push(m);
+  }
+  return _meshCache;
+}
+
+orbitCtrl.addEventListener('change', () => { _overlayDirty = true; });
+
+// Interaction modes
+let measuringMode = false;
+let annotateMode  = false;
+let transformMode = false;
+
+// Measure state
+let measurePt1   = null;
+let measureLine  = null;
+let measureMidPt = null;
+const measureLabelEl  = document.getElementById('measure-label');
+const measureHintEl   = document.getElementById('measure-hint');
+const transformHintEl = document.getElementById('transform-hint');
+
+// Annotation overlay
+const annotationWorld = [];
+const annotationEls   = new Map();
+const annLayer        = document.getElementById('ann-layer');
+
+// ---------------------------------------------------------------- materials
 function material(key, make) {
   if (!materialCache.has(key)) materialCache.set(key, make());
   return materialCache.get(key);
 }
-const baseMaterial = (c) => material(`b${c.r.toFixed(3)},${c.g.toFixed(3)},${c.b.toFixed(3)},${c.a.toFixed(2)}`,
+const baseMaterial = (c) => material(
+  `b${c.r.toFixed(3)},${c.g.toFixed(3)},${c.b.toFixed(3)},${c.a.toFixed(2)}`,
   () => new THREE.MeshLambertMaterial({ color: new THREE.Color(c.r, c.g, c.b), transparent: c.a < 1, opacity: c.a, side: THREE.DoubleSide }));
-const ghostMaterial = () => material('ghost',
+const ghostMaterial    = () => material('ghost',
   () => new THREE.MeshLambertMaterial({ color: 0xc7d2fe, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }));
-const overlayMaterial = (hex) => material(`o${hex}`,
+const spaceMaterial    = () => material('space',
+  () => new THREE.MeshLambertMaterial({ color: 0x6366f1, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }));
+const overlayMaterial  = (hex) => material(`o${hex}`,
   () => new THREE.MeshLambertMaterial({ color: new THREE.Color(hex), side: THREE.DoubleSide }));
 const selectedMaterial = () => material('selected',
   () => new THREE.MeshLambertMaterial({ color: 0xf59e0b, emissive: 0x7c2d12, emissiveIntensity: 0.35, side: THREE.DoubleSide }));
 
 function applyMaterials() {
   for (const [expressID, meshes] of meshesByExpressId) {
+    const isSpace = spaceExpressIds.has(expressID);
     const gid = infoByExpressId.get(expressID)?.globalId;
     const overlay = gid ? overlayColors[gid] : null;
     for (const m of meshes) {
       if (expressID === selectedExpressId) m.material = selectedMaterial();
+      else if (isSpace) m.material = spaceMaterial();
       else if (overlay) m.material = overlayMaterial(overlay);
       else if (xray) m.material = ghostMaterial();
       else m.material = m.userData.base;
-      m.renderOrder = (xray && !overlay && expressID !== selectedExpressId) ? 1 : 0;
+      m.renderOrder = (isSpace || (xray && !overlay && expressID !== selectedExpressId)) ? 1 : 0;
     }
   }
 }
 
+function applyIsolation() {
+  for (const [expressID, meshes] of meshesByExpressId) {
+    const isSpace = spaceExpressIds.has(expressID);
+    if (isSpace) { for (const m of meshes) m.visible = showSpaces; continue; }
+    if (!isolatedStoreyGid) { for (const m of meshes) m.visible = true; }
+    else {
+      const storeyExpId = storeyOfExpressId.get(expressID);
+      const storeyGid = storeyExpId ? infoByExpressId.get(storeyExpId)?.globalId : null;
+      for (const m of meshes) m.visible = storeyGid === isolatedStoreyGid;
+    }
+  }
+  _overlayDirty = true;
+}
+
+function buildStoreyMap() {
+  storeyOfExpressId.clear();
+  const relIds = api.GetLineIDsWithType(modelID, WebIFC.IFCRELCONTAINEDINSPATIALSTRUCTURE);
+  for (let i = 0; i < relIds.size(); i++) {
+    const rel = api.GetLine(modelID, relIds.get(i));
+    if (!rel?.RelatingStructure) continue;
+    const structId = rel.RelatingStructure.value ?? rel.RelatingStructure;
+    if (api.GetLineType(modelID, structId) !== WebIFC.IFCBUILDINGSTOREY) continue;
+    const related = rel.RelatedElements;
+    if (!related) continue;
+    for (const item of related) storeyOfExpressId.set(item.value ?? item, structId);
+  }
+}
+
+function visibleMeshList() {
+  const out = [];
+  for (const [, ms] of meshesByExpressId) for (const m of ms) if (m.visible) out.push(m);
+  return out;
+}
 function boxOf(objects) {
   const box = new THREE.Box3();
   for (const o of objects) box.expandByObject(o);
   return box;
 }
-
 function frame(box, padding = 1.4) {
   if (box.isEmpty()) return;
   const center = box.getCenter(new THREE.Vector3());
   const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.5);
   const dist = (radius * padding) / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2));
-  const dir = camera.position.clone().sub(controls.target).normalize();
+  const dir = camera.position.clone().sub(orbitCtrl.target).normalize();
   if (dir.lengthSq() === 0) dir.set(1, 0.8, 1).normalize();
-  controls.target.copy(center);
+  orbitCtrl.target.copy(center);
   camera.position.copy(center.clone().add(dir.multiplyScalar(dist)));
   camera.near = Math.max(dist / 1000, 0.01);
-  camera.far = dist * 20 + radius * 4;
+  camera.far  = dist * 20 + radius * 4;
   camera.updateProjectionMatrix();
 }
 
@@ -193,20 +411,30 @@ function select(expressID, notify) {
   applyMaterials();
   const info = expressID == null ? null : infoByExpressId.get(expressID);
   if (expressID != null) frame(boxOf(meshesByExpressId.get(expressID) ?? []), 2.5);
-  if (notify) {
-    post(info ? { type: 'selected', globalId: info.globalId, name: info.name, ifcType: info.ifcType }
-              : { type: 'selected', globalId: null });
+  if (transformMode) {
+    if (expressID != null) attachTCToElement(expressID);
+    else { tc.detach(); tcActiveExpId = null; }
   }
+  if (notify) {
+    post(info
+      ? { type: 'selected', globalId: info.globalId, name: info.name, ifcType: info.ifcType }
+      : { type: 'selected', globalId: null });
+  }
+}
+
+// ---------------------------------------------------------------- utilities
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 // ---------------------------------------------------------------- loading
 async function download(url) {
   let res;
-  try {
-    res = await fetch(url);
-  } catch (e) {
-    throw new Error('Could not download the model. The storage bucket may need CORS enabled for the viewer '
-      + '(see storage-cors.json in the project). Details: ' + e.message);
+  try { res = await fetch(url); }
+  catch (e) {
+    throw new Error('Could not download the model. The storage bucket may need CORS enabled. Details: ' + e.message);
   }
   if (!res.ok) throw new Error(`Download failed (${res.status}).`);
   const total = Number(res.headers.get('content-length')) || 0;
@@ -227,24 +455,62 @@ async function download(url) {
 }
 
 async function load(msg) {
+  dbg(`load() called — url: ${msg.url?.slice(0,60)}…`);
+  _modelLoaded = false;
+  _firstValidResize = true; // allow re-frame if canvas was 0×0 during this load
   try {
+    setMeasureMode(false);
+    annotateMode = false; transformMode = false;
+    tc.detach(); tcActiveExpId = null;
+    transformHintEl.style.display = 'none';
+    clearAnnotations();
+
     setStatus('Downloading model…', 0);
+    dbg('Starting download…');
     const bytes = await download(msg.url);
+    dbg(`Download complete — ${bytes.length.toLocaleString()} bytes`);
 
     setStatus('Starting IFC engine…', 0.5);
     if (!api) {
+      dbg('Initialising web-ifc IfcAPI…');
       api = new WebIFC.IfcAPI();
       api.SetWasmPath(WASM_PATH, true);
-      await api.Init(undefined, true); // single-threaded: shared memory isn't available in WebViews
+      await withTimeout(api.Init(undefined, true), 20000,
+        'The 3D engine (web-ifc) could not load. CDN may be unreachable.');
+      dbg('web-ifc IfcAPI.Init() complete');
+    } else {
+      dbg('Reusing existing IfcAPI');
     }
-    if (modelID != null) { api.CloseModel(modelID); modelGroup.clear(); meshesByExpressId.clear(); elementByGlobalId.clear(); infoByExpressId.clear(); }
+    if (modelID != null) {
+      dbg('Closing previous model');
+      api.CloseModel(modelID);
+      modelGroup.clear();
+      meshesByExpressId.clear();
+      elementGroupByExpId.clear();
+      elementByGlobalId.clear();
+      infoByExpressId.clear();
+      spaceExpressIds.clear();
+      storeyOfExpressId.clear();
+      _meshCache = null;
+    }
+    isolatedStoreyGid = null; showSpaces = false;
+    dbg('Opening IFC model…');
     modelID = api.OpenModel(bytes, { COORDINATE_TO_ORIGIN: true });
+    dbg(`Model opened — modelID=${modelID}`);
 
     setStatus('Building 3D model…', 0.6);
-    await new Promise((r) => setTimeout(r, 0)); // let the status paint before the heavy synchronous work
+    await new Promise((r) => setTimeout(r, 0));
 
+    dbg('Streaming IFC meshes…');
     const geometryCache = new Map();
+    let _elCount = 0;
     const elements = extractIfcMeshes(api, modelID, (el) => {
+      _elCount++;
+      const elemGroup = new THREE.Group();
+      elemGroup.userData.expressID = el.expressID;
+      elementGroupByExpId.set(el.expressID, elemGroup);
+      modelGroup.add(elemGroup);
+
       const meshes = [];
       for (const p of el.parts) {
         let geom = geometryCache.get(p.geometryExpressID);
@@ -252,12 +518,12 @@ async function load(msg) {
           const v = p.vertexData, n = v.length / 6;
           const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
           for (let i = 0; i < n; i++) {
-            pos[i * 3] = v[i * 6]; pos[i * 3 + 1] = v[i * 6 + 1]; pos[i * 3 + 2] = v[i * 6 + 2];
-            nor[i * 3] = v[i * 6 + 3]; nor[i * 3 + 1] = v[i * 6 + 4]; nor[i * 3 + 2] = v[i * 6 + 5];
+            pos[i*3]=v[i*6]; pos[i*3+1]=v[i*6+1]; pos[i*3+2]=v[i*6+2];
+            nor[i*3]=v[i*6+3]; nor[i*3+1]=v[i*6+4]; nor[i*3+2]=v[i*6+5];
           }
           geom = new THREE.BufferGeometry();
           geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-          geom.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+          geom.setAttribute('normal',   new THREE.BufferAttribute(nor, 3));
           geom.setIndex(new THREE.BufferAttribute(p.indices, 1));
           geometryCache.set(p.geometryExpressID, geom);
         }
@@ -267,56 +533,283 @@ async function load(msg) {
         mesh.matrixAutoUpdate = false;
         mesh.matrix.fromArray(p.matrix);
         mesh.matrixWorldNeedsUpdate = true;
-        modelGroup.add(mesh);
+        elemGroup.add(mesh);
         meshes.push(mesh);
       }
       meshesByExpressId.set(el.expressID, meshes);
       infoByExpressId.set(el.expressID, { globalId: el.globalId, name: el.name, ifcType: el.ifcType });
       if (el.globalId) elementByGlobalId.set(el.globalId, el.expressID);
-    }, (f) => post({ type: 'progress', stage: 'geometry', fraction: f }));
+      if (el.isSpace) { spaceExpressIds.add(el.expressID); for (const m of meshes) m.visible = false; }
+    }, (() => {
+      let _lastF = -1;
+      return (f) => {
+        if (f - _lastF >= 0.02 || f >= 0.999) { _lastF = f; post({ type: 'progress', stage: 'geometry', fraction: f }); }
+      };
+    })());
 
+    dbg(`Mesh streaming done — ${_elCount} elements, ${meshesByExpressId.size} in map`);
+    _meshCache = null; // force rebuild after load
+    buildStoreyMap();
     modelGroup.updateMatrixWorld(true);
     overlayColors = msg.colors ?? {};
     applyMaterials();
-    frame(boxOf(modelGroup.children));
+    if (msg.overrides) applyPositionOverrides(msg.overrides);
+    const bbox = boxOf(visibleMeshList());
+    dbg(`Scene bbox: min(${bbox.min.x.toFixed(1)},${bbox.min.y.toFixed(1)},${bbox.min.z.toFixed(1)}) max(${bbox.max.x.toFixed(1)},${bbox.max.y.toFixed(1)},${bbox.max.z.toFixed(1)})`);
+    frame(bbox);
     setStatus(null);
     document.getElementById('hint').hidden = false;
-    post({ type: 'loaded', elements });
+    _overlayDirty = true;
 
+    const storeyInfos = [];
+    try {
+      const sIds = api.GetLineIDsWithType(modelID, WebIFC.IFCBUILDINGSTOREY);
+      for (let i = 0; i < sIds.size(); i++) {
+        const expId = sIds.get(i);
+        const line = api.GetLine(modelID, expId);
+        if (!line) continue;
+        const gid = line?.GlobalId?.value ?? null;
+        const rawName = line?.Name?.value ?? line?.LongName?.value ?? null;
+        if (!gid || !rawName) continue;
+        const name = rawName.replace(/^[A-Z]{1,4}_/, '');
+        const elevation = typeof line?.Elevation?.value === 'number' ? line.Elevation.value : null;
+        storeyInfos.push({ globalId: gid, name, elevation });
+      }
+      storeyInfos.sort((a, b) => (a.elevation ?? 0) - (b.elevation ?? 0));
+    } catch (_) {}
+
+    _modelLoaded = true;
+    // If canvas was already non-zero at load time, frame() already ran correctly;
+    // clear the flag so the render-loop resize() doesn't redundantly re-frame.
+    if (renderer.domElement.width > 0) _firstValidResize = false;
+    dbg(`load() complete — canvas was ${renderer.domElement.width}×${renderer.domElement.height} at load time`);
+    post({ type: 'loaded', elements, storeys: storeyInfos });
     if (msg.select && elementByGlobalId.has(msg.select)) select(elementByGlobalId.get(msg.select), true);
   } catch (e) {
+    dbg(`load() FAILED: ${e?.message ?? e}`, 'err');
     console.error(e);
     setStatus(e.message || String(e), 0, true);
     post({ type: 'error', message: e.message || String(e) });
   }
 }
 
-function handle(msg) {
-  switch (msg?.type) {
-    case 'load': load(msg); break;
-    case 'select': select(msg.globalId && elementByGlobalId.has(msg.globalId) ? elementByGlobalId.get(msg.globalId) : null, false); break;
-    case 'colors': overlayColors = msg.colors ?? {}; applyMaterials(); break;
-    case 'xray': xray = !!msg.on; applyMaterials(); break;
-    case 'reset': selectedExpressId = null; applyMaterials(); frame(boxOf(modelGroup.children)); break;
+// ---------------------------------------------------------------- position overrides
+function applyPositionOverrides(overrides) {
+  for (const [gid, delta] of Object.entries(overrides)) {
+    const expId = elementByGlobalId.get(gid);
+    if (expId == null) continue;
+    const grp = elementGroupByExpId.get(expId);
+    if (grp) grp.position.set(delta.dx ?? 0, delta.dy ?? 0, delta.dz ?? 0);
+  }
+  modelGroup.updateMatrixWorld(true);
+}
+
+// ---------------------------------------------------------------- measure tool
+function setMeasureMode(on) {
+  measuringMode = on;
+  if (!on) {
+    measurePt1 = null;
+    if (measureLine) { scene.remove(measureLine); measureLine.geometry.dispose(); measureLine = null; }
+    measureMidPt = null;
+    measureLabelEl.style.display = 'none';
+    measureHintEl.style.display = 'none';
+  } else {
+    measureHintEl.textContent = 'Tap the first point on the model';
+    measureHintEl.style.display = 'block';
   }
 }
 
-// ---------------------------------------------------------------- picking (tap, not drag)
+function handleMeasureTap(hitPt) {
+  if (!measurePt1) {
+    measurePt1 = hitPt.clone();
+    measureHintEl.textContent = 'Tap the second point to complete measurement';
+    post({ type: 'measurement', state: 'firstPoint' });
+  } else {
+    const d = measurePt1.distanceTo(hitPt);
+    if (measureLine) { scene.remove(measureLine); measureLine.geometry.dispose(); }
+    const geom = new THREE.BufferGeometry().setFromPoints([measurePt1, hitPt]);
+    measureLine = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: 0xef4444, depthTest: false }));
+    measureLine.renderOrder = 999;
+    scene.add(measureLine);
+    measureMidPt = new THREE.Vector3().addVectors(measurePt1, hitPt).multiplyScalar(0.5);
+    const dm = d.toFixed(2) + ' m';
+    const dft = (d * 3.28084).toFixed(2) + ' ft';
+    measureLabelEl.textContent = `${dm} / ${dft}`;
+    _overlayDirty = true;
+    post({ type: 'measurement', distanceM: d, distanceFt: d * 3.28084, distanceText: `${dm} / ${dft}` });
+    measurePt1 = null;
+    measureHintEl.textContent = 'Tap again for another measurement';
+  }
+}
+
+// ---------------------------------------------------------------- annotations
+function clearAnnotations() {
+  for (const el of annotationEls.values()) el.remove();
+  annotationEls.clear();
+  annotationWorld.length = 0;
+}
+
+function updateAnnotations(items) {
+  const newIds = new Set(items.map((i) => i.id));
+  for (const [id, el] of annotationEls) {
+    if (!newIds.has(id)) { el.remove(); annotationEls.delete(id); }
+  }
+  annotationWorld.length = 0;
+  for (const item of items) {
+    annotationWorld.push({ id: item.id, pos: new THREE.Vector3(item.x, item.y, item.z), text: item.text });
+    if (!annotationEls.has(item.id)) {
+      const el = document.createElement('div');
+      el.className = 'ann-pin';
+      el.innerHTML =
+        `<div class="ann-pin-body">${escHtml(item.text)}</div>` +
+        `<div class="ann-pin-stem"></div><div class="ann-pin-dot"></div>`;
+      annLayer.appendChild(el);
+      annotationEls.set(item.id, el);
+    } else {
+      annotationEls.get(item.id).querySelector('.ann-pin-body').textContent = item.text;
+    }
+  }
+  _overlayDirty = true;
+}
+
+// ---------------------------------------------------------------- render loop
+// Overlay positions are only recalculated when the camera moves (_overlayDirty).
+// Using CSS `transform` (GPU composited) avoids layout reflow on every update.
+const _pv = new THREE.Vector3();
+function tickOverlays() {
+  if (!_overlayDirty) return;
+  _overlayDirty = false;
+
+  // Annotation pins
+  for (const ann of annotationWorld) {
+    const el = annotationEls.get(ann.id);
+    if (!el) continue;
+    _pv.copy(ann.pos).project(camera);
+    if (_pv.z > 1) { el.style.display = 'none'; continue; }
+    const x = Math.round((_pv.x * 0.5 + 0.5) * window.innerWidth);
+    const y = Math.round((-_pv.y * 0.5 + 0.5) * window.innerHeight);
+    el.style.display = 'flex';
+    el.style.transform = `translate(${x}px,${y}px) translate(-50%,-100%)`;
+  }
+
+  // Measure label
+  if (measureMidPt && measureLine) {
+    _pv.copy(measureMidPt).project(camera);
+    if (_pv.z > 1) {
+      measureLabelEl.style.display = 'none';
+    } else {
+      const x = Math.round((_pv.x * 0.5 + 0.5) * window.innerWidth);
+      const y = Math.round((-_pv.y * 0.5 + 0.5) * window.innerHeight);
+      measureLabelEl.style.display = 'block';
+      measureLabelEl.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`;
+    }
+  } else {
+    measureLabelEl.style.display = 'none';
+  }
+}
+
+dbg('Starting render loop');
+renderer.setAnimationLoop(() => {
+  resize();           // auto-adapt if the iframe finished layout after script init
+  orbitCtrl.update();
+  renderer.render(scene, camera);
+  tickOverlays();
+});
+
+// ---------------------------------------------------------------- message handler
+function handle(msg) {
+  switch (msg?.type) {
+    case 'load': load(msg); break;
+    case 'select':
+      select(msg.globalId && elementByGlobalId.has(msg.globalId)
+        ? elementByGlobalId.get(msg.globalId) : null, false);
+      break;
+    case 'colors': overlayColors = msg.colors ?? {}; applyMaterials(); break;
+    case 'xray':   xray = !!msg.on; applyMaterials(); break;
+    case 'reset':
+      selectedExpressId = null; isolatedStoreyGid = null;
+      tc.detach(); tcActiveExpId = null;
+      setMeasureMode(false); annotateMode = false; transformMode = false;
+      transformHintEl.style.display = 'none';
+      applyIsolation(); applyMaterials();
+      frame(boxOf(visibleMeshList()));
+      break;
+    case 'isolate':
+      isolatedStoreyGid = msg.storeyGlobalId ?? null;
+      applyIsolation();
+      { const vm = visibleMeshList(); if (vm.length) frame(boxOf(vm)); }
+      break;
+    case 'showSpaces': showSpaces = !!msg.on; applyIsolation(); break;
+    case 'measure':
+      setMeasureMode(!!msg.on);
+      if (msg.on) { annotateMode = false; transformMode = false; tc.detach(); tcActiveExpId = null; transformHintEl.style.display = 'none'; }
+      break;
+    case 'annotate':
+      annotateMode = !!msg.on;
+      if (msg.on) { setMeasureMode(false); transformMode = false; tc.detach(); tcActiveExpId = null; transformHintEl.style.display = 'none'; }
+      break;
+    case 'annotations': updateAnnotations(msg.items ?? []); break;
+    case 'transform':
+      transformMode = !!msg.on;
+      transformHintEl.style.display = transformMode ? 'block' : 'none';
+      if (transformMode) {
+        setMeasureMode(false); annotateMode = false;
+        if (selectedExpressId != null) attachTCToElement(selectedExpressId);
+      } else {
+        tc.detach(); tcActiveExpId = null;
+      }
+      break;
+    case 'applyOverrides': applyPositionOverrides(msg.overrides ?? {}); break;
+  }
+}
+
+// ---------------------------------------------------------------- picking
 const raycaster = new THREE.Raycaster();
+raycaster.firstHitOnly = true; // stop at first mesh hit — much faster on large models
 let down = null;
 canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
 canvas.addEventListener('pointerup', (e) => {
-  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) { down = null; return; }
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) { down = null; return; }
   down = null;
+
+  // Don't intercept clicks on the TransformControls gizmo
+  if (tc.dragging) return;
+
   const rect = canvas.getBoundingClientRect();
-  const p = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-  raycaster.setFromCamera(p, camera);
-  // In x-ray mode, ghosted elements are skipped so equipment behind walls can be picked.
-  const targets = xray ? modelGroup.children.filter((m) => m.material !== ghostMaterial()) : modelGroup.children;
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+
+  if (measuringMode || annotateMode) {
+    // Need a world-space surface point — test all visible meshes.
+    const hit = raycaster.intersectObjects(allMeshes(), false)[0];
+    if (!hit) return;
+    if (measuringMode) { handleMeasureTap(hit.point); return; }
+    post({ type: 'annotateAt', x: hit.point.x, y: hit.point.y, z: hit.point.z });
+    return;
+  }
+
+  // Normal selection — skip ghost meshes in x-ray mode.
+  const targets = xray
+    ? allMeshes().filter((m) => m.material !== ghostMaterial())
+    : allMeshes();
   const hit = raycaster.intersectObjects(targets, false)[0];
   select(hit ? hit.object.userData.expressID : null, true);
 });
 
+// Escape exits any active mode
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const wasActive = measuringMode || annotateMode || transformMode;
+  setMeasureMode(false);
+  annotateMode = false; transformMode = false;
+  tc.detach(); tcActiveExpId = null;
+  transformHintEl.style.display = 'none';
+  if (wasActive) post({ type: 'modeExited' });
+});
+
+dbg('Posting ready — scene init complete');
 setStatus('Waiting for model…', 0);
 post({ type: 'ready' });
 </script>

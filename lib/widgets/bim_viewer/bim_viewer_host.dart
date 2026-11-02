@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/widgets.dart';
+import 'package:logger/logger.dart';
 
 import 'bim_viewer_platform_stub.dart'
     if (dart.library.js_interop) 'bim_viewer_platform_web.dart'
@@ -51,6 +52,8 @@ class BimViewerHost extends StatefulWidget {
   State<BimViewerHost> createState() => _BimViewerHostState();
 }
 
+final _hostLog = Logger();
+
 class _BimViewerHostState extends State<BimViewerHost> {
   late final Future<String> _html = rootBundle.loadString('assets/bim_viewer/index.html');
 
@@ -58,13 +61,16 @@ class _BimViewerHostState extends State<BimViewerHost> {
     final Map<String, dynamic> msg;
     try {
       msg = (jsonDecode(raw) as Map).cast<String, dynamic>();
-    } catch (_) {
+    } catch (e) {
+      _hostLog.e('BIM viewer sent invalid JSON', error: e);
       return;
     }
     if (msg['type'] == 'ready') {
+      _hostLog.i('BIM viewer ready — flushing queued messages');
       widget.controller._markReady();
       return;
     }
+    if (msg['type'] != 'progress') _hostLog.i('BIM viewer → ${msg['type']}');
     widget.onMessage(msg);
   }
 

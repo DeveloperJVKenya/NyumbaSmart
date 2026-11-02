@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/display%20screens/equipment_supplied_screen.dart';
 import 'package:cmms/models/bim_model.dart';
@@ -50,11 +51,14 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
   BimSourceType? _sourceType;
   String? _schemaVersion;
   String? _buildingName;
+  String? _siteName;
   CobiePreview? _preview;
   final Set<String> _excludedTypes = {};
 
   BimImportResult? _result;
   String? _error;
+  String _importStage = '';
+  double _importFraction = 0.0;
 
   Future<void> _pickFile() async {
     setState(() {
@@ -95,16 +99,20 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       CobiePreview preview;
       String? schema;
       String? building;
+      String? site;
       if (isIfc) {
         final result = await compute(parseIfcBytes, bytes);
         preview = result.preview;
         schema = result.schemaVersion;
         building = result.buildingName;
+        site = result.siteName;
       } else {
         preview = await compute(_parseCobieBytes, bytes);
       }
       _logger.i('BIM parsed ($ext): ${preview.spaces.length} spaces, ${preview.equipment.length} equipment, '
-          '${preview.jobs.length} jobs, ${preview.warnings.length} warnings');
+          '${preview.jobs.length} jobs, ${preview.systems.length} systems, '
+          '${preview.contacts.length} contacts, ${preview.spares.length} spares, '
+          '${preview.warnings.length} warnings');
 
       if (!mounted) return;
       setState(() {
@@ -113,6 +121,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
         _sourceType = isIfc ? BimSourceType.ifc : BimSourceType.cobie;
         _schemaVersion = schema;
         _buildingName = building;
+        _siteName = site;
         _preview = preview;
         _parsing = false;
       });
@@ -132,6 +141,9 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
           spaces: p.spaces,
           equipment: p.equipment.where((e) => !_excludedTypes.contains(e.type)).toList(),
           jobs: p.jobs,
+          systems: p.systems,
+          contacts: p.contacts,
+          spares: p.spares,
           warnings: p.warnings,
         );
 
@@ -143,6 +155,8 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
     setState(() {
       _importing = true;
       _error = null;
+      _importStage = 'Preparing…';
+      _importFraction = 0.0;
     });
     try {
       final result = await _service.commit(
@@ -153,7 +167,11 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
         userId: user.uid,
         sourceType: _sourceType ?? BimSourceType.cobie,
         schemaVersion: _schemaVersion,
+        siteName: _siteName,
         sourceBytes: _keepOriginal ? _bytes : null,
+        onProgress: (stage, fraction) {
+          if (mounted) setState(() { _importStage = stage; _importFraction = fraction; });
+        },
       );
       if (!mounted) return;
       setState(() {
@@ -183,17 +201,18 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final roleAsync = ref.watch(currentUserRoleProvider);
+    final roleInfo = roleAsync.value;
     return ResponsiveScreenWrapper(
       title: 'Import BIM Data',
       facilityId: widget.facilityId,
-      currentRole: 'User',
-      organization: '-',
-      child: _buildBody(),
+      currentRole: roleInfo?.roleLabel ?? '-',
+      organization: roleInfo?.organization ?? '-',
+      child: _buildBody(roleAsync),
     );
   }
 
-  Widget _buildBody() {
-    final role = ref.watch(currentUserRoleProvider);
+  Widget _buildBody(AsyncValue<dynamic> role) {
     if (role.isLoading && !role.hasValue) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -220,6 +239,14 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
         ],
         if (_error != null) ...[
           AppErrorBanner(message: _error!),
+          if (_importStage.isNotEmpty && !_importing) ...[
+            const SizedBox(height: 6),
+            Text('Last step reached: $_importStage', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+          ],
+          const SizedBox(height: AppSpacing.md),
+        ],
+        if (_importing) ...[
+          _buildImportProgress(),
           const SizedBox(height: AppSpacing.md),
         ],
         if (_preview != null) _buildPreview(_preview!),
@@ -293,9 +320,15 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               BimPill(label: isIfc ? (_schemaVersion ?? 'IFC') : 'COBie', color: AppColors.primary),
             ],
           ),
-          if (_buildingName != null) ...[
+          if (_buildingName != null || _siteName != null) ...[
             const SizedBox(height: 4),
-            Text('Building: $_buildingName', style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary)),
+            Text(
+              [
+                if (_siteName != null) 'Site: $_siteName',
+                if (_buildingName != null) 'Building: $_buildingName',
+              ].join('   '),
+              style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+            ),
           ],
           Text(formatBytes(_bytes?.length), style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
           const SizedBox(height: AppSpacing.md),
@@ -303,7 +336,10 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             BimStat(icon: Icons.layers_rounded, label: 'Floors', value: '${p.storeyCount}'),
             BimStat(icon: Icons.meeting_room_rounded, label: 'Rooms', value: '${p.roomCount}'),
             BimStat(icon: Icons.precision_manufacturing_rounded, label: 'Equipment', value: '${included.equipment.length}'),
-            if (!isIfc) BimStat(icon: Icons.event_repeat_rounded, label: 'Maintenance jobs', value: '${p.jobs.length}'),
+            if (!isIfc) BimStat(icon: Icons.event_repeat_rounded, label: 'Maint. jobs', value: '${p.jobs.length}'),
+            if (p.systems.isNotEmpty) BimStat(icon: Icons.account_tree_rounded, label: 'Systems', value: '${p.systems.length}'),
+            if (p.contacts.isNotEmpty) BimStat(icon: Icons.contacts_rounded, label: 'Contacts', value: '${p.contacts.length}'),
+            if (p.spares.isNotEmpty) BimStat(icon: Icons.inventory_2_rounded, label: 'Spares', value: '${p.spares.length}'),
           ]),
           if (storeys.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
@@ -349,11 +385,14 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
                     style: GoogleFonts.poppins(color: AppColors.warning, fontWeight: FontWeight.w600)),
                 children: [
                   for (final w in p.warnings.take(50))
-                    ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.chevron_right, size: 18, color: AppColors.warning),
-                      title: Text(w, style: GoogleFonts.poppins(fontSize: 12)),
+                    Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.chevron_right, size: 18, color: AppColors.warning),
+                        title: Text(w, style: GoogleFonts.poppins(fontSize: 12)),
+                      ),
                     ),
                   if (p.warnings.length > 50) Text('…and ${p.warnings.length - 50} more', style: _hintStyle),
                 ],
@@ -365,21 +404,99 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             Text('First ${included.equipment.take(8).length} of ${included.equipment.length} equipment records',
                 style: _hintStyle),
             for (final e in included.equipment.take(8))
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.precision_manufacturing_outlined, size: 20, color: AppColors.textSecondary),
-                title: Text(e.name, style: GoogleFonts.poppins(fontSize: 13)),
-                subtitle: Text(
-                  [
-                    e.type,
-                    if (e.typeName.isNotEmpty && e.typeName != e.type) e.typeName,
-                    if (e.spaceName != null) e.spaceName!,
-                    if (e.manufacturer != null) e.manufacturer!,
-                  ].join('  •  '),
-                  style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary),
+              Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.precision_manufacturing_outlined, size: 20, color: AppColors.textSecondary),
+                  title: Text(e.name, style: GoogleFonts.poppins(fontSize: 13)),
+                  subtitle: Text(
+                    [
+                      e.type,
+                      if (e.typeName.isNotEmpty && e.typeName != e.type) e.typeName,
+                      if (e.spaceName != null) e.spaceName!,
+                      if (e.manufacturer != null) e.manufacturer!,
+                      if (e.installationDate != null) 'Installed ${DateFormat('dd MMM yyyy').format(e.installationDate!)}',
+                      if (e.warrantyEnd != null) 'Warranty to ${DateFormat('dd MMM yyyy').format(e.warrantyEnd!)}',
+                      if (e.expectedLifeYears != null) '${e.expectedLifeYears} yr life',
+                    ].join('  •  '),
+                    style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary),
+                  ),
                 ),
               ),
+          ],
+          if (p.contacts.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                leading: const Icon(Icons.contacts_rounded, color: AppColors.primary),
+                title: Text('${p.contacts.length} contact${p.contacts.length == 1 ? '' : 's'} (manufacturers, contractors)',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 13)),
+                children: [
+                  for (final c in p.contacts.take(30))
+                    Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.person_outline, size: 18, color: AppColors.textSecondary),
+                        title: Text(c.name, style: GoogleFonts.poppins(fontSize: 12)),
+                        subtitle: Text(
+                          [
+                            if (c.company != null) c.company!,
+                            if (c.category != null) c.category!,
+                            if (c.email != null) c.email!,
+                          ].join('  •  '),
+                          style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ),
+                  if (p.contacts.length > 30) Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('+${p.contacts.length - 30} more', style: _hintStyle),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (p.spares.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                leading: const Icon(Icons.inventory_2_rounded, color: AppColors.primary),
+                title: Text('${p.spares.length} spare part${p.spares.length == 1 ? '' : 's'}',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 13)),
+                children: [
+                  for (final s in p.spares.take(30))
+                    Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.build_circle_outlined, size: 18, color: AppColors.textSecondary),
+                        title: Text(s.name, style: GoogleFonts.poppins(fontSize: 12)),
+                        subtitle: Text(
+                          [
+                            if (s.typeName != null) s.typeName!,
+                            if (s.partNumber != null) 'P/N ${s.partNumber!}',
+                            if (s.supplier != null) s.supplier!,
+                          ].join('  •  '),
+                          style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ),
+                  if (p.spares.length > 30) Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('+${p.spares.length - 30} more', style: _hintStyle),
+                  ),
+                ],
+              ),
+            ),
           ],
           const SizedBox(height: AppSpacing.sm),
           CheckboxListTile(
@@ -412,10 +529,59 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
   TextStyle get _labelStyle => GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary);
   TextStyle get _hintStyle => GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary);
 
+  Widget _buildImportProgress() {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Importing…',
+                  style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+              ),
+              Text(
+                '${(_importFraction * 100).toInt()}%',
+                style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.primary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: _importFraction,
+              minHeight: 7,
+              backgroundColor: AppColors.surfaceAlt,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _importStage,
+            style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildResult(BimImportResult r) {
     Widget line(String label, int created, int updated) => Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: Text('$label: $created new, $updated updated', style: GoogleFonts.poppins(fontSize: 13)),
+        );
+    Widget count(String label, int n) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text('$label: $n', style: GoogleFonts.poppins(fontSize: 13)),
         );
     return AppCard(
       child: Column(
@@ -434,6 +600,9 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             Text('Imported jobs have no due date yet. Set one in Preventive Maintenance to start scheduling them.',
                 style: _hintStyle),
           ],
+          if (r.systemsWritten > 0) count('MEP systems', r.systemsWritten),
+          if (r.contactsWritten > 0) count('Contacts', r.contactsWritten),
+          if (r.sparesWritten > 0) count('Spare parts', r.sparesWritten),
           const SizedBox(height: AppSpacing.md),
           Wrap(spacing: 8, runSpacing: 8, children: [
             OutlinedButton.icon(
