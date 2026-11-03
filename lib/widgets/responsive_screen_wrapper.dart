@@ -660,7 +660,15 @@ class _SidebarTileState extends State<_SidebarTile> {
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
         child: GestureDetector(
-          onTap: widget.onTap,
+          onTap: () {
+            Scrollable.ensureVisible(
+              context,
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeInOut,
+              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+            );
+            widget.onTap();
+          },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
             decoration: BoxDecoration(
