@@ -518,21 +518,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               style: GoogleFonts.plusJakartaSans(
                   fontWeight: FontWeight.w700, fontSize: 16)),
           contentPadding: const EdgeInsets.only(top: 8, bottom: 4),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: options.map((opt) {
-              return RadioListTile<String>(
-                title: Text(opt, style: GoogleFonts.poppins(fontSize: 14)),
-                value: opt,
-                groupValue: selected,
-                activeColor: AppColors.primary,
-                onChanged: (v) {
-                  setD(() => selected = v!);
-                  onPick(v!);
-                  Navigator.pop(ctx);
-                },
-              );
-            }).toList(),
+          content: RadioGroup<String>(
+            groupValue: selected,
+            onChanged: (v) {
+              if (v == null) return;
+              setD(() => selected = v);
+              onPick(v);
+              Navigator.pop(ctx);
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: options.map((opt) {
+                return RadioListTile<String>(
+                  title: Text(opt, style: GoogleFonts.poppins(fontSize: 14)),
+                  value: opt,
+                  activeColor: AppColors.primary,
+                );
+              }).toList(),
+            ),
           ),
         ),
       ),
