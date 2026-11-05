@@ -55,6 +55,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   String? _formSpaceId;
   String _sourceFilter = 'All'; // All | Manual | BIM import
   String _spaceFilter = 'All'; // All | <space doc id>
+  bool _majorOnly = false; // hide minor electrical components (conduits, cables, etc.)
 
   @override
   void initState() {
@@ -433,6 +434,11 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
               }
               // Type, source and space are filtered here rather than in the query, so imported types
               // (e.g. a COBie type name) still match and no extra composite indexes are needed.
+              const minorKeywords = [
+                'conduit', 'cable', 'wire', 'wiring', 'tray', 'cable tray',
+                'raceway', 'busduct', 'busbar', 'sleeve', 'junction box',
+                'pull box', 'fitting', 'duct tape', 'gland',
+              ];
               final docs = snapshot.data!.docs.where((d) {
                 final e = Equipment.fromSnapshot(d);
                 if (_typeFilter != 'All' && e.type != _typeFilter) return false;
@@ -442,6 +448,11 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                   // A floor filter also includes the rooms on that floor.
                   final space = _spaceById(e.spaceId);
                   if (space == null || (space.id != _spaceFilter && space.parentId != _spaceFilter)) return false;
+                }
+                if (_majorOnly) {
+                  final nameLower = e.name.toLowerCase();
+                  final typeLower = (e.typeName ?? e.type).toLowerCase();
+                  if (minorKeywords.any((kw) => nameLower.contains(kw) || typeLower.contains(kw))) return false;
                 }
                 return true;
               }).toList();
@@ -493,20 +504,44 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       margin: EdgeInsets.all(padding),
       child: Padding(
         padding: EdgeInsets.all(padding),
-        child: isMobile
-            ? Column(
-                children: [
-                  for (final f in filters) ...[f, const SizedBox(height: 12)],
-                ],
-              )
-            : Row(
-                children: [
-                  for (var i = 0; i < filters.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 16),
-                    Expanded(flex: filters.length == 4 && i == 3 ? 2 : 1, child: filters[i]),
-                  ],
-                ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            isMobile
+                ? Column(
+                    children: [
+                      for (final f in filters) ...[f, const SizedBox(height: 12)],
+                    ],
+                  )
+                : Row(
+                    children: [
+                      for (var i = 0; i < filters.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 16),
+                        Expanded(flex: filters.length == 4 && i == 3 ? 2 : 1, child: filters[i]),
+                      ],
+                    ],
+                  ),
+            const SizedBox(height: 10),
+            FilterChip(
+              label: Text('Major components only',
+                  style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      color: _majorOnly ? Colors.white : Colors.blueGrey[700])),
+              avatar: Icon(
+                Icons.filter_list_rounded,
+                size: 16,
+                color: _majorOnly ? Colors.white : Colors.blueGrey[600],
               ),
+              selected: _majorOnly,
+              onSelected: (v) => setState(() => _majorOnly = v),
+              selectedColor: Colors.blueGrey[700],
+              backgroundColor: Colors.grey[100],
+              checkmarkColor: Colors.white,
+              side: BorderSide(color: Colors.blueGrey[300]!),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ],
+        ),
       ),
     );
   }
