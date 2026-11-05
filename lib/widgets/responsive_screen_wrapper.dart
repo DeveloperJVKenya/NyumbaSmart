@@ -30,6 +30,12 @@ import 'package:cmms/models/user_model.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/utils/module_usage_tracker.dart';
 
+// Persists sidebar scroll position across screen navigations so the user
+// never loses their scroll context when moving between routes.
+// A plain ValueNotifier (file-level singleton) is sufficient — no Riverpod
+// provider needed since this state is app-wide and never streamed.
+final _sidebarScrollOffset = ValueNotifier<double>(0.0);
+
 /// Dashboard shell (AppBar + drawer/sidebar/rail + content). Role and
 /// organization are sourced live from [currentUserRoleProvider] instead of
 /// this widget's own retry-fetch (previously `_fetchUserRoleWithRetry`),
@@ -68,9 +74,35 @@ class ResponsiveScreenWrapper extends ConsumerStatefulWidget {
 class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrapper> {
   final Logger _logger = Logger(printer: PrettyPrinter());
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  late final ScrollController _sidebarScrollCtrl;
 
   static bool _isBuildingInfoExpanded = false;
   static bool _isAssetsBimExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Restore scroll position from the last navigation so users don't lose
+    // their position in the sidebar menu when they tap into a sub-screen.
+    _sidebarScrollCtrl = ScrollController(
+      initialScrollOffset: _sidebarScrollOffset.value,
+    );
+    _sidebarScrollCtrl.addListener(_persistSidebarScroll);
+  }
+
+  void _persistSidebarScroll() {
+    if (_sidebarScrollCtrl.hasClients) {
+      _sidebarScrollOffset.value = _sidebarScrollCtrl.offset;
+    }
+  }
+
+  @override
+  void dispose() {
+    _sidebarScrollCtrl
+      ..removeListener(_persistSidebarScroll)
+      ..dispose();
+    super.dispose();
+  }
 
   static const Map<String, Color> _itemColors = {
     'Facilities': Color(0xFF4C6EF5),
@@ -207,7 +239,10 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
         children: [
           _buildSidebarHeader(role, organization, isDeveloper, isClient, isMobile),
           const Divider(height: 1, color: Color(0xFFE5E7EB)),
-          Expanded(child: ListView(children: _buildMenuItems(role, organization, isMobile))),
+          Expanded(child: ListView(
+            controller: _sidebarScrollCtrl,
+            children: _buildMenuItems(role, organization, isMobile),
+          )),
         ],
       ),
     );
@@ -224,7 +259,10 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
         children: [
           _buildSidebarHeader(role, organization, isDeveloper, isClient, isMobile),
           const Divider(height: 1, color: Color(0xFFE5E7EB)),
-          Expanded(child: ListView(children: _buildMenuItems(role, organization, isMobile))),
+          Expanded(child: ListView(
+            controller: _sidebarScrollCtrl,
+            children: _buildMenuItems(role, organization, isMobile),
+          )),
         ],
       ),
     );
@@ -660,15 +698,7 @@ class _SidebarTileState extends State<_SidebarTile> {
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
         child: GestureDetector(
-          onTap: () {
-            Scrollable.ensureVisible(
-              context,
-              duration: const Duration(milliseconds: 280),
-              curve: Curves.easeInOut,
-              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-            );
-            widget.onTap();
-          },
+          onTap: widget.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
             decoration: BoxDecoration(
