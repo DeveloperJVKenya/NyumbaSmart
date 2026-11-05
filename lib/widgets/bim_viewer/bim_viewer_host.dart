@@ -17,6 +17,7 @@ bool get bimViewerSupported => platform.platformViewerSupported;
 /// queued and flushed once it does.
 class BimViewerController {
   void Function(String json)? _sink;
+  void Function(bool)? _pointerEventsToggle;
   final List<String> _queue = [];
   bool _ready = false;
 
@@ -29,7 +30,13 @@ class BimViewerController {
     }
   }
 
+  /// Enable or disable pointer events on the platform view container.
+  /// Call with `false` before showing overlays (bottom sheets, dialogs) so
+  /// the iframe doesn't intercept taps on Flutter widgets drawn above it.
+  void setPointerEventsEnabled(bool enabled) => _pointerEventsToggle?.call(enabled);
+
   void _attach(void Function(String json) sink) => _sink = sink;
+  void _attachPointerEventsToggle(void Function(bool) toggle) => _pointerEventsToggle = toggle;
 
   void _markReady() {
     _ready = true;
@@ -84,6 +91,7 @@ class _BimViewerHostState extends State<BimViewerHost> {
           html: snap.data!,
           onMessage: _onRaw,
           attachSender: widget.controller._attach,
+          attachPointerEventsToggle: widget.controller._attachPointerEventsToggle,
         );
       },
     );

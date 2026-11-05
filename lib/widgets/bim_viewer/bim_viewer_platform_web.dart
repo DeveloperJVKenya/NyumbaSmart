@@ -14,15 +14,27 @@ Widget buildPlatformViewer({
   required String html,
   required void Function(String raw) onMessage,
   required void Function(void Function(String json) sink) attachSender,
+  void Function(void Function(bool enabled) toggle)? attachPointerEventsToggle,
 }) =>
-    _IframeViewer(html: html, onMessage: onMessage, attachSender: attachSender);
+    _IframeViewer(
+      html: html,
+      onMessage: onMessage,
+      attachSender: attachSender,
+      attachPointerEventsToggle: attachPointerEventsToggle,
+    );
 
 class _IframeViewer extends StatefulWidget {
-  const _IframeViewer({required this.html, required this.onMessage, required this.attachSender});
+  const _IframeViewer({
+    required this.html,
+    required this.onMessage,
+    required this.attachSender,
+    this.attachPointerEventsToggle,
+  });
 
   final String html;
   final void Function(String raw) onMessage;
   final void Function(void Function(String json) sink) attachSender;
+  final void Function(void Function(bool enabled) toggle)? attachPointerEventsToggle;
 
   @override
   State<_IframeViewer> createState() => _IframeViewerState();
@@ -59,6 +71,19 @@ class _IframeViewerState extends State<_IframeViewer> {
         ..['cmmsHost'] = true.toJS
         ..['payload'] = json.toJS;
       _iframe.contentWindow?.postMessage(message, '*'.toJS);
+    });
+
+    widget.attachPointerEventsToggle?.call((enabled) {
+      final val = enabled ? '' : 'none';
+      // Disable on the iframe itself (stops Three.js canvas events inside the iframe).
+      _iframe.style.setProperty('pointer-events', val);
+      // Also disable on the direct parent — the Flutter-created flt-platform-view
+      // container div that otherwise intercepts browser events before Flutter sees them.
+      // parentElement returns Element?; cast to HTMLElement (which has .style).
+      final parent = _iframe.parentElement;
+      if (parent != null && parent.isA<web.HTMLElement>()) {
+        (parent as web.HTMLElement).style.setProperty('pointer-events', val);
+      }
     });
   }
 

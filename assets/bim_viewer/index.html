@@ -84,7 +84,7 @@ import * as WebIFC from 'https://cdn.jsdelivr.net/npm/web-ifc@0.0.77/web-ifc-api
 
 // ---- console logger (terminal output only) ----
 function dbg(msg, level = 'ok') {
-  console[level === 'err' ? 'error' : level === 'warn' ? 'warn' : 'log']('[BIM]', msg);
+  console[level === 'err' ? 'error' : level === 'warn' ? 'warn' : 'log']('[BIM] ' + msg);
 }
 dbg(`Module loaded — THREE r${THREE.REVISION}, web-ifc imported`);
 
@@ -131,6 +131,9 @@ function escHtml(s) {
 // ---------------------------------------------------------------- IFC -> meshes
 const SKIPPED_TYPES = new Set([WebIFC.IFCOPENINGELEMENT]);
 const SPACE_TYPES   = new Set([WebIFC.IFCSPACE]);
+
+// null = all types visible; a Set of ifcType strings = only those types shown.
+let visibleTypeSet = null;
 
 function extractIfcMeshes(api, modelID, onElement, onProgress) {
   let count = 0;
@@ -248,6 +251,10 @@ function attachTCToElement(expressID) {
 let _overlayDirty   = true;
 let _firstValidResize = true;
 let _modelLoaded    = false; // true once load() successfully finishes
+// Last CSS dimensions we passed to renderer.setSize(). We compare against these
+// rather than renderer.domElement.width/height, which are scaled by devicePixelRatio
+// and would never equal the CSS pixel dimensions, causing setSize() to run every frame.
+let _lastSetW = 0, _lastSetH = 0;
 
 // resize() is called every render frame to handle the srcdoc iframe timing:
 // clientWidth/Height may be 0 at script init if the browser hasn't laid out yet.
@@ -255,7 +262,8 @@ function resize() {
   const w = canvas.clientWidth  || window.innerWidth;
   const h = canvas.clientHeight || window.innerHeight;
   if (w === 0 || h === 0) return;
-  if (renderer.domElement.width === w && renderer.domElement.height === h) return;
+  if (w === _lastSetW && h === _lastSetH) return;
+  _lastSetW = w; _lastSetH = h;
   dbg(`resize → ${w}×${h}`);
   renderer.setSize(w, h, false);
   camera.aspect = w / Math.max(h, 1);
@@ -358,12 +366,16 @@ function applyIsolation() {
   for (const [expressID, meshes] of meshesByExpressId) {
     const isSpace = spaceExpressIds.has(expressID);
     if (isSpace) { for (const m of meshes) m.visible = showSpaces; continue; }
-    if (!isolatedStoreyGid) { for (const m of meshes) m.visible = true; }
-    else {
-      const storeyExpId = storeyOfExpressId.get(expressID);
-      const storeyGid = storeyExpId ? infoByExpressId.get(storeyExpId)?.globalId : null;
-      for (const m of meshes) m.visible = storeyGid === isolatedStoreyGid;
+    // Storey isolation
+    let storeyVis = true;
+    if (isolatedStoreyGid) {
+      // storeyOfExpressId now maps element expressId → storey GlobalId string directly.
+      storeyVis = storeyOfExpressId.get(expressID) === isolatedStoreyGid;
     }
+    // Component type filter
+    const ifcType = infoByExpressId.get(expressID)?.ifcType ?? '';
+    const typeVis = visibleTypeSet === null || visibleTypeSet.has(ifcType) || !ifcType;
+    for (const m of meshes) m.visible = storeyVis && typeVis;
   }
   _overlayDirty = true;
 }
@@ -371,15 +383,65 @@ function applyIsolation() {
 function buildStoreyMap() {
   storeyOfExpressId.clear();
   const relIds = api.GetLineIDsWithType(modelID, WebIFC.IFCRELCONTAINEDINSPATIALSTRUCTURE);
+
+  // Helper: resolve a storey express ID to its IFC GlobalId string.
+  // IfcBuildingStorey has no geometry so it is never in infoByExpressId — read the line directly.
+  function storeyGid(storeyExpId) {
+    const line = api.GetLine(modelID, storeyExpId);
+    const gid = line?.GlobalId?.value ?? line?.GlobalId;
+    return typeof gid === 'string' ? gid : null;
+  }
+
+  // Pass 1: direct containment — element directly inside a storey.
   for (let i = 0; i < relIds.size(); i++) {
     const rel = api.GetLine(modelID, relIds.get(i));
     if (!rel?.RelatingStructure) continue;
     const structId = rel.RelatingStructure.value ?? rel.RelatingStructure;
     if (api.GetLineType(modelID, structId) !== WebIFC.IFCBUILDINGSTOREY) continue;
+    const gid = storeyGid(structId);
+    if (!gid) continue;
     const related = rel.RelatedElements;
     if (!related) continue;
-    for (const item of related) storeyOfExpressId.set(item.value ?? item, structId);
+    for (const item of related) storeyOfExpressId.set(item.value ?? item, gid);
   }
+
+  // Build a space→storey-GlobalId map via IfcRelAggregates (storey decomposes into spaces).
+  const spaceToStoreyGid = new Map();
+  try {
+    const aggIds = api.GetLineIDsWithType(modelID, WebIFC.IFCRELAGGREGATES);
+    for (let i = 0; i < aggIds.size(); i++) {
+      const rel = api.GetLine(modelID, aggIds.get(i));
+      if (!rel?.RelatingObject) continue;
+      const relatingId = rel.RelatingObject.value ?? rel.RelatingObject;
+      if (api.GetLineType(modelID, relatingId) !== WebIFC.IFCBUILDINGSTOREY) continue;
+      const gid = storeyGid(relatingId);
+      if (!gid) continue;
+      const parts = rel.RelatedObjects;
+      if (!parts) continue;
+      for (const p of parts) {
+        const pId = p.value ?? p;
+        if (api.GetLineType(modelID, pId) === WebIFC.IFCSPACE) spaceToStoreyGid.set(pId, gid);
+      }
+    }
+  } catch (_) {}
+
+  // Pass 2: indirect containment — element inside a space that belongs to a storey.
+  for (let i = 0; i < relIds.size(); i++) {
+    const rel = api.GetLine(modelID, relIds.get(i));
+    if (!rel?.RelatingStructure) continue;
+    const structId = rel.RelatingStructure.value ?? rel.RelatingStructure;
+    if (api.GetLineType(modelID, structId) !== WebIFC.IFCSPACE) continue;
+    const gid = spaceToStoreyGid.get(structId);
+    if (!gid) continue;
+    const related = rel.RelatedElements;
+    if (!related) continue;
+    for (const item of related) {
+      const elemId = item.value ?? item;
+      if (!storeyOfExpressId.has(elemId)) storeyOfExpressId.set(elemId, gid);
+    }
+  }
+
+  dbg(`buildStoreyMap — ${storeyOfExpressId.size} elements mapped, ${spaceToStoreyGid.size} spaces resolved`);
 }
 
 function visibleMeshList() {
@@ -493,7 +555,7 @@ async function load(msg) {
       storeyOfExpressId.clear();
       _meshCache = null;
     }
-    isolatedStoreyGid = null; showSpaces = false;
+    isolatedStoreyGid = null; showSpaces = false; visibleTypeSet = null;
     dbg('Opening IFC model…');
     modelID = api.OpenModel(bytes, { COORDINATE_TO_ORIGIN: true });
     dbg(`Model opened — modelID=${modelID}`);
@@ -584,6 +646,15 @@ async function load(msg) {
     if (renderer.domElement.width > 0) _firstValidResize = false;
     dbg(`load() complete — canvas was ${renderer.domElement.width}×${renderer.domElement.height} at load time`);
     post({ type: 'loaded', elements, storeys: storeyInfos });
+    // Collect unique IFC types with counts and send to Flutter for the checklist panel.
+    const _typeCounts = new Map();
+    for (const [, info] of infoByExpressId) {
+      const t = info.ifcType;
+      if (t) _typeCounts.set(t, (_typeCounts.get(t) ?? 0) + 1);
+    }
+    post({ type: 'typeList', types: [..._typeCounts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([ifcType, count]) => ({ ifcType, count })) });
     if (msg.select && elementByGlobalId.has(msg.select)) select(elementByGlobalId.get(msg.select), true);
   } catch (e) {
     dbg(`load() FAILED: ${e?.message ?? e}`, 'err');
@@ -727,7 +798,7 @@ function handle(msg) {
     case 'colors': overlayColors = msg.colors ?? {}; applyMaterials(); break;
     case 'xray':   xray = !!msg.on; applyMaterials(); break;
     case 'reset':
-      selectedExpressId = null; isolatedStoreyGid = null;
+      selectedExpressId = null; isolatedStoreyGid = null; visibleTypeSet = null;
       tc.detach(); tcActiveExpId = null;
       setMeasureMode(false); annotateMode = false; transformMode = false;
       transformHintEl.style.display = 'none';
@@ -737,9 +808,14 @@ function handle(msg) {
     case 'isolate':
       isolatedStoreyGid = msg.storeyGlobalId ?? null;
       applyIsolation();
-      { const vm = visibleMeshList(); if (vm.length) frame(boxOf(vm)); }
+      { const vm = visibleMeshList(); if (vm.length) frame(boxOf(vm)); dbg(`isolate → gid=${isolatedStoreyGid ?? 'ALL'} visible=${vm.length}/${meshesByExpressId.size} elements`); }
       break;
     case 'showSpaces': showSpaces = !!msg.on; applyIsolation(); break;
+    case 'setVisibleTypes':
+      visibleTypeSet = Array.isArray(msg.types) ? new Set(msg.types) : null;
+      dbg(`setVisibleTypes → ${visibleTypeSet ? visibleTypeSet.size + ' types shown' : 'all'}`);
+      applyIsolation();
+      break;
     case 'measure':
       setMeasureMode(!!msg.on);
       if (msg.on) { annotateMode = false; transformMode = false; tc.detach(); tcActiveExpId = null; transformHintEl.style.display = 'none'; }

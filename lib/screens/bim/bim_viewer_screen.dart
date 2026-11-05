@@ -6,7 +6,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cmms/display%20screens/request_screen.dart';
@@ -29,6 +28,14 @@ class _Overlay {
   static const active = Color(0xFF16A34A);
 
   static String hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+}
+
+class _TypeEntry {
+  final String ifcType;
+  final int count;
+  bool visible = true;
+  _TypeEntry({required this.ifcType, required this.count});
+  String get label => ifcType.replaceFirst('Ifc', '');
 }
 
 /// 3D view of a facility's IFC model. Equipment imported from that model (matched by IFC GlobalId) is
@@ -83,6 +90,9 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
   String? _measureResult;      // e.g. "12.35 m / 40.52 ft"
   bool _annotateMode  = false;
   bool _transformMode = false;
+
+  // IFC element types available in the loaded model; each entry tracks whether it is visible.
+  List<_TypeEntry> _typeEntries = [];
 
   // Annotation items loaded from Firestore, sent to viewer whenever it loads.
   final List<Map<String, dynamic>> _annotationItems = [];
@@ -228,6 +238,7 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
       _stage = 'Preparing…';
       _isolatedStoreyGid = null;
       _showSpaces = false;
+      _typeEntries = [];
       _equipmentByGid.clear();
       _spaces.clear();
       _viewerStoreys = [];
@@ -286,6 +297,14 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
     if (mounted) setState(() {});
   }
 
+  void _pushVisibleTypes() {
+    final allVisible = _typeEntries.every((e) => e.visible);
+    _viewer.send({
+      'type': 'setVisibleTypes',
+      'types': allVisible ? null : [for (final e in _typeEntries) if (e.visible) e.ifcType],
+    });
+  }
+
   void _onMessage(Map<String, dynamic> msg) {
     switch (msg['type']) {
       case 'progress':
@@ -312,10 +331,32 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
         if (_annotationItems.isNotEmpty) {
           _viewer.send({'type': 'annotations', 'items': _annotationItems});
         }
-      case 'selected':
+      case 'typeList':
+        final rawTypes = (msg['types'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
         setState(() {
-          _selection = msg['globalId'] == null ? null : msg;
-          // Reset edit mode whenever the selection changes.
+          _typeEntries = [
+            for (final t in rawTypes)
+              if (t['ifcType'] is String)
+                _TypeEntry(
+                  ifcType: t['ifcType'] as String,
+                  count: ((t['count'] as num?) ?? 0).toInt(),
+                ),
+          ];
+        });
+        _logger.i('BIM type list received — ${_typeEntries.length} IFC types in model');
+      case 'selected':
+        final selGidNew = msg['globalId'] as String?;
+        if (selGidNew != null) {
+          final selEquip = _equipmentByGid[selGidNew];
+          final selLabel = selEquip?.name
+              ?? (msg['name'] as String?)?.trim()
+              ?? (msg['ifcType'] as String? ?? '').replaceFirst('Ifc', '');
+          _logger.i('BIM element selected: "$selLabel" (${msg['ifcType'] ?? '?'}) gid=$selGidNew');
+        } else {
+          _logger.i('BIM element deselected');
+        }
+        setState(() {
+          _selection = selGidNew == null ? null : msg;
           _editingEquipment = false;
         });
       case 'error':
@@ -425,15 +466,40 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
   @override
   Widget build(BuildContext context) {
     final roleInfo = ref.watch(currentUserRoleProvider).value;
+    // Show selected element name in the AppBar title; fall back to '3D Viewer'.
+    final selGid = _selection?['globalId'] as String?;
+    String selTitle = '3D Viewer';
+    if (selGid != null) {
+      final equip = _equipmentByGid[selGid];
+      if (equip != null) {
+        selTitle = equip.name;
+      } else {
+        final raw = (_selection!['name'] as String?)?.trim()
+            ?? (_selection!['ifcType'] as String? ?? '')
+                .replaceFirst(RegExp(r'^Ifc'), '')
+                .replaceAllMapped(RegExp(r'(?<=[a-z])(?=[A-Z])'), (_) => ' ')
+                .trim();
+        if (raw.isNotEmpty) selTitle = raw;
+      }
+    }
     return ResponsiveScreenWrapper(
-      title: '3D Viewer',
+      title: selTitle,
       facilityId: widget.facilityId,
       currentRole: roleInfo?.roleLabel ?? '-',
       organization: roleInfo?.organization ?? '-',
       actions: [
         if (_model != null && bimViewerSupported && _loaded) ...[
-          // Floor isolation dropdown
-          _buildFloorSelector(),
+          // Layers & Filters: floors + element type checklist
+          IconButton(
+            tooltip: 'Layers & Filters',
+            icon: Icon(
+              Icons.tune_rounded,
+              color: (_isolatedStoreyGid != null || _typeEntries.any((e) => !e.visible))
+                  ? Colors.yellowAccent
+                  : Colors.white,
+            ),
+            onPressed: _showLayersPanel,
+          ),
           // Measure distance
           IconButton(
             tooltip: _measureMode ? 'Exit measure mode' : 'Measure distance',
@@ -494,6 +560,8 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
             tooltip: 'Reset view',
             icon: const Icon(Icons.center_focus_strong_rounded, color: Colors.white),
             onPressed: () {
+              final hadTypeFilter = _typeEntries.any((e) => !e.visible);
+              for (final e in _typeEntries) { e.visible = true; }
               setState(() {
                 _selection = null;
                 _isolatedStoreyGid = null;
@@ -503,63 +571,68 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
                 _measureResult = null;
               });
               _viewer.send({'type': 'reset'});
+              if (hadTypeFilter) _pushVisibleTypes();
+              _logger.i('BIM view reset — all filters cleared');
             },
           ),
         ],
-        if (_models.isNotEmpty)
-          PopupMenuButton<BimModel>(
-            tooltip: _models.length == 1
-                ? 'Current model: ${_model?.fileName ?? ''}'
-                : 'Switch model (${_models.length} available)',
-            icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
-            onSelected: _open,
-            itemBuilder: (_) => [
-              for (final m in _models)
-                CheckedPopupMenuItem(
-                  value: m,
-                  checked: m.id == _model?.id,
-                  child: Text('${m.fileName}  ·  rev ${m.revision}  ·  ${DateFormat.yMMMd().format(m.uploadedAt)}',
-                      style: GoogleFonts.poppins(fontSize: 13)),
-                ),
-            ],
-          ),
       ],
       child: _buildBody(),
     );
   }
 
-  Widget _buildFloorSelector() {
-    if (_viewerStoreys.isEmpty) return const SizedBox.shrink();
-    // Ensure the isolated value is still valid for the currently loaded model.
-    final validGid = _viewerStoreys.any((s) => s.globalId == _isolatedStoreyGid)
-        ? _isolatedStoreyGid
-        : null;
-    return Theme(
-      data: Theme.of(context).copyWith(canvasColor: const Color(0xFF1E293B)),
-      child: DropdownButton<String?>(
-        value: validGid,
-        hint: Text('All floors', style: GoogleFonts.poppins(fontSize: 13, color: Colors.white70)),
-        style: GoogleFonts.poppins(fontSize: 13, color: Colors.white),
-        dropdownColor: const Color(0xFF1E293B),
-        underline: const SizedBox.shrink(),
-        icon: const Icon(Icons.layers_rounded, color: Colors.white70),
-        onChanged: (gid) {
+  Future<void> _showLayersPanel() async {
+    if (!mounted) return;
+    final hiddenCount = _typeEntries.where((e) => !e.visible).length;
+    _logger.i('BIM layers panel opened — '
+        'floor: ${_isolatedStoreyGid == null ? "All floors" : _viewerStoreys.where((s) => s.globalId == _isolatedStoreyGid).firstOrNull?.name ?? _isolatedStoreyGid}, '
+        'types: ${_typeEntries.length - hiddenCount}/${_typeEntries.length} visible');
+
+    _viewer.setPointerEventsEnabled(false);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _LayersPanelSheet(
+        storeys: _viewerStoreys,
+        typeEntries: _typeEntries,
+        initialFloor: _isolatedStoreyGid,
+        onFloorChanged: (gid, name) {
+          if (!mounted) return;
+          _logger.i('BIM layer: floor → "${gid == null ? 'All floors' : name}"');
           setState(() => _isolatedStoreyGid = gid);
           _viewer.send({'type': 'isolate', 'storeyGlobalId': gid});
+          Navigator.of(ctx).pop();
         },
-        items: [
-          DropdownMenuItem<String?>(
-            value: null,
-            child: Text('All floors', style: GoogleFonts.poppins(fontSize: 13, color: Colors.white)),
-          ),
-          for (final s in _viewerStoreys)
-            DropdownMenuItem<String?>(
-              value: s.globalId,
-              child: Text(s.name, style: GoogleFonts.poppins(fontSize: 13, color: Colors.white)),
-            ),
-        ],
+        onAllTypes: () {
+          if (!mounted) return;
+          _logger.i('BIM layer: all ${_typeEntries.length} types shown');
+          setState(() {});
+          _pushVisibleTypes();
+        },
+        onNoneTypes: () {
+          if (!mounted) return;
+          _logger.i('BIM layer: all ${_typeEntries.length} types hidden');
+          setState(() {});
+          _pushVisibleTypes();
+        },
+        onTypeChanged: (entry) {
+          if (!mounted) return;
+          _logger.i('BIM layer: type "${entry.label}" → ${entry.visible ? 'shown' : 'hidden'} '
+              '(${_typeEntries.where((e) => e.visible).length}/${_typeEntries.length} visible)');
+          setState(() {});
+          _pushVisibleTypes();
+        },
       ),
     );
+
+    if (!mounted) return;
+    _viewer.setPointerEventsEnabled(true);
+    final closedHidden = _typeEntries.where((e) => !e.visible).length;
+    _logger.i('BIM layers panel closed — '
+        'floor: ${_isolatedStoreyGid == null ? "All floors" : _viewerStoreys.where((s) => s.globalId == _isolatedStoreyGid).firstOrNull?.name ?? _isolatedStoreyGid}, '
+        'types: ${_typeEntries.length - closedHidden}/${_typeEntries.length} visible');
   }
 
   Widget _buildBody() {
@@ -933,4 +1006,189 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
         'inactive' || 'decommissioned' => _Overlay.inactive,
         _ => _Overlay.active,
       };
+}
+
+// ── Layers & Filters bottom sheet ────────────────────────────────────────────
+
+class _LayersPanelSheet extends StatefulWidget {
+  final List<({String globalId, String name})> storeys;
+  final List<_TypeEntry> typeEntries;
+  final String? initialFloor;
+  final void Function(String? gid, String name) onFloorChanged;
+  final VoidCallback onAllTypes;
+  final VoidCallback onNoneTypes;
+  final void Function(_TypeEntry entry) onTypeChanged;
+
+  const _LayersPanelSheet({
+    required this.storeys,
+    required this.typeEntries,
+    required this.initialFloor,
+    required this.onFloorChanged,
+    required this.onAllTypes,
+    required this.onNoneTypes,
+    required this.onTypeChanged,
+  });
+
+  @override
+  State<_LayersPanelSheet> createState() => _LayersPanelSheetState();
+}
+
+class _LayersPanelSheetState extends State<_LayersPanelSheet> {
+  // Local copy of which floor is selected so the highlight updates immediately
+  // without needing to call setState on the parent widget (separate overlay route).
+  late String? _selectedFloor;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFloor = widget.initialFloor;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasFilter = _selectedFloor != null || widget.typeEntries.any((e) => !e.visible);
+    return Material(
+      color: const Color(0xFF1E293B),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.78,
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle bar
+          Center(child: Container(
+            width: 36, height: 4, margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2)),
+          )),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Row(children: [
+              const Icon(Icons.tune_rounded, color: Colors.white70, size: 20),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Layers & Filters',
+                  style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white))),
+              if (hasFilter)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.yellowAccent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.yellowAccent.withValues(alpha: 0.6)),
+                  ),
+                  child: Text('Active', style: GoogleFonts.poppins(
+                      fontSize: 10, color: Colors.yellowAccent, fontWeight: FontWeight.w600)),
+                ),
+            ]),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+          // Scrollable content
+          Expanded(child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Floor section ──────────────────────────────────────────
+                if (widget.storeys.isNotEmpty) ...[
+                  _sectionLabel('Floor'),
+                  const SizedBox(height: 4),
+                  _floorTile(null, 'All floors'),
+                  for (final s in widget.storeys) _floorTile(s.globalId, s.name),
+                  const SizedBox(height: 16),
+                  const Divider(color: Colors.white12),
+                  const SizedBox(height: 8),
+                ],
+                // ── Element types section ──────────────────────────────────
+                Row(children: [
+                  Expanded(child: _sectionLabel(
+                      'Element types${widget.typeEntries.isNotEmpty ? ' (${widget.typeEntries.length})' : ''}')),
+                  _textBtn('All', () {
+                    for (final e in widget.typeEntries) { e.visible = true; }
+                    setState(() {});
+                    widget.onAllTypes();
+                  }),
+                  _textBtn('None', () {
+                    for (final e in widget.typeEntries) { e.visible = false; }
+                    setState(() {});
+                    widget.onNoneTypes();
+                  }),
+                ]),
+                const SizedBox(height: 4),
+                if (widget.typeEntries.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Text('No element types available.',
+                        style: GoogleFonts.poppins(fontSize: 13, color: Colors.white38),
+                        textAlign: TextAlign.center),
+                  )
+                else
+                  for (final entry in widget.typeEntries)
+                    CheckboxListTile(
+                      value: entry.visible,
+                      onChanged: (v) {
+                        entry.visible = v ?? true;
+                        setState(() {});
+                        widget.onTypeChanged(entry);
+                      },
+                      title: Text(entry.label,
+                          style: GoogleFonts.poppins(fontSize: 13, color: Colors.white)),
+                      subtitle: Text(
+                          '${entry.count} element${entry.count == 1 ? '' : 's'}',
+                          style: GoogleFonts.poppins(fontSize: 11, color: Colors.white38)),
+                      contentPadding: EdgeInsets.zero,
+                      activeColor: Colors.yellowAccent,
+                      checkColor: Colors.black,
+                      side: const BorderSide(color: Colors.white38),
+                      dense: true,
+                    ),
+              ],
+            ),
+          )),
+        ],
+      ),
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 2),
+    child: Text(text, style: GoogleFonts.poppins(
+        fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white38, letterSpacing: 0.9)),
+  );
+
+  Widget _textBtn(String label, VoidCallback onPressed) => TextButton(
+    onPressed: onPressed,
+    style: TextButton.styleFrom(
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    ),
+    child: Text(label, style: GoogleFonts.poppins(fontSize: 12, color: Colors.white60)),
+  );
+
+  Widget _floorTile(String? gid, String name) {
+    final selected = _selectedFloor == gid;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        gid == null ? Icons.layers_rounded : Icons.layers_outlined,
+        color: selected ? Colors.yellowAccent : Colors.white54,
+        size: 20,
+      ),
+      title: Text(name, style: GoogleFonts.poppins(
+        fontSize: 13,
+        color: selected ? Colors.yellowAccent : Colors.white,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+      )),
+      trailing: selected
+          ? const Icon(Icons.check_rounded, color: Colors.yellowAccent, size: 16)
+          : null,
+      onTap: () {
+        setState(() => _selectedFloor = gid);
+        widget.onFloorChanged(gid, name);
+      },
+      dense: true,
+    );
+  }
 }
