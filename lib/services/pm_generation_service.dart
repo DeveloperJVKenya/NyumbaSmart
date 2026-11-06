@@ -93,9 +93,12 @@ class PmGenerationService {
     final facility = _db.collection('facilities').doc(facilityId);
 
     // ── 1. Load all BIM-linked equipment ───────────────────────────────────
+    // Use `bimSource` (equality whereIn) rather than `bimGlobalId isNull:false`
+    // (a not-equal range query that can silently return 0 results without an
+    // explicit index on the subcollection).
     final equipSnap = await facility
         .collection('equipment')
-        .where('bimGlobalId', isNull: false)
+        .where('bimSource', whereIn: ['ifc', 'cobie'])
         .get();
 
     final allEquipment = equipSnap.docs
