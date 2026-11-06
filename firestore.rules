@@ -459,6 +459,20 @@ service cloud.firestore {
         (isAdmin() || isDeveloper());
     }
 
+    // BIM-driven PM review queue: equipment with no default template, waiting for a
+    // facility manager to either accept (create a custom PM task) or dismiss.
+    // Admins, developers and technicians with facility access may read and manage it;
+    // ordinary users (read-only role) may only read so the banner count is visible.
+    match /facilities/{facilityId}/pm_review_queue/{itemId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper() || isTechnician());
+      allow update: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper() || isTechnician());
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
     // Facility-scoped notifications generated from preventive_maintenance due dates — an
     // immutable audit record once written. System docs (type=='system') come only from Cloud
     // Functions via the Admin SDK, which bypasses these rules entirely; the create rule here only
