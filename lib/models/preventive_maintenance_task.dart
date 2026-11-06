@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum PmTaskOrigin { ocr, excel, manual, legacy }
+enum PmTaskOrigin { ocr, excel, manual, legacy, bim }
 
 extension PmTaskOriginExtension on PmTaskOrigin {
   String get value => toString().split('.').last;
@@ -13,6 +13,8 @@ extension PmTaskOriginExtension on PmTaskOrigin {
         return PmTaskOrigin.excel;
       case 'legacy':
         return PmTaskOrigin.legacy;
+      case 'bim':
+        return PmTaskOrigin.bim;
       default:
         return PmTaskOrigin.manual;
     }
@@ -90,6 +92,14 @@ class PreventiveMaintenanceTask {
   final String? notes;
   final String? assignedTo;
 
+  /// Firestore doc ID of the [Equipment] record this task was generated from.
+  /// Set when [origin] == [PmTaskOrigin.bim]; null for all other origins.
+  final String? equipmentId;
+
+  /// Denormalised equipment name, stored so the task card can show it without
+  /// a secondary Firestore read.
+  final String? equipmentName;
+
   PreventiveMaintenanceTask({
     required this.id,
     required this.facilityId,
@@ -107,6 +117,8 @@ class PreventiveMaintenanceTask {
     required this.updatedAt,
     this.notes,
     this.assignedTo,
+    this.equipmentId,
+    this.equipmentName,
   });
 
   Map<String, dynamic> toMap() {
@@ -127,6 +139,8 @@ class PreventiveMaintenanceTask {
       'updatedAt': Timestamp.fromDate(updatedAt),
       'notes': notes,
       'assignedTo': assignedTo,
+      if (equipmentId != null) 'equipmentId': equipmentId,
+      if (equipmentName != null) 'equipmentName': equipmentName,
     };
   }
 
@@ -154,6 +168,8 @@ class PreventiveMaintenanceTask {
           : DateTime.now(),
       notes: data['notes'],
       assignedTo: data['assignedTo'],
+      equipmentId: data['equipmentId'] as String?,
+      equipmentName: data['equipmentName'] as String?,
     );
   }
 
@@ -186,6 +202,8 @@ class PreventiveMaintenanceTask {
       updatedAt: updatedAt ?? this.updatedAt,
       notes: notes ?? this.notes,
       assignedTo: assignedTo ?? this.assignedTo,
+      equipmentId: equipmentId,
+      equipmentName: equipmentName,
     );
   }
 }
