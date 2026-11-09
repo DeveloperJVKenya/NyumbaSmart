@@ -1,154 +1,43 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:cmms/services/bim/cobie_parser.dart';
+import 'package:cmms/services/bim/italian_bim_glossary.dart';
 
-/// Wraps the Google Cloud Translation API v2 (REST / Simple API key auth).
+/// Translates a [CobiePreview] from Italian to English using the built-in
+/// [ItalianBimGlossary].  No network calls, no API key required.
 ///
-/// Usage:
-///   1. Enable the Cloud Translation API in GCP.
-///   2. Create an API key restricted to that API.
-///   3. Pass it via [translateAndApply].
+/// Fields translated:
+///   • Space names and descriptions
+///   • Equipment names, typeNames, systemNames, notes
+///   • Job names, categories, components, interventions, notes
+///   • System names and categories
+///   • Spare part names, typeNames, descriptions
+///
+/// Fields left untranslated:
+///   • Equipment `type` (IFC category — matches PM template library keys)
+///   • Contact names (proper nouns)
+///   • Serial numbers, model numbers, part numbers
 class BimTranslationService {
   BimTranslationService._();
 
-  static const _endpoint =
-      'https://translation.googleapis.com/language/translate/v2';
-  // Google recommends ≤128 strings or ≤30 kB per request; keep 100 to be safe.
-  static const _batchSize = 100;
-
-  // ── Public entry point ────────────────────────────────────────────────────
-
-  /// Collects all translatable strings from [preview], calls Google Translate
-  /// to translate them all to [target] (default English), then returns a new
-  /// [CobiePreview] with the translated values substituted in.
-  ///
-  /// Throws a [BimTranslationException] with a readable message on API error.
+  /// Returns a new [CobiePreview] with Italian strings translated to English.
+  /// Progress is reported via [onProgress] (0.0 → 1.0).
   static Future<CobiePreview> translateAndApply(
     CobiePreview preview, {
-    required String apiKey,
-    String target = 'en',
     void Function(String stage, double fraction)? onProgress,
   }) async {
-    final strings = _collectStrings(preview);
-    if (strings.isEmpty) return preview;
-
-    onProgress?.call('Translating ${strings.length} strings…', 0.0);
-
-    final map = await _translateAll(
-      strings,
-      apiKey: apiKey,
-      target: target,
-      onProgress: onProgress,
-    );
-
-    return _applyMap(preview, map);
-  }
-
-  // ── String collection ─────────────────────────────────────────────────────
-
-  static List<String> _collectStrings(CobiePreview p) {
-    final seen = <String>{};
-    void add(String? s) {
-      if (s != null && s.isNotEmpty) seen.add(s);
-    }
-
-    for (final s in p.spaces) {
-      add(s.name);
-      add(s.description);
-    }
-    for (final e in p.equipment) {
-      add(e.name);
-      // typeName often equals type (e.g. 'HVAC') — only translate when distinct
-      if (e.typeName.isNotEmpty && e.typeName != e.type) add(e.typeName);
-      add(e.systemName);
-      if (e.notes.isNotEmpty) add(e.notes);
-    }
-    for (final j in p.jobs) {
-      add(j.name);
-      add(j.category);
-      add(j.component);
-      add(j.intervention);
-      add(j.notes);
-    }
-    for (final s in p.systems) {
-      add(s.name);
-      add(s.category);
-    }
-    for (final s in p.spares) {
-      add(s.name);
-      add(s.typeName);
-      add(s.description);
-    }
-
-    return seen.toList();
-  }
-
-  // ── API calls ─────────────────────────────────────────────────────────────
-
-  static Future<Map<String, String>> _translateAll(
-    List<String> texts, {
-    required String apiKey,
-    required String target,
-    void Function(String, double)? onProgress,
-  }) async {
-    final result = <String, String>{};
-    final total = texts.length;
-
-    for (var i = 0; i < total; i += _batchSize) {
-      final batch = texts.skip(i).take(_batchSize).toList();
-      final translated = await _chunk(batch, apiKey: apiKey, target: target);
-      for (var j = 0; j < batch.length; j++) {
-        result[batch[j]] = j < translated.length ? translated[j] : batch[j];
-      }
-      onProgress?.call(
-        'Translating… (${(i + batch.length).clamp(0, total)}/$total)',
-        (i + batch.length) / total,
-      );
-    }
-
+    // Translation is synchronous (pure local map lookups), but we keep
+    // async so callers can await it and the signature is forward-compatible
+    // if a network fallback is added later.
+    onProgress?.call('Translating names…', 0.0);
+    final result = _applyGlossary(preview);
+    onProgress?.call('Translation complete', 1.0);
     return result;
   }
 
-  static Future<List<String>> _chunk(
-    List<String> texts, {
-    required String apiKey,
-    required String target,
-  }) async {
-    final uri = Uri.parse('$_endpoint?key=$apiKey');
-    final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
-      body: jsonEncode({'q': texts, 'target': target, 'format': 'text'}),
-    );
+  // ── Core rebuild ──────────────────────────────────────────────────────────
 
-    if (response.statusCode != 200) {
-      String detail;
-      try {
-        final body = jsonDecode(response.body) as Map;
-        detail = (body['error']?['message'] as String?) ??
-            response.body.substring(0, response.body.length.clamp(0, 200));
-      } catch (_) {
-        detail = response.body.substring(0, response.body.length.clamp(0, 200));
-      }
-      throw BimTranslationException(
-        'Google Translate returned ${response.statusCode}: $detail',
-      );
-    }
-
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final translations =
-        (body['data']?['translations'] as List?) ?? [];
-    return translations
-        .map((t) => (t as Map<String, dynamic>)['translatedText'] as String? ?? '')
-        .toList();
-  }
-
-  // ── Preview rebuild with translations ─────────────────────────────────────
-
-  static CobiePreview _applyMap(
-      CobiePreview p, Map<String, String> m) {
-    String tr(String s) => m[s] ?? s;
-    String? trOpt(String? s) => s == null ? null : (m[s] ?? s);
+  static CobiePreview _applyGlossary(CobiePreview p) {
+    final tr = ItalianBimGlossary.translate;
+    final trOpt = ItalianBimGlossary.translateOrNull;
 
     return CobiePreview(
       warnings: p.warnings,
@@ -168,7 +57,8 @@ class BimTranslationService {
             docId: e.docId,
             name: tr(e.name),
             equipmentId: e.equipmentId,
-            type: e.type, // IFC category — keep untranslated (matches template library keys)
+            // `type` is an IFC category code used as PM template key — keep as-is
+            type: e.type,
             typeName: (e.typeName.isNotEmpty && e.typeName != e.type)
                 ? tr(e.typeName)
                 : e.typeName,
@@ -202,7 +92,7 @@ class BimTranslationService {
             category: trOpt(s.category),
             equipmentDocIds: s.equipmentDocIds,
           )).toList(),
-      contacts: p.contacts, // contact names are proper nouns — don't translate
+      contacts: p.contacts, // proper nouns — do not translate
       spares: p.spares.map((s) => CobieSparesDraft(
             docId: s.docId,
             name: tr(s.name),
@@ -215,11 +105,4 @@ class BimTranslationService {
           )).toList(),
     );
   }
-}
-
-class BimTranslationException implements Exception {
-  final String message;
-  const BimTranslationException(this.message);
-  @override
-  String toString() => 'BimTranslationException: $message';
 }

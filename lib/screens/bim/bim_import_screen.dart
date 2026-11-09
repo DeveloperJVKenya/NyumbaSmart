@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cmms/display%20screens/equipment_supplied_screen.dart';
 import 'package:cmms/models/bim_model.dart';
 import 'package:cmms/providers/auth_providers.dart';
@@ -48,39 +47,6 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
   bool _importing = false;
   bool _keepOriginal = true;
   bool _translateEnabled = false;
-  bool _apiKeyVisible = false;
-  final TextEditingController _apiKeyCtrl = TextEditingController();
-
-  static const _prefKeyApiKey = 'bim_translate_api_key';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSavedApiKey();
-  }
-
-  Future<void> _loadSavedApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(_prefKeyApiKey) ?? '';
-    if (saved.isNotEmpty && mounted) {
-      _apiKeyCtrl.text = saved;
-    }
-  }
-
-  Future<void> _saveApiKey(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (key.isEmpty) {
-      await prefs.remove(_prefKeyApiKey);
-    } else {
-      await prefs.setString(_prefKeyApiKey, key);
-    }
-  }
-
-  @override
-  void dispose() {
-    _apiKeyCtrl.dispose();
-    super.dispose();
-  }
 
   String? _fileName;
   Uint8List? _bytes;
@@ -198,19 +164,9 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       // ── Optional translation ──────────────────────────────────────────────
       CobiePreview importPreview = _filtered(preview);
       if (_translateEnabled) {
-        final apiKey = _apiKeyCtrl.text.trim();
-        if (apiKey.isEmpty) {
-          setState(() {
-            _error = 'Enter a Google Translate API key to use translation.';
-            _importing = false;
-          });
-          return;
-        }
-        await _saveApiKey(apiKey);
         if (mounted) setState(() { _importStage = 'Translating names…'; _importFraction = 0.0; });
         importPreview = await BimTranslationService.translateAndApply(
           importPreview,
-          apiKey: apiKey,
           onProgress: (stage, fraction) {
             if (mounted) setState(() { _importStage = stage; _importFraction = fraction * 0.3; });
           },
@@ -241,14 +197,6 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
         _result = result;
         _preview = null;
         _bytes = null;
-        _importing = false;
-      });
-    } on BimTranslationException catch (e) {
-      _logger.e('Translation failed', error: e);
-      if (!mounted) return;
-      setState(() {
-        _error = 'Translation failed: ${e.message}. '
-            'Check that the API key is correct and the Cloud Translation API is enabled.';
         _importing = false;
       });
     } on FirebaseException catch (e) {
@@ -589,31 +537,12 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             ],
           ),
           if (_translateEnabled) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
-              'Uses the Google Cloud Translation API. Equipment names, room names and descriptions '
-              'in the BIM file will be translated to English before being saved.',
+              'Equipment names, room names, descriptions and system names will be translated '
+              'from Italian to English using the built-in BIM terminology glossary. '
+              'No internet connection or API key is required.',
               style: _hintStyle,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _apiKeyCtrl,
-              obscureText: !_apiKeyVisible,
-              enabled: !_importing,
-              decoration: InputDecoration(
-                labelText: 'Google Translate API key',
-                hintText: 'AIza…',
-                border: const OutlineInputBorder(),
-                labelStyle: GoogleFonts.poppins(fontSize: 13),
-                helperText: 'Create a key in Google Cloud Console → APIs → Cloud Translation API.',
-                helperStyle: _hintStyle,
-                suffixIcon: IconButton(
-                  icon: Icon(_apiKeyVisible ? Icons.visibility_off : Icons.visibility, size: 18),
-                  tooltip: _apiKeyVisible ? 'Hide key' : 'Show key',
-                  onPressed: () => setState(() => _apiKeyVisible = !_apiKeyVisible),
-                ),
-              ),
-              style: GoogleFonts.poppins(fontSize: 13),
             ),
           ],
           const Divider(),
