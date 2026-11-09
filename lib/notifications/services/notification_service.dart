@@ -190,6 +190,27 @@ class NotificationService {
     }
   }
 
+  /// Marks every unread digest for [userId] as read in a single batched write.
+  Future<void> markAllDigestsRead(String userId) async {
+    try {
+      final snap = await _firestore
+          .collection('NotificationDigests')
+          .doc(userId)
+          .collection('items')
+          .where('readAt', isNull: true)
+          .get();
+      if (snap.docs.isEmpty) return;
+      final batch = _firestore.batch();
+      final now = FieldValue.serverTimestamp();
+      for (final doc in snap.docs) {
+        batch.update(doc.reference, {'readAt': now});
+      }
+      await batch.commit();
+    } catch (e) {
+      _logger.e('Error marking all digests as read for $userId: $e');
+    }
+  }
+
   // ---- Facility notification audit trail (facilities/{facilityId}/notifications) ----
 
   Stream<List<FacilityNotification>> watchFacilityNotifications(String facilityId) {

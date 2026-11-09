@@ -45,6 +45,23 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         title: Text('Notifications', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
         actions: [
+          Consumer(
+            builder: (context, ref, _) {
+              final hasUnread = ref.watch(userDigestsProvider).maybeWhen(
+                data: (list) => list.any((d) => !d.isRead),
+                orElse: () => false,
+              );
+              if (!hasUnread) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.done_all_rounded, color: Colors.white),
+                tooltip: 'Mark all as read',
+                onPressed: () {
+                  final userId = ref.read(authStateProvider).value?.uid;
+                  if (userId != null) ref.read(notificationServiceProvider).markAllDigestsRead(userId);
+                },
+              );
+            },
+          ),
           if (canViewDeliveryLogs)
             IconButton(
               icon: const Icon(Icons.query_stats_rounded, color: Colors.white),

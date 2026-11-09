@@ -19,6 +19,7 @@ class SystemTrayNotificationService {
   static const int _summaryId = 0;
   static const String _soundEnabledKey = 'notification_sound_enabled';
   static const String _vibrationEnabledKey = 'notification_vibration_enabled';
+  static const String _screenWakeEnabledKey = 'notification_screen_wake_enabled';
 
   final Logger _logger = Logger();
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
@@ -61,6 +62,7 @@ class SystemTrayNotificationService {
       final prefs = await SharedPreferences.getInstance();
       final enableSound = prefs.getBool(_soundEnabledKey) ?? true;
       final enableVibration = prefs.getBool(_vibrationEnabledKey) ?? true;
+      final enableScreenWake = prefs.getBool(_screenWakeEnabledKey) ?? true;
 
       final androidDetails = AndroidNotificationDetails(
         isUrgent ? 'maintenance_urgent' : 'maintenance_normal',
@@ -72,8 +74,12 @@ class SystemTrayNotificationService {
         styleInformation: BigTextStyleInformation(body, contentTitle: title),
         playSound: enableSound,
         enableVibration: enableVibration,
+        // fullScreenIntent requires Manifest permission USE_FULL_SCREEN_INTENT (Android 12+)
+        // but is only triggered when the device is locked/screen-off, so it's safe to pass for
+        // urgent digests that need to actually wake the device.
+        fullScreenIntent: isUrgent && enableScreenWake,
       );
-      const iosDetails = DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true);
+      final iosDetails = DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: enableSound);
 
       await _plugin.show(
         id: id,
