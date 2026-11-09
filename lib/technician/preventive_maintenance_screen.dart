@@ -420,9 +420,8 @@ class _PreventiveMaintenanceScreenState
             Text(item.equipmentName,
                 style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Row(children: [
+            Wrap(spacing: 6, runSpacing: 4, children: [
               _typeChip(item.equipmentType),
-              const SizedBox(width: 6),
               _typeChip(item.equipmentCategory),
             ]),
             const SizedBox(height: 10),
@@ -688,9 +687,12 @@ class _PreventiveMaintenanceScreenState
               Row(children: [
                 Icon(Icons.link, size: 14, color: Colors.blueGrey[300]),
                 const SizedBox(width: 4),
-                Text(task.equipmentName!,
-                    style: GoogleFonts.poppins(
-                        fontSize: 11, color: Colors.blueGrey[400])),
+                Expanded(
+                  child: Text(task.equipmentName!,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                          fontSize: 11, color: Colors.blueGrey[400])),
+                ),
               ]),
             ],
             if (task.notes != null && task.notes!.isNotEmpty) ...[
