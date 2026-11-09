@@ -846,6 +846,12 @@ class _PreventiveMaintenanceScreenState
                             ? null
                             : notesCtrl.text.trim(),
                         'updatedAt': Timestamp.fromDate(now),
+                        // If the due date changed, clear notification flags so
+                        // the rescheduled task triggers fresh alerts.
+                        if (newFreq != task.frequencyMonths) ...{
+                          'notifiedAt': FieldValue.delete(),
+                          'alertedAt': FieldValue.delete(),
+                        },
                       });
                       if (mounted) _showSnackBar('Task updated');
                     } catch (e) {
@@ -889,6 +895,9 @@ class _PreventiveMaintenanceScreenState
           'dueDate': Timestamp.fromDate(nextDueDate),
           'notes': notes.isEmpty ? null : notes,
           'updatedAt': Timestamp.fromDate(now),
+          // Clear notification flags so the new cycle triggers fresh alerts.
+          'notifiedAt': FieldValue.delete(),
+          'alertedAt': FieldValue.delete(),
         });
         _showSnackBar(
             'Marked completed — next due ${DateFormat.yMMMd().format(nextDueDate)}');
