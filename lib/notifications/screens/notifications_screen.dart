@@ -34,6 +34,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       data: (info) => info.isDeveloper || info.roleLabel == 'Admin',
       orElse: () => false,
     );
+    final canCreateNotification = roleAsync.maybeWhen(
+      data: (info) => info.isDeveloper || info.roleLabel == 'Admin' || info.roleLabel == 'Technician',
+      orElse: () => false,
+    );
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -49,13 +53,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AddCustomNotificationScreen())),
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add_alert_rounded, color: Colors.white),
-        label: Text('New Notification', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
-      ),
+      floatingActionButton: canCreateNotification
+          ? FloatingActionButton.extended(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AddCustomNotificationScreen())),
+              backgroundColor: AppColors.primary,
+              icon: const Icon(Icons.add_alert_rounded, color: Colors.white),
+              label: Text('New Notification', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+            )
+          : null,
       body: Column(
         children: [
           _buildFilterBar(),
@@ -215,9 +221,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   void _openDigest(DigestItem digest) {
     final userId = ref.read(authStateProvider).value?.uid;
+    DigestItem displayed = digest;
     if (userId != null && !digest.isRead) {
       ref.read(notificationServiceProvider).markDigestRead(userId, digest.id);
+      displayed = digest.copyWith(readAt: DateTime.now());
     }
-    Navigator.push(context, MaterialPageRoute(builder: (context) => NotificationDetailScreen(digest: digest)));
+    Navigator.push(context, MaterialPageRoute(builder: (context) => NotificationDetailScreen(digest: displayed)));
   }
 }

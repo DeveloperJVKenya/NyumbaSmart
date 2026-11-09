@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:cmms/notifications/models/delivery_log.dart';
 import 'package:cmms/notifications/models/engagement_stats.dart';
 import 'package:cmms/notifications/providers/notification_providers.dart';
+import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:cmms/theme/app_theme.dart';
 
 enum _StatsTab { delivery, engagement }
@@ -59,6 +60,13 @@ class NotificationDeliveryStatsScreen extends ConsumerStatefulWidget {
 class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDeliveryStatsScreen> {
   _StatsTab _tab = _StatsTab.delivery;
   _KindFilter _filter = _KindFilter.all;
+  late final Stream<List<DeliveryLog>> _deliveryStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _deliveryStream = NotificationService().watchRecentDeliveryLogs(limit: 100);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +113,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
 
   Widget _deliveryView() {
     return StreamBuilder<List<DeliveryLog>>(
-      stream: ref.read(notificationServiceProvider).watchRecentDeliveryLogs(limit: 100),
+      stream: _deliveryStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());

@@ -29,6 +29,7 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
 
   bool _expanded = false;
   String? _dismissedDigestId;
+  String? _animatedForDigestId;
 
   Timer? _autoDismissTimer;
   String? _timerDigestId;
@@ -79,7 +80,11 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_slideController.isAnimating && !_slideController.isCompleted) {
+      if (_animatedForDigestId != digest.id) {
+        _animatedForDigestId = digest.id;
+        _slideController.reset();
+        _slideController.forward();
+      } else if (!_slideController.isAnimating && !_slideController.isCompleted) {
         _slideController.forward();
       }
     });

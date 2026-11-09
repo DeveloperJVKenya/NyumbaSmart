@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:logger/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Thin wrapper around `flutter_local_notifications` for showing a system tray notification when
 /// a digest push arrives in the foreground (background/closed-app delivery is handled by FCM +
@@ -16,6 +17,8 @@ class SystemTrayNotificationService {
 
   static const String _groupKey = 'maintenance_digest_group';
   static const int _summaryId = 0;
+  static const String _soundEnabledKey = 'notification_sound_enabled';
+  static const String _vibrationEnabledKey = 'notification_vibration_enabled';
 
   final Logger _logger = Logger();
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
@@ -55,6 +58,10 @@ class SystemTrayNotificationService {
     if (!_isInitialized || kIsWeb) return;
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final enableSound = prefs.getBool(_soundEnabledKey) ?? true;
+      final enableVibration = prefs.getBool(_vibrationEnabledKey) ?? true;
+
       final androidDetails = AndroidNotificationDetails(
         isUrgent ? 'maintenance_urgent' : 'maintenance_normal',
         isUrgent ? 'Urgent Maintenance Alerts' : 'Maintenance Notifications',
@@ -63,6 +70,8 @@ class SystemTrayNotificationService {
         priority: isUrgent ? Priority.max : Priority.high,
         groupKey: _groupKey,
         styleInformation: BigTextStyleInformation(body, contentTitle: title),
+        playSound: enableSound,
+        enableVibration: enableVibration,
       );
       const iosDetails = DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true);
 

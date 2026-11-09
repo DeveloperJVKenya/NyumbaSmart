@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/notifications/models/delivery_log.dart';
 import 'package:cmms/notifications/providers/notification_providers.dart';
 import 'package:cmms/notifications/screens/notification_delivery_stats_screen.dart';
+import 'package:cmms/notifications/screens/notifications_screen.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/theme/app_widgets.dart';
@@ -87,6 +88,15 @@ class _TestNotificationScreenState extends ConsumerState<TestNotificationScreen>
               _resultMessage!,
               style: GoogleFonts.poppins(color: _resultIsError ? AppColors.error : AppColors.success, fontWeight: FontWeight.w600),
             ),
+            if (!_resultIsError) ...[
+              const SizedBox(height: AppSpacing.sm),
+              TextButton.icon(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen())),
+                icon: const Icon(Icons.notifications_rounded, size: 18),
+                label: Text('View in Notifications', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+              ),
+            ],
           ],
           if (_lastRecipients != null) ...[
             const SizedBox(height: AppSpacing.md),
