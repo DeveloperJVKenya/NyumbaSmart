@@ -8,6 +8,7 @@ import 'package:cmms/models/preventive_maintenance_task.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:cmms/services/pm_generation_service.dart';
 import 'package:cmms/services/pm_scheduling_service.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 
 /// Facility-scoped preventive maintenance.  Tasks are grouped by category,
@@ -223,11 +224,11 @@ class _PreventiveMaintenanceScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Select Category',
+          Text('Categories',
               style: GoogleFonts.poppins(
                   fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey[800])),
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary)),
           const SizedBox(height: 16),
           Expanded(
             child: ListView(
@@ -253,45 +254,156 @@ class _PreventiveMaintenanceScreenState
                       ct.length - completedCount - inProgressCount;
                   return Card(
                     margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 3,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      side: BorderSide(
+                        color: overdueCount > 0
+                            ? AppColors.error.withValues(alpha: 0.3)
+                            : AppColors.primary.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    color: AppColors.card,
                     child: InkWell(
-                      onTap: () =>
-                          setState(() => _selectedCategory = category),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                      onTap: () => setState(() => _selectedCategory = category),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Overdue warning strip
+                          if (overdueCount > 0)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.error.withValues(alpha: 0.07),
+                                borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(AppRadius.md)),
+                                border: Border(
+                                    bottom: BorderSide(
+                                        color: AppColors.error.withValues(alpha: 0.15))),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.warning_amber_rounded,
+                                      size: 13, color: AppColors.error),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    '$overdueCount overdue task${overdueCount == 1 ? '' : 's'}',
+                                    style: GoogleFonts.poppins(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.error),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          // Card body
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Text(category,
-                                      style: GoogleFonts.poppins(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold)),
+                                // Category name + icon row
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.surfaceAlt,
+                                        borderRadius:
+                                            BorderRadius.circular(AppRadius.sm),
+                                      ),
+                                      child: Icon(_categoryIcon(category),
+                                          size: 18, color: AppColors.primary),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(category,
+                                              style: GoogleFonts.poppins(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: AppColors.textPrimary)),
+                                          Text(
+                                            '${ct.length} task${ct.length == 1 ? '' : 's'}',
+                                            style: GoogleFonts.poppins(
+                                                fontSize: 11,
+                                                color: AppColors.textSecondary),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(Icons.chevron_right_rounded,
+                                        color: AppColors.textSecondary, size: 20),
+                                  ],
                                 ),
-                                Icon(Icons.arrow_forward_ios,
-                                    color: Colors.grey[400], size: 16),
+                                const SizedBox(height: 12),
+                                // Stat tiles row
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final compact = constraints.maxWidth < 280;
+                                    return Row(
+                                      children: [
+                                        _statTile('Total', ct.length,
+                                            AppColors.primary, compact),
+                                        const SizedBox(width: 6),
+                                        _statTile('Pending', pendingCount,
+                                            AppColors.textSecondary, compact),
+                                        const SizedBox(width: 6),
+                                        _statTile(
+                                            'In Progress',
+                                            inProgressCount,
+                                            AppColors.primaryLight,
+                                            compact),
+                                        const SizedBox(width: 6),
+                                        _statTile('Done', completedCount,
+                                            AppColors.success, compact),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                // Completion progress bar
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(
+                                            AppRadius.pill),
+                                        child: LinearProgressIndicator(
+                                          value: ct.isEmpty
+                                              ? 0
+                                              : completedCount / ct.length,
+                                          backgroundColor:
+                                              AppColors.success.withValues(alpha: 0.12),
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                  AppColors.success),
+                                          minHeight: 5,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      ct.isEmpty
+                                          ? '0%'
+                                          : '${(completedCount / ct.length * 100).round()}%',
+                                      style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.success),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: [
-                                _countChip('Total', ct.length, Colors.blueGrey),
-                                _countChip('Pending', pendingCount, Colors.grey),
-                                _countChip('In Progress', inProgressCount,
-                                    Colors.indigo),
-                                _countChip(
-                                    'Completed', completedCount, Colors.green),
-                                if (overdueCount > 0)
-                                  _countChip('Overdue', overdueCount, Colors.red),
-                              ],
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -588,8 +700,8 @@ class _PreventiveMaintenanceScreenState
                 child: Text('$_selectedCategory Tasks',
                     style: GoogleFonts.poppins(
                         fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueGrey[800])),
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary)),
               ),
             ],
           ),
@@ -1043,17 +1155,66 @@ class _PreventiveMaintenanceScreenState
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  Widget _countChip(String label, int count, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.3))),
-      child: Text('$label: $count',
-          style: GoogleFonts.poppins(
-              color: color, fontSize: 11, fontWeight: FontWeight.w500)),
+  Widget _statTile(String label, int count, Color color, [bool compact = false]) {
+    return Expanded(
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: compact ? 7 : 9, horizontal: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          border: Border(top: BorderSide(color: color, width: 2.5)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$count',
+              style: GoogleFonts.poppins(
+                fontSize: compact ? 16 : 20,
+                fontWeight: FontWeight.w700,
+                color: color,
+                height: 1,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: compact ? 9 : 10,
+                color: color.withValues(alpha: 0.85),
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  IconData _categoryIcon(String category) {
+    switch (category.toLowerCase()) {
+      case 'hvac':
+        return Icons.ac_unit_rounded;
+      case 'electrical':
+        return Icons.bolt_rounded;
+      case 'plumbing':
+        return Icons.water_drop_rounded;
+      case 'mechanical':
+        return Icons.settings_rounded;
+      case 'safety':
+        return Icons.shield_rounded;
+      case 'it equipment':
+        return Icons.computer_rounded;
+      case 'fire protection':
+        return Icons.local_fire_department_rounded;
+      case 'unclassified':
+        return Icons.category_rounded;
+      default:
+        return Icons.build_rounded;
+    }
   }
 
   Widget _typeChip(String label) {
