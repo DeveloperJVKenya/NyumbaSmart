@@ -35,7 +35,10 @@ class _TypeEntry {
   final int count;
   bool visible = true;
   _TypeEntry({required this.ifcType, required this.count});
-  String get label => ifcType.replaceFirst('Ifc', '');
+  String get label => ifcType
+      .replaceFirst('Ifc', '')
+      .replaceAllMapped(RegExp(r'(?<=[a-z])(?=[A-Z])'), (_) => ' ')
+      .trim();
 }
 
 /// 3D view of a facility's IFC model. Equipment imported from that model (matched by IFC GlobalId) is
