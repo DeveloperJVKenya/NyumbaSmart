@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cmms/notifications/models/digest_item.dart';
+import 'package:cmms/notifications/providers/notification_providers.dart';
+import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/screens/dashboard_screen.dart';
 import 'package:cmms/theme/app_theme.dart';
 
@@ -9,10 +12,35 @@ import 'package:cmms/theme/app_theme.dart';
 /// notification like "6 notifications from 2 facilities". Replaces the previous separate
 /// System/Custom detail screens, which each only ever showed a single flat notification with no
 /// facility breakdown at all.
-class NotificationDetailScreen extends StatelessWidget {
+class NotificationDetailScreen extends ConsumerStatefulWidget {
   final DigestItem digest;
 
   const NotificationDetailScreen({super.key, required this.digest});
+
+  @override
+  ConsumerState<NotificationDetailScreen> createState() => _NotificationDetailScreenState();
+}
+
+class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScreen> {
+  late DigestItem _digest;
+
+  @override
+  void initState() {
+    super.initState();
+    _digest = widget.digest;
+  }
+
+  void _toggleReadState() {
+    final userId = ref.read(authStateProvider).value?.uid;
+    if (userId == null) return;
+    if (_digest.isRead) {
+      ref.read(notificationServiceProvider).markDigestUnread(userId, _digest.id);
+      setState(() => _digest = _digest.copyWith(readAt: null, clearReadAt: true));
+    } else {
+      ref.read(notificationServiceProvider).markDigestRead(userId, _digest.id);
+      setState(() => _digest = _digest.copyWith(readAt: DateTime.now()));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +49,17 @@ class NotificationDetailScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text('Notification', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
+        actions: [
+          // Mark read/unread toggle (#11).
+          IconButton(
+            icon: Icon(
+              _digest.isRead ? Icons.mark_email_unread_rounded : Icons.mark_email_read_rounded,
+              color: Colors.white,
+            ),
+            tooltip: _digest.isRead ? 'Mark as unread' : 'Mark as read',
+            onPressed: _toggleReadState,
+          ),
+        ],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -32,10 +71,10 @@ class NotificationDetailScreen extends StatelessWidget {
               children: [
                 _summaryCard(),
                 const SizedBox(height: AppSpacing.lg),
-                if (digest.facilities.isNotEmpty) ...[
+                if (_digest.facilities.isNotEmpty) ...[
                   Text('Facilities', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                   const SizedBox(height: AppSpacing.sm),
-                  ...digest.facilities.map((f) => _facilityCard(context, f)),
+                  ..._digest.facilities.map((f) => _facilityCard(context, f)),
                 ],
               ],
             ),
@@ -46,7 +85,7 @@ class NotificationDetailScreen extends StatelessWidget {
   }
 
   Widget _summaryCard() {
-    final isUrgent = digest.isUrgent;
+    final isUrgent = _digest.isUrgent;
     final accent = isUrgent ? AppColors.error : AppColors.primary;
 
     return Container(
@@ -68,7 +107,7 @@ class NotificationDetailScreen extends StatelessWidget {
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(digest.title, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                child: Text(_digest.title, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
               ),
             ],
           ),
@@ -79,7 +118,7 @@ class NotificationDetailScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
-                child: Text(digest.kind.label, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: accent)),
+                child: Text(_digest.kind.label, style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: accent)),
               ),
               if (isUrgent)
                 Container(
@@ -87,18 +126,33 @@ class NotificationDetailScreen extends StatelessWidget {
                   decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
                   child: Text('Urgent', style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.error)),
                 ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (_digest.isRead ? AppColors.success : AppColors.textSecondary).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Text(
+                  _digest.isRead ? 'Read' : 'Unread',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: _digest.isRead ? AppColors.success : AppColors.textSecondary,
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(digest.body, style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textSecondary)),
+          Text(_digest.body, style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textSecondary)),
           const SizedBox(height: 12),
           Text(
-            DateFormat('MMMM dd, yyyy · h:mm a').format(digest.createdAt),
+            DateFormat('MMMM dd, yyyy · h:mm a').format(_digest.createdAt),
             style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary.withValues(alpha: 0.8)),
           ),
-          if (digest.readAt != null) ...[
+          if (_digest.readAt != null) ...[
             const SizedBox(height: 4),
-            Text('Read ${DateFormat('MMM dd, h:mm a').format(digest.readAt!)}', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.success)),
+            Text('Read ${DateFormat('MMM dd, h:mm a').format(_digest.readAt!)}', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.success)),
           ],
         ],
       ),

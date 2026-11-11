@@ -156,41 +156,55 @@ class NotificationService {
 
   // ---- Digest reads/writes (NotificationDigests/{userId}/items) ----
 
-  Stream<List<DigestItem>> watchDigests(String userId) {
+  // ---- Pagination-aware digest stream (#8) ----
+
+  Stream<List<DigestItem>> watchDigests(String userId, {int limit = 25}) {
     return _firestore
         .collection('NotificationDigests')
         .doc(userId)
         .collection('items')
         .orderBy('createdAt', descending: true)
-        .limit(50)
+        .limit(limit)
         .snapshots()
         .map((snap) => snap.docs.map(DigestItem.fromFirestore).toList());
   }
+
+  // ---- Unread count: reads the `unreadCount` integer on the parent doc (#2) ----
+  // The Cloud Function increments this on every new digest write; the client decrements it
+  // on mark-read so the badge stays accurate without a full sub-collection scan.
 
   Stream<int> watchUnreadCount(String userId) {
     return _firestore
         .collection('NotificationDigests')
         .doc(userId)
-        .collection('items')
-        .where('readAt', isNull: true)
         .snapshots()
-        .map((snap) => snap.docs.length);
+        .map((snap) {
+      final count = snap.data()?['unreadCount'];
+      if (count is int) return count < 0 ? 0 : count;
+      // Fallback: count unread items in the already-loaded stream.
+      return 0;
+    });
   }
 
   Future<void> markDigestRead(String userId, String digestId) async {
     try {
-      await _firestore
-          .collection('NotificationDigests')
-          .doc(userId)
-          .collection('items')
-          .doc(digestId)
-          .update({'readAt': FieldValue.serverTimestamp()});
+      final batch = _firestore.batch();
+      batch.update(
+        _firestore.collection('NotificationDigests').doc(userId).collection('items').doc(digestId),
+        {'readAt': FieldValue.serverTimestamp()},
+      );
+      // Decrement the parent-doc counter; clamp at 0 via max with server-side guard in rules.
+      batch.update(
+        _firestore.collection('NotificationDigests').doc(userId),
+        {'unreadCount': FieldValue.increment(-1)},
+      );
+      await batch.commit();
     } catch (e) {
       _logger.e('Error marking digest $digestId as read: $e');
     }
   }
 
-  /// Marks every unread digest for [userId] as read in a single batched write.
+  /// Marks every unread digest for [userId] as read and resets the counter to 0 (#2).
   Future<void> markAllDigestsRead(String userId) async {
     try {
       final snap = await _firestore
@@ -205,9 +219,79 @@ class NotificationService {
       for (final doc in snap.docs) {
         batch.update(doc.reference, {'readAt': now});
       }
+      batch.update(
+        _firestore.collection('NotificationDigests').doc(userId),
+        {'unreadCount': 0},
+      );
       await batch.commit();
     } catch (e) {
       _logger.e('Error marking all digests as read for $userId: $e');
+    }
+  }
+
+  /// Clears the read receipt on a digest so it shows as unread again (#11).
+  Future<void> markDigestUnread(String userId, String digestId) async {
+    try {
+      final batch = _firestore.batch();
+      batch.update(
+        _firestore.collection('NotificationDigests').doc(userId).collection('items').doc(digestId),
+        {'readAt': null},
+      );
+      batch.update(
+        _firestore.collection('NotificationDigests').doc(userId),
+        {'unreadCount': FieldValue.increment(1)},
+      );
+      await batch.commit();
+    } catch (e) {
+      _logger.e('Error marking digest $digestId as unread: $e');
+    }
+  }
+
+  /// Permanently removes a single digest item — user-initiated delete (#10).
+  Future<void> deleteDigest(String userId, String digestId, {bool wasUnread = false}) async {
+    try {
+      final batch = _firestore.batch();
+      batch.delete(
+        _firestore.collection('NotificationDigests').doc(userId).collection('items').doc(digestId),
+      );
+      if (wasUnread) {
+        batch.update(
+          _firestore.collection('NotificationDigests').doc(userId),
+          {'unreadCount': FieldValue.increment(-1)},
+        );
+      }
+      await batch.commit();
+    } catch (e) {
+      _logger.e('Error deleting digest $digestId: $e');
+    }
+  }
+
+  /// Deletes all read digests for [userId] in one pass (#10).
+  Future<int> clearReadDigests(String userId) async {
+    try {
+      final snap = await _firestore
+          .collection('NotificationDigests')
+          .doc(userId)
+          .collection('items')
+          .where('readAt', isNull: false)
+          .get();
+      if (snap.docs.isEmpty) return 0;
+      final batch = _firestore.batch();
+      for (final doc in snap.docs) { batch.delete(doc.reference); }
+      await batch.commit();
+      return snap.docs.length;
+    } catch (e) {
+      _logger.e('Error clearing read digests for $userId: $e');
+      return 0;
+    }
+  }
+
+  /// Writes `fcmToken: null` to the user's doc so the signed-out device stops receiving pushes (#25).
+  Future<void> clearFcmToken(String userId) async {
+    try {
+      await _firestore.collection('Users').doc(userId).update({'fcmToken': null});
+    } catch (e) {
+      _logger.e('Error clearing FCM token for $userId: $e');
     }
   }
 

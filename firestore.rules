@@ -488,13 +488,21 @@ service cloud.firestore {
     // Per-user notification digests (the consolidated notifications pipeline).
     // Each user only ever sees/touches their own subcollection; digest documents
     // themselves are Cloud-Function-only writes (admin SDK bypasses these rules),
-    // clients may only patch their own read/delivery receipt fields.
+    // clients may only patch their own read/delivery receipt fields or delete their own items.
+    match /NotificationDigests/{userId} {
+      // Allow client to decrement unreadCount when marking digests read/deleted (#28).
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unreadCount']);
+    }
+
     match /NotificationDigests/{userId}/items/{digestId} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow create: if false;
       allow update: if request.auth != null && request.auth.uid == userId &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'deliveredAt']);
-      allow delete: if false;
+      // Users may delete their own digest items (#10).
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
     // Per-run delivery audit log — which accounts/devices a given system or test notification

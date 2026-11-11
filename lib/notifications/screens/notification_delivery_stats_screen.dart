@@ -180,7 +180,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
                 const SizedBox(width: 8),
                 Expanded(
                   child: _statTile(
-                    'Avg time to read',
+                    'Avg to read',
                     stats.avgMinutesToRead == null ? '—' : _formatMinutes(stats.avgMinutesToRead!),
                     AppColors.accent,
                     Icons.timer_rounded,
@@ -189,12 +189,95 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
-            Text('By notification type', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            Text('Read rate by type', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            const SizedBox(height: AppSpacing.sm),
+            _readRateBarChart(stats.kindBreakdown),
+            const SizedBox(height: AppSpacing.lg),
+            Text('Volume by type', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
             const SizedBox(height: AppSpacing.sm),
             ...stats.kindBreakdown.map(_engagementKindCard),
           ],
         );
       },
+    );
+  }
+
+  // Horizontal bar chart: one bar per notification kind, width proportional to read rate (#27).
+  Widget _readRateBarChart(List<EngagementKindStat> breakdown) {
+    if (breakdown.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Center(child: Text('No data yet.', style: GoogleFonts.poppins(color: AppColors.textSecondary))),
+      );
+    }
+    const barColors = [AppColors.primary, AppColors.success, AppColors.accent, AppColors.error, AppColors.textSecondary];
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        children: List.generate(breakdown.length, (i) {
+          final stat = breakdown[i];
+          final color = barColors[i % barColors.length];
+          final pct = (stat.readRate * 100).clamp(0.0, 100.0);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 70,
+                  child: Text(
+                    _kindLabel(stat.kind),
+                    style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final barWidth = constraints.maxWidth * (pct / 100);
+                      return Stack(
+                        children: [
+                          Container(
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(AppRadius.pill),
+                            ),
+                          ),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 600),
+                            curve: Curves.easeOut,
+                            height: 20,
+                            width: barWidth.clamp(0.0, constraints.maxWidth),
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(AppRadius.pill),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 42,
+                  child: Text(
+                    '${pct.toStringAsFixed(0)}%',
+                    style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700, color: color),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ),
     );
   }
 

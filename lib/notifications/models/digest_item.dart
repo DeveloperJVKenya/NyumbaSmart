@@ -131,7 +131,8 @@ class DigestItem {
   bool get isRead => readAt != null;
   bool get isUrgent => kind == DigestKind.alertDigest || facilities.any((f) => f.items.any((i) => i.isAlert));
 
-  DigestItem copyWith({DateTime? readAt}) => DigestItem(
+  /// Pass [clearReadAt] = true to explicitly set [readAt] to null (mark unread).
+  DigestItem copyWith({DateTime? readAt, bool clearReadAt = false}) => DigestItem(
     id: id,
     userId: userId,
     runId: runId,
@@ -142,7 +143,7 @@ class DigestItem {
     totalCount: totalCount,
     facilityCount: facilityCount,
     facilities: facilities,
-    readAt: readAt ?? this.readAt,
+    readAt: clearReadAt ? null : (readAt ?? this.readAt),
     reTriggerCount: reTriggerCount,
   );
 

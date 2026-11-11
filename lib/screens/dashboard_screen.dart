@@ -9,6 +9,7 @@ import 'package:cmms/screens/organization_selection_screen.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/authentication/login_screen.dart';
+import 'package:cmms/notifications/providers/notification_providers.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -127,6 +128,11 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
   /// real first so what's on screen matches the actual auth state.
   Future<void> _exitOrGoToLogin() async {
     if (kIsWeb) {
+      // Clear FCM token so the device stops receiving pushes after sign-out (#25).
+      final uid = ref.read(authStateProvider).value?.uid;
+      if (uid != null) {
+        await ref.read(notificationServiceProvider).clearFcmToken(uid);
+      }
       await FirebaseAuth.instance.signOut();
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(

@@ -797,6 +797,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _performSignOut() async {
     try {
+      // Clear FCM token so the device stops receiving pushes after sign-out (#25).
+      final uid = ref.read(authStateProvider).value?.uid;
+      if (uid != null) {
+        await _notificationService.clearFcmToken(uid);
+      }
       await FirebaseAuth.instance.signOut();
       if (mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);

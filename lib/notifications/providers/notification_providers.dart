@@ -12,15 +12,29 @@ import 'package:cmms/providers/auth_providers.dart';
 
 final notificationServiceProvider = Provider<NotificationService>((ref) => NotificationService());
 
+/// How many digest items to load. Incremented by the notifications screen for "load more" (#8).
+class _DigestPageSizeNotifier extends Notifier<int> {
+  @override
+  int build() => 25;
+  void loadMore() => state += 25;
+}
+
+final digestPageSizeProvider = NotifierProvider.autoDispose<_DigestPageSizeNotifier, int>(
+  _DigestPageSizeNotifier.new,
+);
+
 /// The signed-in user's digest feed — the WhatsApp-style grouped notifications a user actually
-/// sees, newest first. Empty when signed out.
+/// sees, newest first. Empty when signed out. Respects [digestPageSizeProvider] for pagination.
 final userDigestsProvider = StreamProvider.autoDispose<List<DigestItem>>((ref) {
   final userId = ref.watch(authStateProvider).value?.uid;
   if (userId == null) return const Stream.empty();
-  return ref.watch(notificationServiceProvider).watchDigests(userId);
+  final limit = ref.watch(digestPageSizeProvider);
+  return ref.watch(notificationServiceProvider).watchDigests(userId, limit: limit);
 });
 
 /// Count of unread digests — drives badge counts in the app bar/drawer and the floating banner.
+/// Reads the `unreadCount` integer field on `NotificationDigests/{userId}` written by the Cloud
+/// Function on each digest write and decremented by the client on mark-read (#2).
 final unreadDigestCountProvider = StreamProvider.autoDispose<int>((ref) {
   final userId = ref.watch(authStateProvider).value?.uid;
   if (userId == null) return Stream.value(0);
@@ -35,6 +49,18 @@ final latestUnreadDigestProvider = Provider.autoDispose<DigestItem?>((ref) {
   }
   return null;
 });
+
+/// Set to true while [NotificationsScreen] is the top route — suppresses the floating banner (#14).
+class _NotificationsScreenActiveNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+  // ignore: use_setters_to_change_properties
+  void setActive(bool value) => state = value;
+}
+
+final isNotificationsScreenActiveProvider = NotifierProvider<_NotificationsScreenActiveNotifier, bool>(
+  _NotificationsScreenActiveNotifier.new,
+);
 
 /// Developer/admin-only read/open engagement summary — see `NotificationService.fetchEngagementStats`.
 final engagementStatsProvider = FutureProvider.autoDispose<EngagementStats?>((ref) {

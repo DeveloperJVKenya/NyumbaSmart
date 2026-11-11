@@ -248,6 +248,21 @@ async function sendNotificationInternal(notificationData, targetUsers) {
             userId, userName, token: null, platform, skipReason: 'no FCM token on file',
           };
         }
+        // Quiet hours: skip FCM for this user if they've set a quiet window (#23).
+        if (userData.quietHoursStart && userData.quietHoursEnd) {
+          const nairobiTime = new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' });
+          const nairobiDate = new Date(nairobiTime);
+          const nowMins = nairobiDate.getHours() * 60 + nairobiDate.getMinutes();
+          const toMins = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+          const s = toMins(userData.quietHoursStart);
+          const e = toMins(userData.quietHoursEnd);
+          const inQuiet = s < e ? nowMins >= s && nowMins < e : nowMins >= s || nowMins < e;
+          if (inQuiet) {
+            return {
+              userId, userName, token: null, platform, skipReason: 'quiet hours',
+            };
+          }
+        }
         if (userData.notificationsEnabled === false) {
           return {
             userId, userName, token: null, platform, skipReason: 'notifications disabled',
@@ -435,16 +450,40 @@ function shiftOffWeekend(date) {
   return date;
 }
 
-function computeNotificationDate(dueDate) {
-  return shiftOffWeekend(new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 5));
+function computeNotificationDate(dueDate, daysBefore = 5) {
+  return shiftOffWeekend(new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - daysBefore));
 }
 
-function computeAlertDate(dueDate) {
-  return shiftOffWeekend(new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - 1));
+function computeAlertDate(dueDate, daysBefore = 1) {
+  return shiftOffWeekend(new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() - daysBefore));
 }
 
 function dateKey(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+// Returns { pmNotifyDaysBefore, pmAlertDaysBefore } from facilitySettings/{facilityId}
+// (a top-level doc), falling back to default 5-day / 1-day windows if unset (#4).
+async function getFacilitySettings(facilityId) {
+  try {
+    const doc = await db.collection('facilitySettings').doc(facilityId).get();
+    if (doc.exists) {
+      const d = doc.data();
+      return {
+        pmNotifyDaysBefore: typeof d.pmNotifyDaysBefore === 'number' ? d.pmNotifyDaysBefore : 5,
+        pmAlertDaysBefore: typeof d.pmAlertDaysBefore === 'number' ? d.pmAlertDaysBefore : 1,
+      };
+    }
+  } catch (_) { /* fall through to defaults */ }
+  return { pmNotifyDaysBefore: 5, pmAlertDaysBefore: 1 };
+}
+
+// Advances a due date forward by frequencyMonths calendar months — same logic as
+// PmSchedulingService.addMonths() in lib/services/pm_scheduling_service.dart (#3).
+function addMonths(date, months) {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
 }
 
 // Splits an array into fixed-size chunks — used to stay under Firestore's 500-op batch limit
@@ -520,30 +559,74 @@ exports.checkDueNotifications = onSchedule(
       console.log(`Scanning ${tasksSnapshot.docs.length} preventive_maintenance tasks across all facilities`);
 
       const byFacility = new Map();
+      // Track tasks needing a next-due-date rollover (#3).
+      const nextDueRolloverDocs = [];
 
       for (const doc of tasksSnapshot.docs) {
         const data = doc.data();
         const dueDateTs = data.dueDate;
         const facilityRef = doc.ref.parent.parent;
-
-        if (data.status !== 'completed' && dueDateTs && facilityRef) {
+        if (dueDateTs && facilityRef) {
           const facilityId = facilityRef.id;
-          if (!byFacility.has(facilityId)) {
-            byFacility.set(facilityId, { facilityRef, dueTasks: [], alertTasks: [] });
-          }
-          const bucket = byFacility.get(facilityId);
-
           const dueDate = dueDateTs.toDate();
-          const notificationKey = dateKey(computeNotificationDate(dueDate));
-          const alertKey = dateKey(computeAlertDate(dueDate));
+          const freqMonths = typeof data.frequencyMonths === 'number' ? data.frequencyMonths : 0;
 
-          if (!data.notifiedAt && notificationKey <= todayKey) {
-            bucket.dueTasks.push(doc);
-          }
-          if (!data.alertedAt && alertKey <= todayKey) {
-            bucket.alertTasks.push(doc);
+          // #17: skip non-recurring completed tasks — they're done and won't recur.
+          const isNonRecurringDone = data.status === 'completed' && freqMonths === 0;
+          // #3: recurring completed tasks with a past due date need their next due date rolled forward.
+          const needsRollover = data.status === 'completed' && freqMonths > 0 && dateKey(dueDate) < todayKey;
+
+          if (!isNonRecurringDone && !needsRollover && data.status !== 'completed') {
+            if (!byFacility.has(facilityId)) {
+              byFacility.set(facilityId, {
+                facilityRef, dueTasks: [], alertTasks: [], todayTasks: [], pendingTasksList: [],
+              });
+            }
+            // #4: stash for per-facility window resolution below.
+            byFacility.get(facilityId).pendingTasksList.push({ doc, dueDate, data });
+          } else if (needsRollover) {
+            nextDueRolloverDocs.push({ ref: doc.ref, dueDate, freqMonths });
           }
         }
+      }
+
+      // Resolve per-facility settings and bin tasks into due/alert/today buckets (#4, #5).
+      for (const [facilityId, bucket] of byFacility) {
+        const settings = await getFacilitySettings(facilityId);
+        for (const { doc, dueDate, data } of bucket.pendingTasksList) {
+          const dueDateKeyVal = dateKey(dueDate);
+          const notificationKey = dateKey(computeNotificationDate(dueDate, settings.pmNotifyDaysBefore));
+          const alertKey = dateKey(computeAlertDate(dueDate, settings.pmAlertDaysBefore));
+
+          // Same-day bucket (#5) — guard: dueTodayNotifiedAt field.
+          if (!data.dueTodayNotifiedAt && dueDateKeyVal === todayKey) {
+            bucket.todayTasks.push(doc);
+          } else {
+            if (!data.notifiedAt && notificationKey <= todayKey) bucket.dueTasks.push(doc);
+            if (!data.alertedAt && alertKey <= todayKey) bucket.alertTasks.push(doc);
+          }
+        }
+      }
+
+      // #3: batch-write rolled-over next due dates for recurring completed tasks.
+      if (nextDueRolloverDocs.length > 0) {
+        for (const rolloverChunk of chunk(nextDueRolloverDocs, 480)) {
+          const rolloverBatch = db.batch();
+          for (const { ref, dueDate, freqMonths } of rolloverChunk) {
+            let next = addMonths(dueDate, freqMonths);
+            // Advance until next is in the future.
+            while (dateKey(next) <= todayKey) next = addMonths(next, freqMonths);
+            rolloverBatch.update(ref, {
+              dueDate: Timestamp.fromDate(next),
+              status: 'pending',
+              notifiedAt: null,
+              alertedAt: null,
+              dueTodayNotifiedAt: null,
+            });
+          }
+          await rolloverBatch.commit();
+        }
+        console.log(`checkDueNotifications: rolled forward ${nextDueRolloverDocs.length} completed recurring tasks`);
       }
 
       // JV Almacis is the contractor who performs on-site maintenance for every client
@@ -565,7 +648,9 @@ exports.checkDueNotifications = onSchedule(
       let anyAlert = false;
 
       for (const [facilityId, bucket] of byFacility) {
-        const hasWork = bucket.dueTasks.length > 0 || bucket.alertTasks.length > 0;
+        const hasWork = bucket.dueTasks.length > 0
+          || bucket.alertTasks.length > 0
+          || (bucket.todayTasks && bucket.todayTasks.length > 0);
         if (!hasWork) {
           // eslint-disable-next-line no-continue
           continue;
@@ -587,6 +672,17 @@ exports.checkDueNotifications = onSchedule(
           };
         };
 
+        if (bucket.todayTasks && bucket.todayTasks.length > 0) {
+          const rec = await recordFacilityNotification({
+            facilityRef: bucket.facilityRef,
+            tasks: bucket.todayTasks,
+            facilityName,
+            isAlert: false,
+            markField: 'dueTodayNotifiedAt',
+          });
+          digestSourceRefs.push({ facilityId, notificationId: rec.notificationRef.id });
+          items.push(...bucket.todayTasks.map((t) => rowToItem(t, false)));
+        }
         if (bucket.dueTasks.length > 0) {
           const rec = await recordFacilityNotification({
             facilityRef: bucket.facilityRef,
@@ -628,9 +724,28 @@ exports.checkDueNotifications = onSchedule(
         const body = remaining > 0 ? `${topNames.join(', ')} and ${remaining} more` : topNames.join(', ');
         const runId = `run_${now.getTime()}`;
 
-        for (const userIdBatch of chunk(targetUsers, 450)) {
+        // Build user-prefs map (already loaded above) for muted-category filtering (#24).
+        const userPrefsMap = new Map(usersSnapshot.docs.map((d) => [d.id, d.data()]));
+
+        // 240 users per batch: each user costs 2 ops (item set + parent unreadCount merge) = 480 (#2).
+        for (const userIdBatch of chunk(targetUsers, 240)) {
           const digestBatch = db.batch();
           for (const userId of userIdBatch) {
+            const prefs = userPrefsMap.get(userId) || {};
+            const mutedCategories = Array.isArray(prefs.mutedCategories) ? prefs.mutedCategories : [];
+
+            // #24: filter out muted categories per user.
+            const userFacilities = mutedCategories.length > 0
+              ? digestFacilities
+                .map((f) => ({ ...f, items: f.items.filter((item) => !mutedCategories.includes(item.category)) }))
+                .map((f) => ({ ...f, count: f.items.length }))
+                .filter((f) => f.count > 0)
+              : digestFacilities;
+
+            const userTotalCount = userFacilities.reduce((s, f) => s + f.count, 0);
+            // eslint-disable-next-line no-continue
+            if (userTotalCount === 0) continue; // all tasks muted for this user
+
             const digestRef = db.collection('NotificationDigests').doc(userId).collection('items').doc();
             digestBatch.set(digestRef, {
               userId,
@@ -639,9 +754,9 @@ exports.checkDueNotifications = onSchedule(
               kind: anyAlert ? 'alert_digest' : 'due_digest',
               title,
               body,
-              totalCount,
-              facilityCount,
-              facilities: digestFacilities,
+              totalCount: userTotalCount,
+              facilityCount: userFacilities.length,
+              facilities: userFacilities,
               sourceNotificationRefs: digestSourceRefs,
               fcmSent: true,
               fcmMessageIds: [],
@@ -651,6 +766,12 @@ exports.checkDueNotifications = onSchedule(
               lastReTriggeredAt: null,
               supersededByDigestId: null,
             });
+            // #2: increment unreadCount on the parent NotificationDigests/{userId} doc.
+            digestBatch.set(
+              db.collection('NotificationDigests').doc(userId),
+              { unreadCount: FieldValue.increment(1) },
+              { merge: true },
+            );
           }
           await digestBatch.commit();
         }
@@ -749,12 +870,32 @@ exports.checkDueNotifications = onSchedule(
           lastReTriggeredAt: null,
           supersededByDigestId: null,
         });
+        // #2: increment unreadCount on parent doc for the retrigger digest.
+        retriggerBatch.set(
+          db.collection('NotificationDigests').doc(userId),
+          { unreadCount: FieldValue.increment(1) },
+          { merge: true },
+        );
         for (const doc of staleDocs) {
           retriggerBatch.update(doc.ref, {
             reTriggerCount: FieldValue.increment(1),
             lastReTriggeredAt: FieldValue.serverTimestamp(),
             supersededByDigestId: retriggerRef.id,
           });
+          // #19: also track retrigger count on the source PM tasks.
+          for (const facility of (doc.data().facilities || [])) {
+            for (const item of (facility.items || [])) {
+              if (item.taskId) {
+                // Update via the facility path derived from the digest's facilityId.
+                db.collection('facilities').doc(facility.facilityId)
+                  .collection('preventive_maintenance').doc(item.taskId)
+                  .update({ notifyRetriggerCount: FieldValue.increment(1) })
+                  .catch((e) => console.warn(
+                    `notifyRetriggerCount update skipped for task ${item.taskId}: ${e.message}`,
+                  ));
+              }
+            }
+          }
         }
         await retriggerBatch.commit();
 
@@ -805,20 +946,31 @@ exports.onCustomNotificationCreated = onDocumentCreated(
     if (notification.type !== 'custom') return;
 
     try {
-      const usersSnapshot = await db
+      const { facilityId, notificationId } = event.params;
+
+      // #18: scope fan-out to users who have this facility in their `facilities` array; fall back
+      // to all JV Almacis users only if no per-facility user list is recorded.
+      let usersSnapshot = await db
         .collection('Users')
-        .where('organization', '==', 'JV Almacis')
+        .where('facilities', 'array-contains', facilityId)
         .where('notificationsEnabled', '!=', false)
         .get();
+      if (usersSnapshot.empty) {
+        usersSnapshot = await db
+          .collection('Users')
+          .where('organization', '==', 'JV Almacis')
+          .where('notificationsEnabled', '!=', false)
+          .get();
+      }
       const targetUsers = usersSnapshot.docs.map((doc) => doc.id);
       if (targetUsers.length === 0) return;
 
-      const { facilityId, notificationId } = event.params;
       const facilityDoc = await db.collection('Facilities').doc(facilityId).get();
       const facilityName = facilityDoc.exists ? (facilityDoc.data().name || 'your facility') : 'your facility';
       const customRunId = `custom_${notificationId}`;
 
-      for (const userIdBatch of chunk(targetUsers, 450)) {
+      // 240 per batch: 2 ops per user (item + parent unreadCount) = 480 max (#2).
+      for (const userIdBatch of chunk(targetUsers, 240)) {
         const digestBatch = db.batch();
         for (const userId of userIdBatch) {
           const digestRef = db.collection('NotificationDigests').doc(userId).collection('items').doc();
@@ -843,6 +995,12 @@ exports.onCustomNotificationCreated = onDocumentCreated(
             lastReTriggeredAt: null,
             supersededByDigestId: null,
           });
+          // #2: increment unreadCount on parent doc.
+          digestBatch.set(
+            db.collection('NotificationDigests').doc(userId),
+            { unreadCount: FieldValue.increment(1) },
+            { merge: true },
+          );
         }
         await digestBatch.commit();
       }
@@ -898,7 +1056,9 @@ exports.sendTestNotification = onCall(async (request) => {
     // never auto-displays (Chrome/web only auto-shows a notification for *background* pushes;
     // a page that's open and focused only gets the onMessage JS event, which this app previously
     // no-op'd on web).
-    await db.collection('NotificationDigests').doc(request.auth.uid).collection('items').add({
+    const testItemRef = db.collection('NotificationDigests').doc(request.auth.uid).collection('items').doc();
+    const testDigestBatch = db.batch();
+    testDigestBatch.set(testItemRef, {
       userId: request.auth.uid,
       runId: testRunId,
       createdAt: FieldValue.serverTimestamp(),
@@ -917,6 +1077,13 @@ exports.sendTestNotification = onCall(async (request) => {
       lastReTriggeredAt: null,
       supersededByDigestId: null,
     });
+    // #2: increment unreadCount on parent doc.
+    testDigestBatch.set(
+      db.collection('NotificationDigests').doc(request.auth.uid),
+      { unreadCount: FieldValue.increment(1) },
+      { merge: true },
+    );
+    await testDigestBatch.commit();
 
     return result;
   } catch (error) {
@@ -942,6 +1109,10 @@ exports.cleanupOldDigests = onSchedule(
 
       let deleted = 0;
       for (const userDoc of usersSnapshot.docs) {
+        // #21: skip users who opted to retain their notification history indefinitely.
+        // eslint-disable-next-line no-continue
+        if (userDoc.data().retainDigests === true) continue;
+
         const oldSnap = await db
           .collection('NotificationDigests').doc(userDoc.id).collection('items')
           .where('createdAt', '<', cutoff)
@@ -1059,6 +1230,137 @@ exports.aggregateNotificationEngagement = onSchedule(
       return null;
     } catch (error) {
       console.error('Error in aggregateNotificationEngagement:', error);
+      return null;
+    }
+  },
+);
+
+// Weekly escalation: finds overdue PM tasks (dueDate in the past, status != completed) and sends
+// an escalation alert digest to JV Almacis users. Runs Monday mornings so a fresh-week inbox
+// doesn't miss tasks that slipped through without being completed (#20).
+exports.escalateOverdueTasks = onSchedule(
+  {
+    schedule: '0 7 * * 1', // Monday 07:00 Nairobi time
+    timeZone: 'Africa/Nairobi',
+    memory: '256MiB',
+    timeoutSeconds: 300,
+  },
+  async () => {
+    try {
+      const now = new Date();
+      const todayTs = Timestamp.fromDate(now);
+
+      const tasksSnapshot = await db.collectionGroup('preventive_maintenance').get();
+      const overdueFacilities = new Map();
+
+      for (const doc of tasksSnapshot.docs) {
+        const data = doc.data();
+        const facilityRef = doc.ref.parent.parent;
+        // eslint-disable-next-line no-continue
+        if (!facilityRef || data.status === 'completed' || !data.dueDate) continue;
+        // eslint-disable-next-line no-continue
+        if (data.dueDate.toMillis() >= todayTs.toMillis()) continue; // not yet overdue
+
+        const facilityId = facilityRef.id;
+        if (!overdueFacilities.has(facilityId)) {
+          overdueFacilities.set(facilityId, { facilityRef, tasks: [] });
+        }
+        overdueFacilities.get(facilityId).tasks.push(doc);
+      }
+
+      if (overdueFacilities.size === 0) {
+        console.log('escalateOverdueTasks: no overdue tasks found');
+        return null;
+      }
+
+      const usersSnapshot = await db
+        .collection('Users')
+        .where('organization', '==', 'JV Almacis')
+        .where('notificationsEnabled', '!=', false)
+        .get();
+      const targetUsers = usersSnapshot.docs.map((u) => u.id);
+      if (targetUsers.length === 0) return null;
+
+      const escFacilities = [];
+      for (const [facilityId, bucket] of overdueFacilities) {
+        const facilityDoc = await db.collection('Facilities').doc(facilityId).get();
+        const facilityName = facilityDoc.exists ? (facilityDoc.data().name || 'your facility') : 'your facility';
+        const items = bucket.tasks.map((t) => {
+          const d = t.data();
+          return {
+            taskId: t.id,
+            category: d.category || '',
+            component: d.component || '',
+            intervention: d.intervention || '',
+            dueDate: d.dueDate,
+            isAlert: true,
+          };
+        });
+        escFacilities.push({
+          facilityId, facilityName, count: items.length, items,
+        });
+      }
+
+      const totalOverdue = escFacilities.reduce((s, f) => s + f.count, 0);
+      const escRunId = `escalation_${now.getTime()}`;
+      const escTitle = `Escalation: ${totalOverdue} overdue task${totalOverdue === 1 ? '' : 's'}`;
+      const topNames = escFacilities.slice(0, 2).map((f) => f.facilityName);
+      const remaining = escFacilities.length - topNames.length;
+      const escBody = remaining > 0 ? `${topNames.join(', ')} and ${remaining} more` : topNames.join(', ');
+
+      for (const userIdBatch of chunk(targetUsers, 240)) {
+        const escBatch = db.batch();
+        for (const userId of userIdBatch) {
+          const escRef = db.collection('NotificationDigests').doc(userId).collection('items').doc();
+          escBatch.set(escRef, {
+            userId,
+            runId: escRunId,
+            createdAt: FieldValue.serverTimestamp(),
+            kind: 'alert_digest',
+            title: escTitle,
+            body: escBody,
+            totalCount: totalOverdue,
+            facilityCount: escFacilities.length,
+            facilities: escFacilities,
+            sourceNotificationRefs: [],
+            fcmSent: true,
+            fcmMessageIds: [],
+            deliveredAt: null,
+            readAt: null,
+            reTriggerCount: 0,
+            lastReTriggeredAt: null,
+            supersededByDigestId: null,
+          });
+          escBatch.set(
+            db.collection('NotificationDigests').doc(userId),
+            { unreadCount: FieldValue.increment(1) },
+            { merge: true },
+          );
+        }
+        await escBatch.commit();
+      }
+
+      const escSendResult = await sendNotificationInternal(
+        {
+          title: escTitle,
+          body: escBody,
+          notificationId: null,
+          priority: 'urgent',
+          data: { type: 'digest', runId: escRunId },
+        },
+        targetUsers,
+      );
+      await logDelivery({
+        kind: 'alert_digest', title: escTitle, body: escBody, result: escSendResult, runId: escRunId,
+      });
+
+      console.log(
+        `escalateOverdueTasks: ${totalOverdue} overdue tasks across `
+        + `${escFacilities.length} facilities — sent to ${targetUsers.length} users`,
+      );
+      return null;
+    } catch (error) {
+      console.error('Error in escalateOverdueTasks:', error);
       return null;
     }
   },

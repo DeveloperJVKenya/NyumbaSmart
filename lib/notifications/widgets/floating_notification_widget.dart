@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/notifications/models/digest_item.dart';
 import 'package:cmms/notifications/providers/notification_providers.dart';
-import 'package:cmms/notifications/screens/notifications_screen.dart';
+import 'package:cmms/notifications/screens/notification_detail_screen.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/screens/dashboard_screen.dart';
 import 'package:cmms/theme/app_theme.dart';
@@ -67,8 +68,10 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
   @override
   Widget build(BuildContext context) {
     final digest = ref.watch(latestUnreadDigestProvider);
+    // Suppress banner while the Notifications screen is open (#14).
+    final screenActive = ref.watch(isNotificationsScreenActiveProvider);
 
-    if (digest == null || digest.id == _dismissedDigestId) {
+    if (digest == null || digest.id == _dismissedDigestId || screenActive) {
       _cancelAutoDismiss();
       return const SizedBox.shrink();
     }
@@ -84,6 +87,8 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
         _animatedForDigestId = digest.id;
         _slideController.reset();
         _slideController.forward();
+        // Haptic feedback when a new banner slides in (#16).
+        HapticFeedback.lightImpact();
       } else if (!_slideController.isAnimating && !_slideController.isCompleted) {
         _slideController.forward();
       }
@@ -203,10 +208,18 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
     );
   }
 
+  // Deep-links directly to the detail screen for the shown digest (#13).
   void _openNotifications(DigestItem digest) {
     _cancelAutoDismiss();
     setState(() => _dismissedDigestId = digest.id);
-    Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen()));
+
+    final userId = ref.read(authStateProvider).value?.uid;
+    DigestItem displayed = digest;
+    if (userId != null && !digest.isRead) {
+      ref.read(notificationServiceProvider).markDigestRead(userId, digest.id);
+      displayed = digest.copyWith(readAt: DateTime.now());
+    }
+    Navigator.push(context, MaterialPageRoute(builder: (context) => NotificationDetailScreen(digest: displayed)));
   }
 
   void _openFacility(DigestItem digest, DigestFacilityGroup facility) {
