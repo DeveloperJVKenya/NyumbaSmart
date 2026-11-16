@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cmms/theme/app_theme.dart';
@@ -323,7 +323,7 @@ class _QuickAccessSectionState extends State<_QuickAccessSection> {
           crossAxisCount: 2,
           mainAxisSpacing: 14,
           crossAxisSpacing: 14,
-          childAspectRatio: 1.2),
+          childAspectRatio: 1.0),
       itemCount: 4,
       itemBuilder: (_, _) => Container(
         decoration: BoxDecoration(
@@ -344,7 +344,7 @@ class _QuickAccessSectionState extends State<_QuickAccessSection> {
           crossAxisCount: crossCount,
           mainAxisSpacing: 14,
           crossAxisSpacing: 14,
-          childAspectRatio: crossCount == 4 ? 1.05 : 1.2,
+          childAspectRatio: crossCount == 4 ? 0.85 : 1.0,
         ),
         itemCount: modules.length,
         itemBuilder: (context, i) => _ModuleCard(
@@ -403,16 +403,16 @@ class _ModuleCardState extends State<_ModuleCard> {
                         offset: Offset(0, 2))
                   ],
           ),
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 52,
-                height: 52,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: m.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(11),
                   boxShadow: [
                     BoxShadow(
                         color: m.color.withValues(alpha: 0.15),
@@ -420,9 +420,9 @@ class _ModuleCardState extends State<_ModuleCard> {
                         offset: const Offset(0, 3))
                   ],
                 ),
-                child: Icon(m.icon, color: m.color, size: 26),
+                child: Icon(m.icon, color: m.color, size: 22),
               ),
-              const Spacer(),
+              const SizedBox(height: 8),
               Text(m.title,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 14,

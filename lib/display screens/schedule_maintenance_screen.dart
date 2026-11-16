@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -14,9 +14,12 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cmms/models/ai_pm_analysis.dart';
 import 'package:cmms/models/preventive_maintenance_task.dart';
 import 'package:cmms/models/scope_of_work_document.dart';
 import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/screens/pm/ai_pm_analysis_screen.dart';
+import 'package:cmms/services/pm_analysis_export_service.dart';
 import 'package:cmms/services/pm_regeneration_service.dart';
 import 'package:cmms/services/pm_scheduling_service.dart';
 import 'package:cmms/services/scope_of_work_excel_parser.dart';
@@ -24,6 +27,8 @@ import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/theme/app_widgets.dart';
 import 'package:cmms/widgets/pdf_viewer_screen.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
+import 'package:cmms/utils/web_download_stub.dart'
+    if (dart.library.js_interop) 'package:cmms/utils/web_download_web.dart';
 
 /// Scope of Work: exactly one scope-of-work document per facility (a single file is expected
 /// to cover every category — Civil/Electrical/Cooling/etc. — at once, so there's no per-document
@@ -47,17 +52,29 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
 
   static const List<String> _activityCategorySuggestions = ['Civil', 'Electrical', 'Water Sanitation', 'Cooling'];
 
-  // Fixed id: exactly one scope-of-work document per facility, so "upload" always means
-  // "replace this one document" rather than adding another to a list.
+  // Fixed id: exactly one scope-of-work document per facility.
   static const String _documentId = 'current';
 
   bool _isBusy = false;
+
+  // Manual upload is hidden by default; Admins/Developers can reveal it.
+  bool _showManualUpload = false;
 
   DocumentReference<Map<String, dynamic>> get _docRef => FirebaseFirestore.instance
       .collection('facilities')
       .doc(widget.facilityId)
       .collection('scope_of_work_documents')
       .doc(_documentId);
+
+  Stream<AiPmAnalysisMeta?> get _aiMetaStream => FirebaseFirestore.instance
+      .collection('facilities')
+      .doc(widget.facilityId)
+      .collection('aiPmAnalysis')
+      .doc('_meta')
+      .snapshots()
+      .map((snap) => snap.exists
+          ? AiPmAnalysisMeta.fromMap(snap.data()!, widget.facilityId)
+          : null);
 
   @override
   Widget build(BuildContext context) {
@@ -83,38 +100,303 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
   }
 
   Widget _buildBody() {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: _docRef.snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final doc = snapshot.data;
-        final exists = doc != null && doc.exists;
-        final sow = exists ? ScopeOfWorkDocument.fromFirestore(doc, widget.facilityId) : null;
+    final roleInfo = ref.watch(currentUserRoleProvider).value;
+    final role = roleInfo?.roleLabel ?? 'User';
+    final canManage = role == 'Admin' || role == 'Developer';
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final isMobile = AppBreakpoints.isMobile(constraints.maxWidth);
-            return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                isMobile ? AppSpacing.md : AppSpacing.xl,
-                AppSpacing.md,
-                isMobile ? AppSpacing.md : AppSpacing.xl,
-                isMobile ? AppSpacing.md : AppSpacing.xl,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _header(isMobile),
-                  const SizedBox(height: AppSpacing.lg),
-                  sow == null ? _emptyState() : _documentCard(sow),
-                ],
-              ),
+    return StreamBuilder<AiPmAnalysisMeta?>(
+      stream: _aiMetaStream,
+      builder: (context, aiSnap) {
+        final aiMeta = aiSnap.data;
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: _docRef.snapshots(),
+          builder: (context, sowSnap) {
+            if (sowSnap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final sowDoc = sowSnap.data;
+            final sow = (sowDoc != null && sowDoc.exists)
+                ? ScopeOfWorkDocument.fromFirestore(sowDoc, widget.facilityId)
+                : null;
+
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = AppBreakpoints.isMobile(constraints.maxWidth);
+                final hp = isMobile ? AppSpacing.md : AppSpacing.xl;
+                return SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(hp, AppSpacing.md, hp, hp),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _header(isMobile),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      // ── AI-generated SoW (primary) ──────────────────────
+                      _aiSowCard(aiMeta, role),
+                      const SizedBox(height: AppSpacing.md),
+
+                      // ── Manual upload (hidden, Admin/Developer toggle) ───
+                      if (canManage) ...[
+                        TextButton.icon(
+                          onPressed: () => setState(() => _showManualUpload = !_showManualUpload),
+                          icon: Icon(
+                            _showManualUpload ? Icons.visibility_off_outlined : Icons.upload_file_outlined,
+                            size: 16,
+                            color: AppColors.textSecondary,
+                          ),
+                          label: Text(
+                            _showManualUpload ? 'Hide legacy upload' : 'Show legacy upload',
+                            style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary),
+                          ),
+                        ),
+                        if (_showManualUpload) ...[
+                          const SizedBox(height: 8),
+                          sow == null ? _legacyEmptyState() : _documentCard(sow),
+                        ],
+                      ],
+                    ],
+                  ),
+                );
+              },
             );
           },
         );
       },
+    );
+  }
+
+  Widget _aiSowCard(AiPmAnalysisMeta? meta, String role) {
+    final canNavigate = role == 'Admin' || role == 'Developer' || role == 'Technician';
+    final isPublished = meta?.publishedSowId != null;
+    final isRunning = meta?.status == AiAnalysisStatus.running;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Icon(Icons.auto_awesome_outlined,
+                color: AppColors.primary, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('AI-Generated Scope of Work',
+                  style: GoogleFonts.poppins(
+                      fontSize: 15, fontWeight: FontWeight.w700)),
+              Text('Sourced from BIM model AI analysis',
+                  style: GoogleFonts.poppins(
+                      fontSize: 11.5, color: AppColors.textSecondary)),
+            ]),
+          ),
+          if (isPublished)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text('Published',
+                  style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.success)),
+            ),
+          if (isRunning)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const SizedBox(
+                    width: 10,
+                    height: 10,
+                    child: CircularProgressIndicator(strokeWidth: 1.5)),
+                const SizedBox(width: 6),
+                Text('Running',
+                    style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.accent)),
+              ]),
+            ),
+        ]),
+        const SizedBox(height: 16),
+
+        if (!isPublished && !isRunning)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'No published AI analysis yet. Import a BIM model and run the AI analysis to generate the Scope of Work.',
+              style: GoogleFonts.poppins(
+                  fontSize: 13, color: AppColors.textSecondary),
+            ),
+          ),
+
+        if (isPublished) ...[
+          Row(children: [
+            _statChip(Icons.list_alt_rounded, '${meta!.itemCount} items'),
+            const SizedBox(width: 8),
+            if (meta.completedAt != null)
+              _statChip(Icons.access_time_rounded,
+                  DateFormat('d MMM yyyy').format(meta.completedAt!)),
+          ]),
+          const SizedBox(height: 14),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            _dlButton('CSV', Icons.table_chart_outlined, 'csv'),
+            _dlButton('Excel', Icons.grid_on_outlined, 'xlsx'),
+            _dlButton('PDF', Icons.picture_as_pdf_outlined, 'pdf'),
+            _dlButton('DOCX', Icons.article_outlined, 'docx'),
+          ]),
+          const SizedBox(height: 4),
+        ],
+
+        if (canNavigate) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () {
+              final roleInfo = ref.read(currentUserRoleProvider).value;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AiPmAnalysisScreen(
+                    facilityId: widget.facilityId,
+                    currentRole: roleInfo?.roleLabel ?? 'User',
+                    organization: roleInfo?.organization ?? '-',
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.open_in_new, size: 16),
+            label: Text('Open AI Analysis',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
+              foregroundColor: AppColors.primary,
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _statChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: AppColors.textSecondary),
+        const SizedBox(width: 4),
+        Text(label,
+            style: GoogleFonts.poppins(
+                fontSize: 11.5, color: AppColors.textSecondary)),
+      ]),
+    );
+  }
+
+  Widget _dlButton(String label, IconData icon, String format) {
+    return OutlinedButton.icon(
+      onPressed: () => _handleAiExport(format),
+      icon: Icon(icon, size: 15),
+      label: Text(label, style: GoogleFonts.poppins(fontSize: 12)),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.primary,
+        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      ),
+    );
+  }
+
+  Future<void> _handleAiExport(String format) async {
+    final itemsSnap = await FirebaseFirestore.instance
+        .collection('facilities')
+        .doc(widget.facilityId)
+        .collection('aiPmAnalysis')
+        .where(FieldPath.documentId, isNotEqualTo: '_meta')
+        .get();
+    final items = itemsSnap.docs.map(AiPmAnalysisItem.fromFirestore).toList();
+    if (items.isEmpty) {
+      _showSnackBar('No analysis items to export');
+      return;
+    }
+
+    late Uint8List bytes;
+    late String fileName;
+    late String mime;
+    switch (format) {
+      case 'csv':
+        bytes = PmAnalysisExportService.toCsv(items);
+        fileName = 'pm_scope_of_work.csv';
+        mime = 'text/csv';
+      case 'xlsx':
+        bytes = PmAnalysisExportService.toXlsx(items);
+        fileName = 'pm_scope_of_work.xlsx';
+        mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'pdf':
+        bytes = await PmAnalysisExportService.toPdf(items);
+        fileName = 'pm_scope_of_work.pdf';
+        mime = 'application/pdf';
+      case 'docx':
+        bytes = await PmAnalysisExportService.toDocx(items);
+        fileName = 'pm_scope_of_work.docx';
+        mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      default:
+        return;
+    }
+
+    if (kIsWeb) {
+      triggerWebDownload(bytes, fileName, mime);
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(bytes);
+      await OpenFile.open(file.path);
+    }
+  }
+
+  Widget _legacyEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(children: [
+          Icon(Icons.folder_open_rounded,
+              size: 48, color: AppColors.textSecondary.withValues(alpha: 0.4)),
+          const SizedBox(height: 12),
+          Text('No legacy document uploaded',
+              style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500)),
+          const SizedBox(height: 16),
+          AppGradientButton(
+            label: 'Upload Document',
+            icon: Icons.upload_file_rounded,
+            isLoading: _isBusy,
+            onPressed: _isBusy ? null : () => _pickAndUpload(isReplace: false),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -147,27 +429,6 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
     );
   }
 
-  Widget _emptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 48),
-        child: Column(
-          children: [
-            Icon(Icons.folder_open_rounded, size: 56, color: AppColors.textSecondary.withValues(alpha: 0.4)),
-            const SizedBox(height: 16),
-            Text('No scope of work document uploaded yet', style: GoogleFonts.poppins(fontSize: 16, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 20),
-            AppGradientButton(
-              label: 'Upload Document',
-              icon: Icons.upload_file_rounded,
-              isLoading: _isBusy,
-              onPressed: _isBusy ? null : () => _pickAndUpload(isReplace: false),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _documentCard(ScopeOfWorkDocument sow) {
     final isPdf = sow.fileName.toLowerCase().endsWith('.pdf');

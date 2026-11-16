@@ -19,6 +19,7 @@ dependencies:
   firebase_storage: ^14.0.0
   firebase_messaging: ^17.0.0
   cloud_functions: ^7.0.0
+  firebase_ai: ^5.0.0
   
   # UI & Design
   responsive_builder: ^0.7.0
@@ -48,6 +49,8 @@ dependencies:
   open_file: ^4.0.0
   image_picker: ^1.1.2
   excel: ^4.0.6
+  pdf: ^3.11.3
+  printing: ^5.14.2
   
   # Notifications & Background Tasks
   flutter_local_notifications: ^22.3.0

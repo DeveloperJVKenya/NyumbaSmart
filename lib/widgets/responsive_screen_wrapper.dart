@@ -1,4 +1,4 @@
-import 'package:cmms/screens/dashboard_screen.dart';
+﻿import 'package:cmms/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -52,6 +52,7 @@ class ResponsiveScreenWrapper extends ConsumerStatefulWidget {
   final List<Widget>? actions;
   final Widget? floatingActionButton;
   final VoidCallback? onFacilityReset;
+  final Widget? bottomBar;
 
   const ResponsiveScreenWrapper({
     super.key,
@@ -65,6 +66,7 @@ class ResponsiveScreenWrapper extends ConsumerStatefulWidget {
     this.actions,
     this.floatingActionButton,
     this.onFacilityReset,
+    this.bottomBar,
   });
 
   @override
@@ -228,6 +230,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
           Expanded(child: widget.child),
         ],
       ),
+      bottomNavigationBar: widget.bottomBar,
       floatingActionButton: widget.floatingActionButton,
     );
   }

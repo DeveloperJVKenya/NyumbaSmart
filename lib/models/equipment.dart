@@ -41,6 +41,12 @@ class Equipment {
   /// Uniclass / OmniClass / etc. code, when the client uses one.
   final String? classification;
 
+  /// Normalised CMMS category — one of the 7 known values: Electrical, HVAC, Mechanical,
+  /// Plumbing, Safety, Structural, Furniture/Fittings, or 'Unknown'.
+  /// For IFC imports this is set from [type] (the IFC parser maps it directly).
+  /// For COBie imports it is derived from [classification] via [normalisedCategory].
+  final String category;
+
   // --- Lifecycle dates (imported from IFC Psets or COBie Component/Type sheets) ---
 
   /// Date the asset was physically installed at the facility.
@@ -85,9 +91,67 @@ class Equipment {
     this.warrantyStartDate,
     this.warrantyEndDate,
     this.expectedLifeYears,
-  });
+    String? category,
+  }) : category = category ?? normalisedCategory(classification, type);
 
   bool get isBimLinked => bimGlobalId != null && bimGlobalId!.isNotEmpty;
+
+  /// Maps a raw COBie Type.Category string (or IFC type string) to one of the 7 known
+  /// CMMS categories. Used by both Equipment.fromSnapshot and BimImportService.
+  static const List<String> knownCategories = [
+    'Electrical', 'HVAC', 'Mechanical', 'Plumbing', 'Safety', 'Structural', 'Furniture/Fittings',
+  ];
+
+  static String normalisedCategory(String? classification, String type) {
+    final raw = (classification ?? type).toLowerCase().trim();
+    if (raw.isEmpty) return 'Unknown';
+    // Direct known-category match.
+    for (final cat in knownCategories) {
+      if (raw == cat.toLowerCase()) return cat;
+    }
+    // Keyword matching for free-text COBie classification values.
+    if (raw.contains('electric') || raw.contains('power') || raw.contains('lighting')
+        || raw.contains('switch') || raw.contains('socket') || raw.contains('cable')
+        || raw.contains('ups') || raw.contains('generator') || raw.contains('transformer')
+        || raw.contains('distribution') || raw.contains('panel')) {
+      return 'Electrical';
+    }
+    if (raw.contains('hvac') || raw.contains('ventilat') || raw.contains('air') || raw.contains('cool')
+        || raw.contains('heat') || raw.contains('boiler') || raw.contains('chiller')
+        || raw.contains('fan') || raw.contains('duct') || raw.contains('diffuser')
+        || raw.contains('damper') || raw.contains('coil') || raw.contains('compressor')
+        || raw.contains('refriger')) {
+      return 'HVAC';
+    }
+    if (raw.contains('pump') || raw.contains('motor') || raw.contains('engine')
+        || raw.contains('lift') || raw.contains('escalat') || raw.contains('conveyor')
+        || raw.contains('gear') || raw.contains('mechanical') || raw.contains('actuator')
+        || raw.contains('sensor') || raw.contains('controller') || raw.contains('instrument')) {
+      return 'Mechanical';
+    }
+    if (raw.contains('plumb') || raw.contains('pipe') || raw.contains('water')
+        || raw.contains('drain') || raw.contains('sanitar') || raw.contains('toilet')
+        || raw.contains('tank') || raw.contains('valve') || raw.contains('flow meter')
+        || (raw.contains('pump') && raw.contains('water'))) {
+      return 'Plumbing';
+    }
+    if (raw.contains('fire') || raw.contains('sprinkler') || raw.contains('smoke')
+        || raw.contains('alarm') || raw.contains('emergency') || raw.contains('safety')
+        || raw.contains('suppression') || raw.contains('extinguish')
+        || raw.contains('security') || raw.contains('cctv') || raw.contains('access control')) {
+      return 'Safety';
+    }
+    if (raw.contains('structur') || raw.contains('concrete') || raw.contains('steel')
+        || raw.contains('roof') || raw.contains('floor') || raw.contains('wall')
+        || raw.contains('glass') || raw.contains('facade')) {
+      return 'Structural';
+    }
+    if (raw.contains('furniture') || raw.contains('fitting') || raw.contains('fixture')
+        || raw.contains('blind') || raw.contains('partition')) {
+      return 'Furniture/Fittings';
+    }
+    return 'Unknown';
+  }
 
   factory Equipment.fromSnapshot(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -121,6 +185,7 @@ class Equipment {
       typeName: data['typeName'] as String?,
       systemName: data['systemName'] as String?,
       classification: data['classification'] as String?,
+      category: data['category'] as String?,
       installationDate: (data['installationDate'] as Timestamp?)?.toDate(),
       warrantyStartDate: (data['warrantyStartDate'] as Timestamp?)?.toDate(),
       warrantyEndDate: (data['warrantyEndDate'] as Timestamp?)?.toDate(),
@@ -155,6 +220,7 @@ class Equipment {
       if (typeName != null) 'typeName': typeName,
       if (systemName != null) 'systemName': systemName,
       if (classification != null) 'classification': classification,
+      'category': category,
       if (installationDate != null) 'installationDate': Timestamp.fromDate(installationDate!),
       if (warrantyStartDate != null) 'warrantyStartDate': Timestamp.fromDate(warrantyStartDate!),
       if (warrantyEndDate != null) 'warrantyEndDate': Timestamp.fromDate(warrantyEndDate!),

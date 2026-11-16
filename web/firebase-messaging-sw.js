@@ -77,22 +77,30 @@ self.addEventListener("notificationclick", (event) => {
   }
 
   if (event.action === "view") {
-    // Open the app and navigate to notification details
+    // For client PM-advance notifications, deep-link to the response screen.
+    const data = event.notification.data || {}
+    const targetUrl = data.type === "pm_advance_client" && data.facilityId && data.taskId
+      ? `/?pm_response=1&facilityId=${encodeURIComponent(data.facilityId)}&taskId=${encodeURIComponent(data.taskId)}&equipmentName=${encodeURIComponent(data.equipmentName || "")}&plannedDate=${encodeURIComponent(data.plannedDate || "")}`
+      : (data.url || "/")
+
     event.waitUntil(
       clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-        // Check if app is already open
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && "focus" in client) {
             client.focus()
             client.postMessage({
               type: "NOTIFICATION_CLICKED",
-              notificationId: event.notification.data?.notificationId,
+              notificationId: data.notificationId,
+              notificationType: data.type,
+              facilityId: data.facilityId,
+              taskId: data.taskId,
+              equipmentName: data.equipmentName,
+              plannedDate: data.plannedDate,
             })
             return
           }
         }
-        // If no window is open, open a new one
-        return clients.openWindow("/maintenance-tasks")
+        return clients.openWindow(targetUrl)
       }),
     )
   } else if (event.action === "dismiss") {

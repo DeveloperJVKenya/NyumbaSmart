@@ -150,7 +150,7 @@ class PmGenerationService {
             PreventiveMaintenanceTask(
               id: ref.id,
               facilityId: facilityId,
-              category: equipment.type, // e.g. 'HVAC', 'Electrical'
+              category: equipment.category, // normalised CMMS category
               component: equipment.name,
               intervention: tpl.intervention,
               frequencyMonths: tpl.frequencyMonths,
@@ -190,7 +190,7 @@ class PmGenerationService {
             equipmentId: equipment.id,
             equipmentName: equipment.name,
             equipmentType: typeName,
-            equipmentCategory: equipment.type,
+            equipmentCategory: equipment.category,
             bimGlobalId: equipment.bimGlobalId,
             status: 'pending',
             createdAt: now,

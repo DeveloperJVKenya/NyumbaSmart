@@ -6,6 +6,25 @@ import 'package:cmms/models/bim_model.dart';
 import 'package:cmms/models/equipment.dart';
 import 'package:cmms/models/preventive_maintenance_task.dart';
 import 'package:cmms/services/bim/cobie_parser.dart';
+import 'package:cmms/services/bim/italian_bim_glossary.dart';
+
+String _equipmentCategory(CobieEquipmentDraft e, BimSourceType sourceType) {
+  if (sourceType == BimSourceType.ifc) {
+    // IFC parser sets type to the CMMS category directly (e.g. 'HVAC', 'Electrical').
+    if (Equipment.knownCategories.contains(e.type)) return e.type;
+    // IfcBuildingElementProxy elements (type = 'Unclassified') have no IFC class to map
+    // from. Italian Revit models use this class heavily. Try to infer the category by
+    // translating the element name through the Italian glossary and running keyword
+    // matching on the result.
+    final translatedName = ItalianBimGlossary.translate(e.name);
+    final translatedClass = e.classification != null
+        ? ItalianBimGlossary.translate(e.classification!)
+        : null;
+    final inferred = Equipment.normalisedCategory(translatedClass, translatedName);
+    if (inferred != 'Unknown') return inferred;
+  }
+  return Equipment.normalisedCategory(e.classification, e.type);
+}
 
 class BimImportResult {
   final String modelId;
@@ -194,6 +213,7 @@ class BimImportService {
           final update = <String, dynamic>{
             'name': e.name,
             'type': e.type,
+            'category': _equipmentCategory(e, sourceType),
             'manufacturer': e.manufacturer,
             'modelNumber': e.modelNumber,
             'typeName': e.typeName.isEmpty ? null : e.typeName,
@@ -247,6 +267,7 @@ class BimImportService {
               typeName: e.typeName.isEmpty ? null : e.typeName,
               systemName: e.systemName,
               classification: e.classification,
+              category: _equipmentCategory(e, sourceType),
               installationDate: e.installationDate,
               warrantyStartDate: e.warrantyStart,
               warrantyEndDate: e.warrantyEnd,

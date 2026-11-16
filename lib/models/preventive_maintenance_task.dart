@@ -100,6 +100,10 @@ class PreventiveMaintenanceTask {
   /// a secondary Firestore read.
   final String? equipmentName;
 
+  final List<String> toolsRequired;
+  final double estimatedHours;
+  final List<String> spares;
+
   PreventiveMaintenanceTask({
     required this.id,
     required this.facilityId,
@@ -119,6 +123,9 @@ class PreventiveMaintenanceTask {
     this.assignedTo,
     this.equipmentId,
     this.equipmentName,
+    this.toolsRequired = const [],
+    this.estimatedHours = 0,
+    this.spares = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -141,6 +148,9 @@ class PreventiveMaintenanceTask {
       'assignedTo': assignedTo,
       if (equipmentId != null) 'equipmentId': equipmentId,
       if (equipmentName != null) 'equipmentName': equipmentName,
+      if (toolsRequired.isNotEmpty) 'toolsRequired': toolsRequired,
+      if (estimatedHours > 0) 'estimatedHours': estimatedHours,
+      if (spares.isNotEmpty) 'spares': spares,
     };
   }
 
@@ -170,6 +180,9 @@ class PreventiveMaintenanceTask {
       assignedTo: data['assignedTo'],
       equipmentId: data['equipmentId'] as String?,
       equipmentName: data['equipmentName'] as String?,
+      toolsRequired: (data['toolsRequired'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      estimatedHours: (data['estimatedHours'] as num?)?.toDouble() ?? 0,
+      spares: (data['spares'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     );
   }
 

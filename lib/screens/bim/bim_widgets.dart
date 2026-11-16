@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/user_model.dart';
 import 'package:cmms/providers/auth_providers.dart';

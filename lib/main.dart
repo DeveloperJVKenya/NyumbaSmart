@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:cmms/authentication/splashscreen.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'firebase_options.dart';
 import 'package:cmms/authentication/need_account_screen.dart';
 import 'package:cmms/theme/app_theme.dart';
+import 'package:cmms/screens/pm/pm_schedule_response_screen.dart';
 
 // Background message handler (must be top-level). Due/alert/custom notifications are entirely
 // server-driven now (see functions/index.js checkDueNotifications / onCustomNotificationCreated),
@@ -122,48 +123,77 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _setupForegroundMessageHandling() {
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      _logger.i('Received foreground message: ${message.notification?.title}');
+    try {
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        _logger.i('Received foreground message: ${message.notification?.title}');
 
-      // Ack receipt for every platform, including web — this runs with a live signed-in session
-      // regardless of the notifications-enabled toggle below (the push was still received; a
-      // disabled toggle only suppresses local display, it shouldn't hide that delivery worked).
-      await NotificationService().markDelivered(runId: message.data['runId']);
+        // Ack receipt for every platform, including web — this runs with a live signed-in session
+        // regardless of the notifications-enabled toggle below (the push was still received; a
+        // disabled toggle only suppresses local display, it shouldn't hide that delivery worked).
+        await NotificationService().markDelivered(runId: message.data['runId']);
 
-      final prefs = await SharedPreferences.getInstance();
-      final enabled = prefs.getBool('notifications_enabled') ?? true;
-      if (!enabled) return;
+        final prefs = await SharedPreferences.getInstance();
+        final enabled = prefs.getBool('notifications_enabled') ?? true;
+        if (!enabled) return;
 
-      final notification = message.notification;
-      if (kIsWeb || notification == null) {
-        // Web foreground display is handled by the service worker; the in-app floating banner
-        // (backed by the NotificationDigests stream) covers the rest.
+        final notification = message.notification;
+        if (kIsWeb || notification == null) {
+          // Web foreground display is handled by the service worker; the in-app floating banner
+          // (backed by the NotificationDigests stream) covers the rest.
+          return;
+        }
+
+        await SystemTrayNotificationService().showDigestNotification(
+          id: notification.hashCode,
+          title: notification.title ?? 'Maintenance Notification',
+          body: notification.body ?? 'You have a new maintenance notification',
+          isUrgent: message.data['priority'] == 'urgent',
+        );
+      });
+
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        _logger.i('Notification opened app: ${message.notification?.title}');
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _handleNotificationNavigation(message.data);
+        });
+      });
+
+      FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
+        if (message != null) {
+          _logger.i('App opened from terminated state via notification: ${message.notification?.title}');
+          Future.delayed(const Duration(seconds: 2), () {
+            _handleNotificationNavigation(message.data);
+          });
+        }
+      });
+    } catch (e) {
+      _logger.w('FCM foreground listener unavailable (HTTP context or unsupported browser): $e');
+    }
+  }
+
+  void _handleNotificationNavigation(Map<String, dynamic> data) {
+    if (data['type'] == 'pm_advance_client') {
+      final facilityId = data['facilityId'] as String? ?? '';
+      final taskId = data['taskId'] as String? ?? '';
+      final equipmentName = data['equipmentName'] as String? ?? 'Equipment';
+      final plannedDateRaw = data['plannedDate'] as String? ?? '';
+      final plannedDate = DateTime.tryParse(plannedDateRaw) ?? DateTime.now();
+
+      if (facilityId.isNotEmpty && taskId.isNotEmpty) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => PmScheduleResponseScreen(
+              facilityId: facilityId,
+              taskId: taskId,
+              equipmentName: equipmentName,
+              plannedDate: plannedDate,
+            ),
+          ),
+        );
         return;
       }
-
-      await SystemTrayNotificationService().showDigestNotification(
-        id: notification.hashCode,
-        title: notification.title ?? 'Maintenance Notification',
-        body: notification.body ?? 'You have a new maintenance notification',
-        isUrgent: message.data['priority'] == 'urgent',
-      );
-    });
-
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      _logger.i('Notification opened app: ${message.notification?.title}');
-      Future.delayed(const Duration(milliseconds: 500), () {
-        navigatorKey.currentState?.pushNamed('/notification-status');
-      });
-    });
-
-    FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
-      if (message != null) {
-        _logger.i('App opened from terminated state via notification: ${message.notification?.title}');
-        Future.delayed(const Duration(seconds: 2), () {
-          navigatorKey.currentState?.pushNamed('/notification-status');
-        });
-      }
-    });
+    }
+    navigatorKey.currentState?.pushNamed('/notification-status');
   }
 
   @override

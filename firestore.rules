@@ -600,6 +600,63 @@ service cloud.firestore {
       allow read: if false;
     }
 
+    // ── AI PM Analysis ─────────────────────────────────────────────────────────
+    // Written by the Cloud Function (admin SDK); read + inline-edited by Admin/Developer;
+    // clients have no access.  The _meta sentinel document follows the same rule.
+    match /facilities/{facilityId}/aiPmAnalysis/{docId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper() || isTechnician());
+      allow create: if false; // Cloud Function only
+      allow update: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
+    // ── Client–Facility links ───────────────────────────────────────────────────
+    // Admin/Developer create links; the linked client user reads their own record.
+    match /facilities/{facilityId}/clientLinks/{linkId} {
+      allow read: if request.auth != null && (
+        canAccessFacility(facilityId) ||
+        resource.data.clientUid == request.auth.uid
+      );
+      allow create: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+      allow update: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
+    // ── PM Schedule Responses (client accept / reschedule) ─────────────────────
+    // A linked client writes their own response; Admin/Developer/Technician reads
+    // it to react on the other end.
+    match /facilities/{facilityId}/pmScheduleResponses/{taskId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper() || isTechnician());
+      // Also allow the client whose uid matches the response to read their own.
+      allow read: if request.auth != null &&
+        resource.data.clientUid == request.auth.uid;
+      // Client writes their own response (one document per task).
+      allow create: if request.auth != null &&
+        request.resource.data.clientUid == request.auth.uid;
+      allow update: if false; // responses are immutable once submitted
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
+    // ── Maintenance History (per-equipment completion log) ─────────────────────
+    // Written by the technician client on task completion (also by Cloud Function).
+    // Immutable after creation; readable by anyone with facility access.
+    match /facilities/{facilityId}/equipment/{equipmentId}/maintenanceHistory/{histId} {
+      allow read: if request.auth != null && canAccessFacility(facilityId);
+      allow create: if request.auth != null && canAccessFacility(facilityId) &&
+        (isTechnician() || isAdmin() || isDeveloper());
+      allow update: if false; // history records are immutable
+      allow delete: if request.auth != null && canAccessFacility(facilityId) &&
+        (isAdmin() || isDeveloper());
+    }
+
     match /{path=**} {
       allow read, write: if false;
     }

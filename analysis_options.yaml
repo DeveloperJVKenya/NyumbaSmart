@@ -8,6 +8,12 @@
 # The following line activates a set of recommended lints for Flutter apps,
 # packages, and plugins designed to encourage good coding practices.
 analyzer:
+  errors:
+    # flutter/material.dart is marked deprecated in Flutter 3.47+ in favour of
+    # material_ui/material_ui.dart, but google_fonts (and other packages) haven't
+    # migrated yet — their TextTheme/ThemeData types are incompatible. Suppress the
+    # info hint project-wide until the ecosystem catches up.
+    deprecated_member_use: ignore
   exclude:
     - build/**
     - android/**

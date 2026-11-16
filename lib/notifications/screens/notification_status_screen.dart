@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:cmms/notifications/screens/notifications_screen.dart';
 
 /// Landing screen when a notification is tapped (from the OS tray, or `onMessageOpenedApp`) —

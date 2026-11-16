@@ -47,6 +47,14 @@ class NotificationService {
     if (_isInitialized) return;
     _isInitialized = true;
 
+    // Web push (FCM) requires HTTPS and Service Worker support. On plain HTTP
+    // (e.g. `flutter run -d chrome` on localhost) the browser has no Notification
+    // API — skip all FCM setup to avoid the cascade of unsupported-browser errors.
+    if (kIsWeb && Uri.base.scheme != 'https') {
+      _logger.w('FCM skipped: web push requires HTTPS (current: ${Uri.base.scheme}://)');
+      return;
+    }
+
     await _createNotificationChannels();
     await _requestPermissions();
     await _registerFcmToken();

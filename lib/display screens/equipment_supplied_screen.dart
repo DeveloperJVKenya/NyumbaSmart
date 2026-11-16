@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+﻿import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -10,6 +10,8 @@ import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/equipment.dart';
 import 'package:cmms/models/bim_model.dart';
+import 'package:cmms/models/maintenance_history_record.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/screens/bim/bim_import_screen.dart';
 import 'package:cmms/display%20screens/request_screen.dart';
 import 'package:cmms/display%20screens/work_order_screen.dart';
@@ -723,6 +725,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                 if (equipment.notes.isNotEmpty) _buildDetailRow('Notes', equipment.notes, fontSize),
                 if (equipment.attachments.isNotEmpty) _buildAttachmentsSection(equipment.attachments, fontSize),
                 if (equipment.maintenanceHistory.isNotEmpty) _buildHistorySection(equipment.maintenanceHistory, fontSize),
+                _buildPmHistoryTimeline(equipment.id, fontSize),
                 EquipmentActivitySection(facilityId: widget.facilityId, equipmentId: equipment.id, fontSize: fontSize),
                 const SizedBox(height: 12),
                 _buildActionButtons(equipment),
@@ -843,6 +846,105 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
               )),
         ],
       ),
+    );
+  }
+
+  Widget _buildPmHistoryTimeline(String equipmentId, double fontSize) {
+    final stream = FirebaseFirestore.instance
+        .collection('facilities')
+        .doc(widget.facilityId)
+        .collection('equipment')
+        .doc(equipmentId)
+        .collection('maintenanceHistory')
+        .orderBy('actualDate', descending: true)
+        .limit(10)
+        .snapshots()
+        .map((s) => s.docs.map(MaintenanceHistoryRecord.fromFirestore).toList());
+
+    return StreamBuilder<List<MaintenanceHistoryRecord>>(
+      stream: stream,
+      builder: (context, snap) {
+        if (!snap.hasData || snap.data!.isEmpty) return const SizedBox.shrink();
+        final records = snap.data!;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(Icons.history_rounded, size: 14, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Text('PM History',
+                    style: GoogleFonts.poppins(
+                        fontSize: fontSize - 2,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary)),
+              ]),
+              const SizedBox(height: 8),
+              ...records.asMap().entries.map((e) {
+                final rec = e.value;
+                final isLast = e.key == records.length - 1;
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        child: Column(children: [
+                          Container(
+                            width: 10, height: 10,
+                            decoration: BoxDecoration(
+                              color: AppColors.success,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.success.withValues(alpha: 0.3), width: 2),
+                            ),
+                          ),
+                          if (!isLast)
+                            Expanded(child: Container(width: 2, color: AppColors.success.withValues(alpha: 0.2))),
+                        ]),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
+                              border: Border.all(color: AppColors.success.withValues(alpha: 0.15)),
+                            ),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Row(children: [
+                                Expanded(child: Text(
+                                  DateFormat('d MMM yyyy').format(rec.actualDate),
+                                  style: GoogleFonts.poppins(fontSize: fontSize - 3, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                                )),
+                                Text('Next: ${DateFormat('d MMM yy').format(rec.nextDueDate)}',
+                                    style: GoogleFonts.poppins(fontSize: fontSize - 4, color: AppColors.primary)),
+                              ]),
+                              if (rec.completedByName.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text('by ${rec.completedByName}',
+                                    style: GoogleFonts.poppins(fontSize: fontSize - 4, color: AppColors.textSecondary)),
+                              ],
+                              if (rec.notes.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(rec.notes,
+                                    style: GoogleFonts.poppins(fontSize: fontSize - 3, color: AppColors.textSecondary)),
+                              ],
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
     );
   }
 

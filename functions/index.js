@@ -3,8 +3,9 @@ const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestor
 const { getMessaging } = require('firebase-admin/messaging');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
+const { VertexAI } = require('@google-cloud/vertexai');
 
 initializeApp();
 
@@ -776,6 +777,88 @@ exports.checkDueNotifications = onSchedule(
           await digestBatch.commit();
         }
 
+        // Fan-out 5-day advance notice to clients linked to each facility (#27).
+        for (const facilityEntry of digestFacilities) {
+          const facId = facilityEntry.facilityId;
+          const clientLinksSnap = await db // eslint-disable-line no-await-in-loop
+            .collection('facilities').doc(facId)
+            .collection('clientLinks')
+            .where('active', '==', true)
+            .get();
+
+          if (clientLinksSnap.empty) {
+            // eslint-disable-next-line no-continue
+            continue;
+          }
+
+          const clientUids = clientLinksSnap.docs.map((d) => d.id);
+          const clientTitle = `Upcoming Maintenance at ${facilityEntry.facilityName}`;
+          const topItems = facilityEntry.items.slice(0, 3).map((it) => it.component || it.intervention).join(', ');
+          const clientBody = `${facilityEntry.count} task${facilityEntry.count === 1 ? '' : 's'} due: ${topItems}. `
+            + 'Tap to Accept or Reschedule.';
+
+          const clientBatch = db.batch();
+          clientUids.forEach((uid) => {
+            const parentRef = db.collection('NotificationDigests').doc(uid);
+            const itemRef = parentRef.collection('items').doc();
+            clientBatch.set(parentRef, { unreadCount: FieldValue.increment(1) }, { merge: true });
+            clientBatch.set(itemRef, {
+              userId: uid,
+              runId,
+              createdAt: FieldValue.serverTimestamp(),
+              kind: 'pm_advance_client',
+              title: clientTitle,
+              body: clientBody,
+              facilityId: facId,
+              facilityName: facilityEntry.facilityName,
+              items: facilityEntry.items,
+              readAt: null,
+              deliveredAt: null,
+            });
+          });
+          await clientBatch.commit(); // eslint-disable-line no-await-in-loop
+
+          // Send a per-task FCM push to each client so the notification tap
+          // deep-links directly to PmScheduleResponseScreen for that task.
+          const clientTokens = ( // eslint-disable-line no-await-in-loop
+            await Promise.all(
+              clientUids.map(async (uid) => {
+                const userDoc = await db.collection('Users').doc(uid).get();
+                return userDoc.exists ? userDoc.data().fcmToken || null : null;
+              }),
+            )
+          ).filter(Boolean);
+
+          if (clientTokens.length > 0) {
+            // eslint-disable-next-line no-await-in-loop
+            await Promise.all(facilityEntry.items.map((item) => {
+              let plannedDate = new Date().toISOString();
+              if (item.dueDate) {
+                plannedDate = item.dueDate.toDate
+                  ? item.dueDate.toDate().toISOString()
+                  : new Date(item.dueDate).toISOString();
+              }
+              const equipmentName = item.component || item.intervention || 'Equipment';
+              return messaging.sendEachForMulticast({
+                tokens: clientTokens,
+                notification: {
+                  title: `Upcoming Maintenance: ${equipmentName}`,
+                  body: `Scheduled maintenance on ${equipmentName}. Tap to Accept or Reschedule.`,
+                },
+                data: {
+                  type: 'pm_advance_client',
+                  facilityId: facId,
+                  taskId: item.taskId,
+                  equipmentName,
+                  plannedDate,
+                },
+                android: { priority: 'normal' },
+                apns: { payload: { aps: { sound: 'default' } } },
+              });
+            }));
+          }
+        }
+
         // One multicast for the whole run — content is uniform across recipients today (see
         // comment above), so a single send covers every target user's device(s). `runId` rides
         // along in the data payload so each recipient's device can ack receipt back onto its own
@@ -1366,6 +1449,505 @@ exports.escalateOverdueTasks = onSchedule(
   },
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AI PM Analysis
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Valid equipment categories: Electrical, HVAC, Mechanical, Plumbing, Safety, Structural, Furniture/Fittings
+
+const TEMPLATE_SEED = {
+  'Air Terminal': { frequencyMonths: 12, reason: 'Clean and inspect grilles/diffusers' },
+  'Air Terminal Box': { frequencyMonths: 12, reason: 'Inspect, test and calibrate VAV box actuator' },
+  'Boiler': { frequencyMonths: 6, reason: 'Safety valve lift test and flue gas analysis' },
+  'Chiller': { frequencyMonths: 6, reason: 'Check refrigerant charge and inspect for leaks' },
+  'Compressor': { frequencyMonths: 3, reason: 'Check oil level and inspect for leaks' },
+  'Cooling Tower': { frequencyMonths: 3, reason: 'Clean basin and inspect fill packing' },
+  'Fan': { frequencyMonths: 3, reason: 'Inspect belts, tension and alignment' },
+  'Filter': { frequencyMonths: 3, reason: 'Replace or clean air filter' },
+  'Pump': { frequencyMonths: 6, reason: 'Check seals, bearings and alignment' },
+  'Generator': { frequencyMonths: 6, reason: 'Full load test and service' },
+  'UPS': { frequencyMonths: 6, reason: 'Battery load test and inspection' },
+  'Transformer': { frequencyMonths: 12, reason: 'Inspect connections and insulation' },
+  'Fire Alarm Control Panel': { frequencyMonths: 6, reason: 'Full system test and sensor check' },
+  'Sprinkler': { frequencyMonths: 12, reason: 'Visual inspection and flow test' },
+};
+
+async function analyzeEquipmentBatch(vertexAI, equipmentBatch) {
+  const model = vertexAI.preview.getGenerativeModel({
+    model: 'gemini-1.5-flash',
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+  });
+
+  const seedText = Object.entries(TEMPLATE_SEED)
+    .slice(0, 8)
+    .map(([k, v]) => `${k}: ${v.frequencyMonths} months — ${v.reason}`)
+    .join('\n');
+
+  const equipmentList = equipmentBatch
+    .map((e) => `- id: ${e.id}, name: ${e.name}, typeName: ${e.typeName}, category: ${e.category}`)
+    .join('\n');
+
+  const prompt = `You are a certified facilities maintenance engineer. For each piece of equipment below,
+provide:
+- frequencyMonths: maintenance interval in months (integer 1-60)
+- reason: one-sentence maintenance task description IN ENGLISH
+- tools: list of up to 4 specific tools/instruments required (array of strings)
+- estimatedHours: estimated visit duration in hours (decimal 0.25–8)
+- spares: list of up to 3 consumable spare parts or materials (array of strings)
+Equipment names may be in English or Italian — recognise both languages equally.
+Use industry standards (ASHRAE, BS EN, ISO 9001). Reference frequency examples:\n${seedText}\n\n
+Equipment list:\n${equipmentList}\n\n
+Return ONLY a JSON array, one object per equipment in the same order:
+[{"id":"...", "frequencyMonths": N, "reason":"...", "tools":["t1","t2"], "estimatedHours": N, "spares":["p1"]}]`;
+
+  const result = await model.generateContent(prompt);
+  const { candidates } = result.response;
+  const [firstCandidate] = candidates;
+  const [firstPart] = firstCandidate.content.parts;
+  return JSON.parse(firstPart.text);
+}
+
+exports.analyzeEquipmentList = onCall({ timeoutSeconds: 540, memory: '512MiB' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Must be authenticated');
+  }
+
+  const { facilityId, equipmentIds } = request.data || {};
+  if (!facilityId) {
+    throw new HttpsError('invalid-argument', 'facilityId is required');
+  }
+
+  const metaRef = db.collection('facilities').doc(facilityId).collection('aiPmAnalysis').doc('_meta');
+
+  try {
+    await metaRef.set({
+      status: 'running',
+      triggeredAt: Timestamp.now(),
+      facilityId,
+      itemCount: 0,
+      errorMessage: null,
+    });
+
+    const equipRef = db.collection('facilities').doc(facilityId).collection('equipment');
+    let equipmentDocs;
+
+    if (equipmentIds && equipmentIds.length > 0) {
+      const idChunks = [];
+      for (let i = 0; i < equipmentIds.length; i += 10) {
+        idChunks.push(equipmentIds.slice(i, i + 10));
+      }
+      const snapshots = await Promise.all(
+        idChunks.map((idChunk) => equipRef.where('__name__', 'in', idChunk).get()),
+      );
+      equipmentDocs = snapshots.flatMap((s) => s.docs);
+    } else {
+      const snap = await equipRef.get();
+      equipmentDocs = snap.docs;
+    }
+
+    const equipment = equipmentDocs.map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        name: d.name || '',
+        typeName: d.typeName || d.type || '',
+        category: d.category || 'Unknown',
+      };
+    });
+
+    if (equipment.length === 0) {
+      await metaRef.set({
+        status: 'done',
+        completedAt: Timestamp.now(),
+        itemCount: 0,
+      }, { merge: true });
+      return { itemCount: 0 };
+    }
+
+    const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+    const vertexAI = new VertexAI({ project: projectId, location: 'us-central1' });
+
+    const analysisRef = db.collection('facilities').doc(facilityId).collection('aiPmAnalysis');
+    const batchSize = 40;
+    let totalWritten = 0;
+
+    for (let i = 0; i < equipment.length; i += batchSize) {
+      const eqChunk = equipment.slice(i, i + batchSize);
+      let results;
+
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        results = await analyzeEquipmentBatch(vertexAI, eqChunk);
+      } catch (aiErr) {
+        console.warn(`AI batch ${i / batchSize} failed, using fallback:`, aiErr.message);
+        results = eqChunk.map((e) => {
+          const tmpl = TEMPLATE_SEED[e.typeName];
+          return {
+            id: e.id,
+            frequencyMonths: tmpl ? tmpl.frequencyMonths : 12,
+            reason: tmpl ? tmpl.reason : `Routine inspection and servicing of ${e.typeName || e.name}`,
+            tools: [],
+            estimatedHours: 1,
+            spares: [],
+          };
+        });
+      }
+
+      const writeBatch = db.batch();
+      results.forEach((r, idx) => {
+        const eq = eqChunk[idx];
+        if (!eq) return;
+        const docRef = analysisRef.doc(eq.id);
+        writeBatch.set(docRef, {
+          facilityId,
+          equipmentId: eq.id,
+          equipmentName: eq.name,
+          category: eq.category,
+          typeName: eq.typeName,
+          aiFrequencyMonths: Math.max(1, Math.min(60, Number(r.frequencyMonths) || 12)),
+          aiReason: String(r.reason || '').slice(0, 300),
+          aiTools: Array.isArray(r.tools) ? r.tools.slice(0, 5).map(String) : [],
+          aiEstimatedHours: Math.min(8, Math.max(0.25, Number(r.estimatedHours) || 1)),
+          aiSpares: Array.isArray(r.spares) ? r.spares.slice(0, 5).map(String) : [],
+          editedFrequencyMonths: null,
+          editedReason: null,
+          editedTools: null,
+          editedEstimatedHours: null,
+          editedSpares: null,
+          editedCategory: null,
+          aiGenerated: true,
+          verificationStatus: 'draft',
+          verifiedBy: null,
+          verifiedAt: null,
+          publishedAt: null,
+          createdAt: Timestamp.now(),
+        }, { merge: true });
+      });
+      // eslint-disable-next-line no-await-in-loop
+      await writeBatch.commit();
+      totalWritten += eqChunk.length;
+    }
+
+    await metaRef.set(
+      { status: 'done', completedAt: Timestamp.now(), itemCount: totalWritten },
+      { merge: true },
+    );
+    return { itemCount: totalWritten };
+  } catch (error) {
+    console.error('analyzeEquipmentList error:', error);
+    await metaRef.set(
+      { status: 'failed', errorMessage: String(error.message || error), completedAt: Timestamp.now() },
+      { merge: true },
+    ).catch(() => {});
+    throw new HttpsError('internal', `Analysis failed: ${error.message}`);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PM Schedule Response — counter-notify admin/technician when client responds
+// ─────────────────────────────────────────────────────────────────────────────
+
+exports.onPmScheduleResponseCreated = onDocumentCreated(
+  'facilities/{facilityId}/pmScheduleResponses/{taskId}',
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return null;
+
+    const { facilityId, taskId } = event.params;
+    const data = snap.data();
+    const {
+      clientUid, clientAction, equipmentName, plannedDate, newDate,
+    } = data;
+
+    const newDateStr = newDate ? new Date(newDate.toDate()).toDateString() : 'a new date';
+    const actionLabel = clientAction === 'accepted'
+      ? 'accepted the planned date'
+      : `rescheduled to ${newDateStr}`;
+
+    const clientDoc = await db.collection('Users').doc(clientUid).get();
+    const clientName = clientDoc.exists ? (clientDoc.data().name || 'Client') : 'Client';
+
+    const title = `PM ${clientAction === 'accepted' ? 'Confirmed' : 'Rescheduled'}`;
+    const body = `${clientName} ${actionLabel} for ${equipmentName} maintenance.`;
+
+    const [adminSnap, techSnap] = await Promise.all([
+      db.collection('Admins').where('facilityId', '==', facilityId).get(),
+      db.collection('Technicians').where('facilityId', '==', facilityId).get(),
+    ]);
+
+    const targetUids = [
+      ...adminSnap.docs.map((d) => d.id),
+      ...techSnap.docs.map((d) => d.id),
+    ].filter((uid, i, arr) => arr.indexOf(uid) === i);
+
+    if (targetUids.length === 0) return null;
+
+    const tokens = (
+      await Promise.all(
+        targetUids.map(async (uid) => {
+          const userDoc = await db.collection('Users').doc(uid).get();
+          return userDoc.exists ? userDoc.data().fcmToken : null;
+        }),
+      )
+    ).filter(Boolean);
+
+    const digestChunkSize = 240;
+    for (let i = 0; i < targetUids.length; i += digestChunkSize) {
+      const digestBatch = db.batch(); // eslint-disable-line no-await-in-loop
+      const digestChunk = targetUids.slice(i, i + digestChunkSize);
+      digestChunk.forEach((uid) => {
+        const parentRef = db.collection('NotificationDigests').doc(uid);
+        const itemRef = parentRef.collection('items').doc();
+        digestBatch.set(parentRef, { unreadCount: FieldValue.increment(1) }, { merge: true });
+        digestBatch.set(itemRef, {
+          userId: uid,
+          title,
+          body,
+          type: 'pm_schedule_response',
+          priority: 'normal',
+          data: {
+            facilityId,
+            taskId,
+            equipmentName,
+            clientAction,
+            effectiveDate: (newDate || plannedDate)?.toDate().toISOString(),
+          },
+          createdAt: Timestamp.now(),
+          readAt: null,
+          deliveredAt: Timestamp.now(),
+        });
+      });
+      await digestBatch.commit(); // eslint-disable-line no-await-in-loop
+    }
+
+    if (tokens.length > 0) {
+      await messaging.sendEachForMulticast({
+        tokens,
+        notification: { title, body },
+        data: { type: 'pm_schedule_response', facilityId, taskId },
+        android: { priority: 'normal' },
+        apns: { payload: { aps: { sound: 'default' } } },
+      });
+    }
+
+    await snap.ref.update({ counterNotifiedAt: Timestamp.now() });
+    return null;
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PM Task Completion — write history, recalculate next due, notify client
+// ─────────────────────────────────────────────────────────────────────────────
+
+function addMonthsDate(date, months) {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+}
+
+exports.onPmTaskStatusChanged = onDocumentUpdated(
+  'facilities/{facilityId}/preventive_maintenance/{taskId}',
+  async (event) => {
+    const before = event.data.before.data();
+    const after = event.data.after.data();
+
+    if (before.status === after.status) return null;
+
+    const { facilityId, taskId } = event.params;
+    const taskRef = event.data.after.ref;
+
+    // ── Notify client on inProgress ──────────────────────────────────────────
+    if (after.status === 'inProgress' && before.status !== 'inProgress') {
+      const clientSnap = await db
+        .collection('facilities').doc(facilityId).collection('clientLinks')
+        .where('active', '==', true)
+        .get();
+
+      const clientUids = clientSnap.docs.map((d) => d.id);
+      if (clientUids.length === 0) return null;
+
+      const eqName = after.equipmentName || after.name || 'Equipment';
+      const startTitle = 'Maintenance Started';
+      const startBody = `Maintenance on ${eqName} has started.`;
+
+      const startBatch = db.batch();
+      clientUids.forEach((uid) => {
+        const parentRef = db.collection('NotificationDigests').doc(uid);
+        const itemRef = parentRef.collection('items').doc();
+        startBatch.set(parentRef, { unreadCount: FieldValue.increment(1) }, { merge: true });
+        startBatch.set(itemRef, {
+          userId: uid,
+          title: startTitle,
+          body: startBody,
+          type: 'pm_started',
+          priority: 'normal',
+          data: { facilityId, taskId, equipmentName: eqName },
+          createdAt: Timestamp.now(),
+          readAt: null,
+          deliveredAt: Timestamp.now(),
+        });
+      });
+      await startBatch.commit();
+
+      const clientTokens = (
+        await Promise.all(
+          clientUids.map(async (uid) => {
+            const userDoc = await db.collection('Users').doc(uid).get();
+            return userDoc.exists ? userDoc.data().fcmToken : null;
+          }),
+        )
+      ).filter(Boolean);
+
+      if (clientTokens.length > 0) {
+        await messaging.sendEachForMulticast({
+          tokens: clientTokens,
+          notification: { title: startTitle, body: startBody },
+          data: { type: 'pm_started', facilityId, taskId },
+          android: { priority: 'normal' },
+          apns: { payload: { aps: { sound: 'default' } } },
+        });
+      }
+      return null;
+    }
+
+    // ── On completion: history record + next due + notify client ─────────────
+    if (after.status !== 'completed' || before.status === 'completed') return null;
+
+    const completedAt = after.completedAt ? after.completedAt.toDate() : new Date();
+    const frequencyMonths = after.frequencyMonths || 12;
+    const equipmentId = after.equipmentId || after.bimGlobalId || taskId;
+    const eqName = after.equipmentName || after.name || 'Equipment';
+
+    // Determine whether this task was rescheduled by the client.
+    let clientApproved = false;
+    let rescheduled = false;
+    let previousScheduledDate = null;
+    const responseRef = db
+      .collection('facilities').doc(facilityId)
+      .collection('pmScheduleResponses').doc(taskId);
+    const responseSnap = await responseRef.get();
+
+    if (responseSnap.exists) {
+      const rData = responseSnap.data();
+      clientApproved = rData.clientAction === 'accepted' || rData.clientAction === 'rescheduled';
+      rescheduled = rData.clientAction === 'rescheduled';
+      previousScheduledDate = rescheduled ? (rData.plannedDate || null) : null;
+    }
+
+    const nextDueDate = addMonthsDate(completedAt, frequencyMonths);
+
+    // Write history record.
+    const historyRef = db
+      .collection('facilities')
+      .doc(facilityId)
+      .collection('equipment')
+      .doc(equipmentId)
+      .collection('maintenanceHistory')
+      .doc();
+
+    const completedByUid = after.completedBy || after.assignedTo || '';
+    let completedByName = 'Unknown';
+    if (completedByUid) {
+      const userDoc = await db.collection('Users').doc(completedByUid).get();
+      if (userDoc.exists) completedByName = userDoc.data().name || completedByUid;
+    }
+
+    const historyBatch = db.batch();
+    historyBatch.set(historyRef, {
+      facilityId,
+      equipmentId,
+      taskId,
+      scheduledDate: after.dueDate || Timestamp.fromDate(completedAt),
+      actualDate: Timestamp.fromDate(completedAt),
+      completedByUid,
+      completedByName,
+      notes: after.completionNotes || after.notes || '',
+      clientApproved,
+      rescheduled,
+      previousScheduledDate,
+      nextDueDate: Timestamp.fromDate(nextDueDate),
+      createdAt: Timestamp.now(),
+    });
+
+    // Reset PM task for next cycle.
+    historyBatch.update(taskRef, {
+      dueDate: Timestamp.fromDate(nextDueDate),
+      scheduledDate: after.dueDate || null,
+      actualDate: Timestamp.fromDate(completedAt),
+      status: 'pending',
+      notifiedAt: null,
+      alertedAt: null,
+      dueTodayNotifiedAt: null,
+    });
+
+    await historyBatch.commit();
+
+    // Notify client of completion.
+    const clientSnap = await db
+      .collection('facilities').doc(facilityId).collection('clientLinks')
+      .where('active', '==', true)
+      .get();
+
+    const clientUids = clientSnap.docs.map((d) => d.id);
+    if (clientUids.length === 0) return null;
+
+    const compTitle = 'Maintenance Completed';
+    const compBody = `Maintenance on ${eqName} completed. `
+      + `Next scheduled: ${nextDueDate.toDateString()}.`;
+
+    const compBatch = db.batch();
+    clientUids.forEach((uid) => {
+      const parentRef = db.collection('NotificationDigests').doc(uid);
+      const itemRef = parentRef.collection('items').doc();
+      compBatch.set(parentRef, { unreadCount: FieldValue.increment(1) }, { merge: true });
+      compBatch.set(itemRef, {
+        userId: uid,
+        title: compTitle,
+        body: compBody,
+        type: 'pm_completed',
+        priority: 'normal',
+        data: {
+          facilityId,
+          taskId,
+          equipmentName: eqName,
+          nextDueDate: nextDueDate.toISOString(),
+        },
+        createdAt: Timestamp.now(),
+        readAt: null,
+        deliveredAt: Timestamp.now(),
+      });
+    });
+    await compBatch.commit();
+
+    const clientTokens = (
+      await Promise.all(
+        clientUids.map(async (uid) => {
+          const userDoc = await db.collection('Users').doc(uid).get();
+          return userDoc.exists ? userDoc.data().fcmToken : null;
+        }),
+      )
+    ).filter(Boolean);
+
+    if (clientTokens.length > 0) {
+      await messaging.sendEachForMulticast({
+        tokens: clientTokens,
+        notification: { title: compTitle, body: compBody },
+        data: {
+          type: 'pm_completed',
+          facilityId,
+          taskId,
+          nextDueDate: nextDueDate.toISOString(),
+        },
+        android: { priority: 'normal' },
+        apns: { payload: { aps: { sound: 'default' } } },
+      });
+    }
+
+    return null;
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // One-time backfill of legacy global Maintenance_Tasks/TaskProgress into a facility's
 // facilities/{facilityId}/preventive_maintenance subcollection. See functions/migrations/
 // backfillPreventiveMaintenance.js for details.

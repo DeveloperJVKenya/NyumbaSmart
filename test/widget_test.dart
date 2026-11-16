@@ -1,4 +1,4 @@
-// Widget smoke tests for app UI that renders without Firebase.
+﻿// Widget smoke tests for app UI that renders without Firebase.
 // (The full app, MyApp, needs Firebase initialised, so it is exercised by running the app instead.)
 
 import 'package:flutter/material.dart';

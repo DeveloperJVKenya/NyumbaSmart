@@ -1,3 +1,4 @@
+﻿import 'package:cloud_functions/cloud_functions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -11,8 +12,10 @@ import 'package:cmms/models/bim_model.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/screens/bim/bim_widgets.dart';
 import 'package:cmms/screens/bim/spaces_screen.dart';
+import 'package:cmms/screens/pm/ai_pm_analysis_screen.dart';
 import 'package:cmms/services/bim/bim_import_service.dart';
 import 'package:cmms/services/bim/bim_translation_service.dart';
+import 'package:cmms/services/bim/italian_bim_glossary.dart';
 import 'package:cmms/services/bim/cobie_parser.dart';
 import 'package:cmms/services/bim/cobie_workbook_reader.dart';
 import 'package:cmms/services/bim/ifc_parser.dart';
@@ -117,6 +120,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
           '${preview.warnings.length} warnings');
 
       if (!mounted) return;
+      final italianDetected = _detectsItalian(preview);
       setState(() {
         _fileName = file.name;
         _bytes = bytes;
@@ -126,6 +130,9 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
         _siteName = site;
         _preview = preview;
         _parsing = false;
+        // Auto-enable translation if Italian content is detected so equipment
+        // names are stored in English and category matching works correctly.
+        if (italianDetected) _translateEnabled = true;
       });
     } catch (e, st) {
       _logger.e('BIM parse failed', error: e, stackTrace: st);
@@ -199,6 +206,10 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
         _bytes = null;
         _importing = false;
       });
+
+      // Fire-and-forget: trigger AI analysis after a successful import.
+      // Any failure here is non-fatal — the import already succeeded.
+      _triggerAiAnalysis(widget.facilityId);
     } on FirebaseException catch (e) {
       _logger.e('BIM import failed', error: e);
       if (!mounted) return;
@@ -622,6 +633,30 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
     );
   }
 
+  /// Returns true if the parsed preview looks like it contains Italian strings.
+  /// Checks a sample of equipment and space names against the glossary — if any
+  /// name is changed by translation, the file is likely Italian.
+  bool _detectsItalian(CobiePreview preview) {
+    final samples = [
+      ...preview.equipment.take(20).map((e) => e.name),
+      ...preview.spaces.take(10).map((s) => s.name),
+    ];
+    return samples.any((s) => s.isNotEmpty && ItalianBimGlossary.translate(s) != s);
+  }
+
+  Future<void> _triggerAiAnalysis(String facilityId) async {
+    try {
+      await FirebaseFunctions.instance
+          .httpsCallable(
+            'analyzeEquipmentList',
+            options: HttpsCallableOptions(timeout: const Duration(minutes: 10)),
+          )
+          .call({'facilityId': facilityId});
+    } catch (e) {
+      _logger.w('AI analysis trigger failed (non-fatal): $e');
+    }
+  }
+
   Widget _buildResult(BimImportResult r) {
     Widget line(String label, int created, int updated) => Padding(
           padding: const EdgeInsets.only(bottom: 4),
@@ -666,6 +701,26 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               ),
               icon: const Icon(Icons.meeting_room_outlined),
               label: Text('View floors & rooms', style: GoogleFonts.poppins()),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                final roleInfo = ref.read(currentUserRoleProvider).value;
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) => AiPmAnalysisScreen(
+                      facilityId: widget.facilityId,
+                      currentRole: roleInfo?.roleLabel ?? 'User',
+                      organization: roleInfo?.organization ?? '-',
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.auto_awesome_outlined, size: 16),
+              label: Text('View AI Analysis', style: GoogleFonts.poppins()),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).maybePop(),
