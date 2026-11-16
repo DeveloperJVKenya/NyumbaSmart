@@ -1,12 +1,13 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
+import 'package:cmms/models/ai_pm_analysis.dart';
 import 'package:cmms/models/preventive_maintenance_task.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
-import 'package:cmms/services/pm_generation_service.dart';
+import 'package:cmms/screens/pm/ai_pm_analysis_screen.dart';
 import 'package:cmms/services/pm_scheduling_service.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
@@ -33,10 +34,8 @@ class _PreventiveMaintenanceScreenState
   String? _selectedCategory;
   String _currentRole = 'User';
   String _organization = '-';
-  bool _generating = false;
-
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _tasksStream;
-  late final Stream<List<PmReviewItem>> _reviewStream;
+  late final Stream<AiPmAnalysisMeta?> _aiMetaStream;
 
   @override
   void initState() {
@@ -48,7 +47,15 @@ class _PreventiveMaintenanceScreenState
         .doc(widget.facilityId)
         .collection('preventive_maintenance')
         .snapshots();
-    _reviewStream = PmGenerationService.reviewQueueStream(widget.facilityId);
+    _aiMetaStream = FirebaseFirestore.instance
+        .collection('facilities')
+        .doc(widget.facilityId)
+        .collection('aiPmAnalysis')
+        .doc('_meta')
+        .snapshots()
+        .map((s) => s.exists
+            ? AiPmAnalysisMeta.fromMap(s.data()!, widget.facilityId)
+            : null);
     _notificationService.initialize();
     _getCurrentUserRole();
   }
@@ -104,33 +111,6 @@ class _PreventiveMaintenanceScreenState
       _currentRole == 'Developer' ||
       _currentRole == 'Technician';
 
-  Future<void> _generateFromBim() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    setState(() => _generating = true);
-    try {
-      final result = await PmGenerationService.generate(
-        facilityId: widget.facilityId,
-        userId: user.uid,
-      );
-      if (mounted) {
-        _showSnackBar(
-          result.created > 0 || result.queued > 0
-              ? 'Created ${result.created} tasks. '
-                '${result.queued > 0 ? '${result.queued} items need review.' : ''}'
-              : result.skipped > 0
-                  ? 'All equipment already scheduled (${result.skipped} items).'
-                  : 'No BIM-linked equipment found.',
-        );
-      }
-    } catch (e) {
-      _logger.e('PM generation failed: $e');
-      if (mounted) _showSnackBar('Generation failed: $e');
-    } finally {
-      if (mounted) setState(() => _generating = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return ResponsiveScreenWrapper(
@@ -140,20 +120,20 @@ class _PreventiveMaintenanceScreenState
       organization: _organization,
       actions: _canGenerate
           ? [
-              _generating
-                  ? const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white)),
-                    )
-                  : IconButton(
-                      icon: const Icon(Icons.auto_awesome_outlined),
-                      tooltip: 'Generate from BIM equipment',
-                      onPressed: _generateFromBim,
+              IconButton(
+                icon: const Icon(Icons.auto_awesome_outlined),
+                tooltip: 'AI PM Analysis',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AiPmAnalysisScreen(
+                      facilityId: widget.facilityId,
+                      currentRole: _currentRole,
+                      organization: _organization,
                     ),
+                  ),
+                ),
+              ),
             ]
           : null,
       child: _buildBody(),
@@ -161,55 +141,68 @@ class _PreventiveMaintenanceScreenState
   }
 
   Widget _buildBody() {
-    return StreamBuilder<List<PmReviewItem>>(
-      stream: _reviewStream,
-      builder: (context, reviewSnap) {
-        final reviewItems = reviewSnap.data ?? [];
-        return Column(
-          children: [
-            Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: _tasksStream,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    _logger.e(
-                        'Error loading PM tasks: ${snapshot.error}');
-                    return Center(
-                        child: Text('Error: ${snapshot.error}',
-                            style: GoogleFonts.poppins()));
-                  }
-                  final tasks = (snapshot.data?.docs ?? [])
-                      .map((doc) => PreventiveMaintenanceTask.fromFirestore(
-                          doc, widget.facilityId))
-                      .toList();
+    return LayoutBuilder(builder: (context, constraints) {
+      _logger.i(
+        'PM body constraints: '
+        'maxW=${constraints.maxWidth.toStringAsFixed(1)} '
+        'maxH=${constraints.maxHeight.toStringAsFixed(1)}',
+      );
+      return Column(
+        // stretch propagates tight bounded constraints down — prevents
+        // loose-infinite from reaching Rows with Expanded children.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _tasksStream,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  _logger.e('Error loading PM tasks: ${snapshot.error}');
+                  return Center(
+                      child: Text('Error: ${snapshot.error}',
+                          style: GoogleFonts.poppins()));
+                }
+                final tasks = (snapshot.data?.docs ?? [])
+                    .map((doc) => PreventiveMaintenanceTask.fromFirestore(
+                        doc, widget.facilityId))
+                    .toList();
 
-                  return _selectedCategory == null
-                      ? _buildCategorySelection(tasks, reviewItems)
-                      : _buildTasksList(tasks);
-                },
-              ),
+                _logger.i(
+                  'PM tasks loaded: count=${tasks.length} '
+                  'selectedCategory=$_selectedCategory',
+                );
+                return _selectedCategory == null
+                    ? _buildCategorySelection(tasks)
+                    : _buildTasksList(tasks);
+              },
             ),
-          ],
-        );
-      },
-    );
+          ),
+        ],
+      );
+    });
   }
 
   // ── Category overview ──────────────────────────────────────────────────────
 
-  Widget _buildCategorySelection(
-      List<PreventiveMaintenanceTask> tasks,
-      List<PmReviewItem> reviewItems) {
-    if (tasks.isEmpty && reviewItems.isEmpty) {
-      return _emptyState(
-        icon: Icons.auto_awesome_outlined,
-        title: 'No preventive maintenance tasks yet',
-        subtitle: _canGenerate
-            ? 'Tap the ✦ icon in the top bar to generate tasks from installed BIM equipment.'
-            : 'Ask your facility administrator to generate PM tasks from the installed equipment.',
+  Widget _buildCategorySelection(List<PreventiveMaintenanceTask> tasks) {
+    if (tasks.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(children: [
+          _aiAnalysisCard(),
+          Expanded(
+            child: _emptyState(
+              icon: Icons.auto_awesome_outlined,
+              title: 'No preventive maintenance tasks yet',
+              subtitle: _canGenerate
+                  ? 'Run AI analysis above to generate PM tasks from your BIM equipment.'
+                  : 'Ask your facility administrator to generate PM tasks from the installed equipment.',
+            ),
+          ),
+        ]),
       );
     }
 
@@ -233,9 +226,8 @@ class _PreventiveMaintenanceScreenState
           Expanded(
             child: ListView(
               children: [
-                // ── Review queue banner ──────────────────────────────────
-                if (reviewItems.isNotEmpty)
-                  _reviewBanner(reviewItems),
+                // ── AI Analysis entry card (always first) ────────────────
+                _aiAnalysisCard(),
                 // ── Category cards ───────────────────────────────────────
                 ...categories.map((category) {
                   final ct = byCategory[category]!;
@@ -416,263 +408,94 @@ class _PreventiveMaintenanceScreenState
     );
   }
 
-  Widget _reviewBanner(List<PmReviewItem> items) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      color: Colors.amber[50],
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(color: Colors.amber[300]!)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: () => _showReviewQueue(items),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Icon(Icons.pending_actions_rounded,
-                  color: Colors.amber[800], size: 28),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${items.length} equipment item${items.length == 1 ? '' : 's'} need review',
-                        style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.amber[900])),
-                    Text(
-                        'These equipment types have no default PM template. '
-                        'Tap to accept or dismiss each one.',
-                        style: GoogleFonts.poppins(
-                            fontSize: 12, color: Colors.amber[800])),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: Colors.amber[700]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _aiAnalysisCard() {
+    return StreamBuilder<AiPmAnalysisMeta?>(
+      stream: _aiMetaStream,
+      builder: (context, snap) {
+        final meta = snap.data;
+        final status = meta?.status ?? AiAnalysisStatus.idle;
+        final isRunning = status == AiAnalysisStatus.running;
+        final isDone = status == AiAnalysisStatus.done;
+        final isPublished = isDone && meta?.publishedSowId != null;
 
-  // ── Review queue sheet ────────────────────────────────────────────────────
+        String subtitle;
+        Color accentColor;
+        IconData icon;
 
-  void _showReviewQueue(List<PmReviewItem> items) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (_, controller) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2))),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.pending_actions_rounded,
-                        color: Colors.amber[700]),
-                    const SizedBox(width: 10),
-                    Text('Equipment Needing Review',
-                        style: GoogleFonts.poppins(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-              Text(
-                'These items were imported from BIM but have no default '
-                'maintenance template. Accept to create a custom schedule or '
-                'dismiss to exclude them.',
-                style: GoogleFonts.poppins(
-                    fontSize: 12, color: Colors.grey[600]),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Divider(),
-              Expanded(
-                child: ListView.builder(
-                  controller: controller,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: items.length,
-                  itemBuilder: (_, i) => _reviewItemTile(items[i], ctx),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+        if (isRunning) {
+          subtitle = 'AI analysis in progress…';
+          accentColor = AppColors.primary;
+          icon = Icons.auto_awesome;
+        } else if (isPublished) {
+          subtitle = 'Analysis published to Scope of Work — ${meta?.itemCount ?? 0} items';
+          accentColor = AppColors.success;
+          icon = Icons.verified_outlined;
+        } else if (isDone) {
+          subtitle = '${meta?.itemCount ?? 0} items analysed — tap to review & publish';
+          accentColor = AppColors.warning;
+          icon = Icons.pending_actions_outlined;
+        } else {
+          subtitle = 'Tap to run AI analysis on your BIM equipment list';
+          accentColor = AppColors.primary;
+          icon = Icons.auto_awesome_outlined;
+        }
 
-  Widget _reviewItemTile(PmReviewItem item, BuildContext sheetCtx) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(item.equipmentName,
-                style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Wrap(spacing: 6, runSpacing: 4, children: [
-              _typeChip(item.equipmentType),
-              _typeChip(item.equipmentCategory),
-            ]),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.close, size: 16),
-                    label: Text('Dismiss',
-                        style: GoogleFonts.poppins(fontSize: 12)),
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red[700],
-                        side: BorderSide(color: Colors.red[200]!)),
-                    onPressed: () async {
-                      await PmGenerationService.dismissReviewItem(
-                          facilityId: widget.facilityId,
-                          itemId: item.id);
-                    },
-                  ),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: accentColor.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: accentColor.withValues(alpha: 0.35)),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AiPmAnalysisScreen(
+                  facilityId: widget.facilityId,
+                  currentRole: _currentRole,
+                  organization: _organization,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.check, size: 16),
-                    label: Text('Accept',
-                        style: GoogleFonts.poppins(fontSize: 12)),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey[700],
-                        foregroundColor: Colors.white),
-                    onPressed: () {
-                      Navigator.pop(sheetCtx);
-                      _showAcceptReviewItemSheet(item);
-                    },
-                  ),
-                ),
-              ],
+              ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAcceptReviewItemSheet(PmReviewItem item) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    final categoryCtrl = TextEditingController(text: item.equipmentCategory);
-    final interventionCtrl = TextEditingController();
-    final freqCtrl = TextEditingController(text: '12');
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius:
-                  BorderRadius.vertical(top: Radius.circular(20))),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Create PM task for',
-                  style: GoogleFonts.poppins(
-                      fontSize: 16, color: Colors.grey[600])),
-              Text(item.equipmentName,
-                  style: GoogleFonts.poppins(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: categoryCtrl,
-                decoration: InputDecoration(
-                    labelText: 'Category',
-                    border: const OutlineInputBorder(),
-                    labelStyle: GoogleFonts.poppins()),
-                style: GoogleFonts.poppins(),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: interventionCtrl,
-                decoration: InputDecoration(
-                    labelText: 'Maintenance intervention',
-                    hintText: 'e.g. Inspect, clean and test',
-                    border: const OutlineInputBorder(),
-                    labelStyle: GoogleFonts.poppins()),
-                style: GoogleFonts.poppins(),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: freqCtrl,
-                decoration: InputDecoration(
-                    labelText: 'Frequency (months)',
-                    border: const OutlineInputBorder(),
-                    labelStyle: GoogleFonts.poppins()),
-                style: GoogleFonts.poppins(),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueGrey[700],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14)),
-                  onPressed: () async {
-                    final freq = int.tryParse(freqCtrl.text.trim()) ?? 12;
-                    final intervention = interventionCtrl.text.trim();
-                    if (intervention.isEmpty) return;
-                    Navigator.pop(ctx);
-                    await PmGenerationService.acceptReviewItem(
-                      facilityId: widget.facilityId,
-                      userId: user.uid,
-                      item: item,
-                      category: categoryCtrl.text.trim().isEmpty
-                          ? item.equipmentCategory
-                          : categoryCtrl.text.trim(),
-                      intervention: intervention,
-                      frequencyMonths: freq,
-                    );
-                    if (mounted) {
-                      _showSnackBar('PM task created for ${item.equipmentName}');
-                    }
-                  },
-                  child: Text('Create task',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: isRunning
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: accentColor),
+                        )
+                      : Icon(icon, color: accentColor, size: 20),
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('AI Equipment Analysis',
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                            fontSize: 13.5)),
+                    Text(subtitle,
+                        style: GoogleFonts.poppins(
+                            fontSize: 11.5, color: AppColors.textSecondary)),
+                  ]),
+                ),
+                Icon(Icons.chevron_right_rounded, color: accentColor, size: 18),
+              ]),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -685,41 +508,61 @@ class _PreventiveMaintenanceScreenState
       ..sort((a, b) => (a.dueDate ?? DateTime(2100))
           .compareTo(b.dueDate ?? DateTime(2100)));
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                  onPressed: () =>
-                      setState(() => _selectedCategory = null),
-                  icon: const Icon(Icons.arrow_back)),
-              Expanded(
-                child: Text('$_selectedCategory Tasks',
-                    style: GoogleFonts.poppins(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary)),
+    final catColor = _categoryColor(_selectedCategory ?? '');
+    final catIcon = _categoryIcon(_selectedCategory ?? '');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Category header strip ──────────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: BoxDecoration(
+            color: catColor.withValues(alpha: 0.08),
+            border: Border(bottom: BorderSide(color: catColor.withValues(alpha: 0.2))),
+          ),
+          child: Row(children: [
+            IconButton(
+              onPressed: () => setState(() => _selectedCategory = null),
+              icon: Icon(Icons.arrow_back_rounded, color: catColor),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: catColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: tasks.isEmpty
-                ? _emptyState(
-                    icon: Icons.assignment_outlined,
-                    title: 'No tasks in this category',
-                    subtitle: '')
-                : ListView.builder(
-                    itemCount: tasks.length,
-                    itemBuilder: (context, index) =>
-                        _taskCard(tasks[index]),
-                  ),
-          ),
-        ],
-      ),
+              child: Icon(catIcon, size: 18, color: catColor),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_selectedCategory ?? '',
+                    style: GoogleFonts.poppins(
+                        fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                Text('${tasks.length} task${tasks.length == 1 ? '' : 's'}',
+                    style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary)),
+              ]),
+            ),
+          ]),
+        ),
+        Expanded(
+          child: tasks.isEmpty
+              ? _emptyState(
+                  icon: Icons.assignment_outlined,
+                  title: 'No tasks in this category',
+                  subtitle: '')
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                  itemCount: tasks.length,
+                  itemBuilder: (context, index) => _taskCard(tasks[index]),
+                ),
+        ),
+      ],
     );
   }
 
@@ -728,122 +571,196 @@ class _PreventiveMaintenanceScreenState
         dueDate: task.dueDate,
         isCompleted: task.status == PmTaskStatus.completed);
     final displayStatus = overdue ? PmTaskStatus.overdue : task.status;
+    final catColor = _categoryColor(task.category);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(task.component,
-                      style: GoogleFonts.poppins(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
-                ),
-                // Edit button (Admin / Developer / Technician only)
-                if (_canGenerate)
-                  IconButton(
-                    icon: Icon(Icons.edit_outlined,
-                        size: 18, color: Colors.blueGrey[400]),
-                    tooltip: 'Edit task',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: () => _showEditTaskSheet(task),
-                  ),
-                const SizedBox(width: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: _statusColor(displayStatus),
-                      borderRadius: BorderRadius.circular(12)),
-                  child: Text(
-                    displayStatus.displayName,
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
+    // Traffic-light due date color.
+    Color dueDateColor = AppColors.textSecondary;
+    String dueDateLabel = '';
+    if (task.dueDate != null) {
+      final now = DateTime.now();
+      final diff = task.dueDate!.difference(now).inDays;
+      dueDateLabel = DateFormat('d MMM yyyy').format(task.dueDate!);
+      if (overdue) {
+        dueDateColor = AppColors.error;
+      } else if (diff <= 30) {
+        dueDateColor = AppColors.warning;
+      } else {
+        dueDateColor = AppColors.success;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: overdue
+              ? AppColors.error.withValues(alpha: 0.3)
+              : AppColors.primary.withValues(alpha: 0.1),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Top bar: category accent + status ─────────────────────────
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            decoration: BoxDecoration(
+              color: catColor.withValues(alpha: 0.06),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
+              border: Border(bottom: BorderSide(color: catColor.withValues(alpha: 0.12))),
             ),
-            const SizedBox(height: 8),
-            Text(task.intervention,
-                style: GoogleFonts.poppins(color: Colors.grey[700])),
-            const SizedBox(height: 8),
-            Row(
+            child: Row(children: [
+              Icon(_categoryIcon(task.category), size: 13, color: catColor),
+              const SizedBox(width: 5),
+              Text(task.category,
+                  style: GoogleFonts.poppins(
+                      fontSize: 10.5, color: catColor, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              _statusChip(displayStatus),
+            ]),
+          ),
+
+          // ── Card body ──────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.event_repeat, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 4),
-                Text('Every ${task.frequencyMonths} mo',
-                    style: GoogleFonts.poppins(
-                        fontSize: 12, color: Colors.grey[600])),
-                if (task.dueDate != null) ...[
-                  const SizedBox(width: 16),
-                  Icon(Icons.schedule, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text('Due: ${DateFormat.yMMMd().format(task.dueDate!)}',
-                      style: GoogleFonts.poppins(
-                          fontSize: 12, color: Colors.grey[600])),
-                ],
-              ],
-            ),
-            if (task.equipmentName != null &&
-                task.equipmentName!.isNotEmpty &&
-                task.equipmentName != task.component) ...[
-              const SizedBox(height: 4),
-              Row(children: [
-                Icon(Icons.link, size: 14, color: Colors.blueGrey[300]),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(task.equipmentName!,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
-                          fontSize: 11, color: Colors.blueGrey[400])),
-                ),
-              ]),
-            ],
-            if (task.notes != null && task.notes!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8)),
-                child: Row(
-                  children: [
-                    Icon(Icons.note, size: 16, color: Colors.grey[600]),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(
+                    child: Text(task.component,
+                        style: GoogleFonts.poppins(
+                            fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  ),
+                  if (_canGenerate) ...[
                     const SizedBox(width: 8),
-                    Expanded(
+                    InkWell(
+                      onTap: () => _showEditTaskSheet(task),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(Icons.edit_outlined, size: 16, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: 6),
+                Text(task.intervention,
+                    style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary)),
+                const SizedBox(height: 10),
+
+                // ── Meta chips row ──────────────────────────────────────
+                Wrap(spacing: 8, runSpacing: 6, children: [
+                  _metaChip(Icons.event_repeat_rounded,
+                      _freqLabel(task.frequencyMonths), AppColors.primary),
+                  if (task.dueDate != null)
+                    _metaChip(Icons.calendar_today_rounded,
+                        'Due $dueDateLabel', dueDateColor),
+                  if (task.equipmentName != null &&
+                      task.equipmentName!.isNotEmpty &&
+                      task.equipmentName != task.component)
+                    _metaChip(Icons.link_rounded, task.equipmentName!,
+                        AppColors.textSecondary),
+                ]),
+
+                if (task.notes != null && task.notes!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(children: [
+                      Icon(Icons.notes_rounded, size: 13, color: AppColors.textSecondary),
+                      const SizedBox(width: 6),
+                      Expanded(
                         child: Text(task.notes!,
                             style: GoogleFonts.poppins(
-                                fontSize: 12, color: Colors.grey[700]))),
-                  ],
+                                fontSize: 11.5, color: AppColors.textSecondary)),
+                      ),
+                    ]),
+                  ),
+                ],
+
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showTaskStatusMenu(task),
+                    icon: const Icon(Icons.update_rounded, size: 15),
+                    label: Text('Update Status',
+                        style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
                 ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _showTaskStatusMenu(task),
-                icon: const Icon(Icons.edit, size: 16),
-                label: Text('Update Status',
-                    style: GoogleFonts.poppins(fontSize: 12)),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueGrey,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12)),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _statusChip(PmTaskStatus status) {
+    final color = _statusColor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(_statusIcon(status), size: 11, color: color),
+        const SizedBox(width: 4),
+        Text(status.displayName,
+            style: GoogleFonts.poppins(
+                fontSize: 10.5, color: color, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+
+  Widget _metaChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(label,
+              style: GoogleFonts.poppins(fontSize: 11, color: color),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1),
+        ),
+      ]),
+    );
+  }
+
+  String _freqLabel(int months) {
+    if (months == 1) return 'Monthly';
+    if (months == 3) return 'Quarterly';
+    if (months == 6) return 'Semi-annual';
+    if (months == 12) return 'Annual';
+    if (months % 12 == 0) return 'Every ${months ~/ 12} yrs';
+    return 'Every ${months}mo';
   }
 
   // ── Task edit sheet ────────────────────────────────────────────────────────
@@ -926,7 +843,7 @@ class _PreventiveMaintenanceScreenState
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueGrey[700],
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14)),
                   onPressed: () async {
@@ -1001,20 +918,19 @@ class _PreventiveMaintenanceScreenState
           .doc(task.id);
 
       if (newStatus == PmTaskStatus.completed) {
-        final nextDueDate = PmSchedulingService.computeDueDate(
-            from: now, frequencyMonths: task.frequencyMonths);
+        final user = FirebaseAuth.instance.currentUser;
+
+        // Write status = 'completed' so the Cloud Function onPmTaskStatusChanged
+        // picks it up and handles: history write, next-due recalculation, reset to
+        // pending, and the pm_completed notification to the client.
         await ref.update({
-          'status': PmTaskStatus.pending.value,
-          'lastCompletedAt': Timestamp.fromDate(now),
-          'dueDate': Timestamp.fromDate(nextDueDate),
-          'notes': notes.isEmpty ? null : notes,
+          'status': PmTaskStatus.completed.value,
+          'completedAt': Timestamp.fromDate(now),
+          'completedBy': user?.uid ?? '',
+          'completionNotes': notes.isEmpty ? null : notes,
           'updatedAt': Timestamp.fromDate(now),
-          // Clear notification flags so the new cycle triggers fresh alerts.
-          'notifiedAt': FieldValue.delete(),
-          'alertedAt': FieldValue.delete(),
         });
-        _showSnackBar(
-            'Marked completed — next due ${DateFormat.yMMMd().format(nextDueDate)}');
+        _showSnackBar('Task marked complete — next due date being calculated...');
       } else {
         await ref.update({
           'status': newStatus.value,
@@ -1206,28 +1122,41 @@ class _PreventiveMaintenanceScreenState
         return Icons.settings_rounded;
       case 'safety':
         return Icons.shield_rounded;
+      case 'structural':
+        return Icons.foundation_rounded;
+      case 'furniture/fittings':
+        return Icons.chair_rounded;
       case 'it equipment':
         return Icons.computer_rounded;
       case 'fire protection':
         return Icons.local_fire_department_rounded;
       case 'unclassified':
-        return Icons.category_rounded;
+      case 'unknown':
+        return Icons.help_outline_rounded;
       default:
         return Icons.build_rounded;
     }
   }
 
-  Widget _typeChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-          color: Colors.blueGrey[50],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.blueGrey[200]!)),
-      child: Text(label,
-          style: GoogleFonts.poppins(
-              fontSize: 11, color: Colors.blueGrey[700])),
-    );
+  Color _categoryColor(String category) {
+    switch (category.toLowerCase()) {
+      case 'electrical':
+        return const Color(0xFFF59E0B);
+      case 'hvac':
+        return const Color(0xFF06B6D4);
+      case 'mechanical':
+        return const Color(0xFF64748B);
+      case 'plumbing':
+        return const Color(0xFF3B82F6);
+      case 'safety':
+        return const Color(0xFFEF4444);
+      case 'structural':
+        return const Color(0xFF8B5CF6);
+      case 'furniture/fittings':
+        return const Color(0xFF10B981);
+      default:
+        return AppColors.primary;
+    }
   }
 
   Widget _emptyState(
@@ -1261,15 +1190,15 @@ class _PreventiveMaintenanceScreenState
   Color _statusColor(PmTaskStatus status) {
     switch (status) {
       case PmTaskStatus.pending:
-        return Colors.blueGrey;
+        return AppColors.textSecondary;
       case PmTaskStatus.due:
-        return Colors.orange;
+        return AppColors.warning;
       case PmTaskStatus.inProgress:
-        return Colors.indigo;
+        return AppColors.primary;
       case PmTaskStatus.completed:
-        return Colors.green;
+        return AppColors.success;
       case PmTaskStatus.overdue:
-        return Colors.red;
+        return AppColors.error;
     }
   }
 
