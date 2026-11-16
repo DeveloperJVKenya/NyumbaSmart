@@ -69,6 +69,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
   bool _selectMode = false;
   bool _verifying = false;
   bool _showExcluded = false;
+  bool _isTriggering = false; // true from button-press until stream shows running
 
 
   bool get _canVerify =>
@@ -123,10 +124,10 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
                   PopupMenuItem(value: 'docx', child: Text('Download DOCX')),
                 ],
               ),
-            // Run / Update analysis button — always visible to Admin/Developer.
-            // Shows a spinner while running, "Run" when no data exists, "Update" when data exists.
+            // Run / Update analysis button — Admin/Developer only.
+            // Shows a spinner immediately on press and while running.
             if (_canVerify && !_selectMode)
-              if (meta?.status == AiAnalysisStatus.running)
+              if (_isTriggering || meta?.status == AiAnalysisStatus.running)
                 const Padding(
                   padding: EdgeInsets.all(14),
                   child: SizedBox(
@@ -263,16 +264,23 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
             // cross-axis width from an ancestor Column with stretch.
             Align(
               child: ElevatedButton.icon(
-                onPressed: _triggerAnalysis,
+                onPressed: _isTriggering ? null : _triggerAnalysis,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
                 ),
-                icon: const Icon(Icons.auto_awesome, size: 18),
-                label: Text('Run AI Analysis',
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14)),
+                icon: _isTriggering
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.auto_awesome, size: 18),
+                label: Text(
+                  _isTriggering ? 'Starting…' : 'Run AI Analysis',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
               ),
             ),
           ],
@@ -1168,44 +1176,63 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
   }
 
   Future<void> _reanalyse() async {
-    // Reset published status then immediately re-run the analysis against the
-    // equipment already stored in Firestore — no BIM re-upload required.
+    // Clear published link then re-run; _triggerAnalysis writes 'running' immediately.
     try {
-      await _analysisRef.doc('_meta').update({'publishedSowId': null, 'status': 'idle'});
-    } catch (_) {
-      // _meta may not exist yet; ignore.
-    }
+      await _analysisRef.doc('_meta').update({'publishedSowId': null});
+    } catch (_) {}
     await _triggerAnalysis();
   }
 
   Future<void> _triggerAnalysis() async {
-    if (!mounted) return;
+    if (!mounted || _isTriggering) return;
     _log.i('triggerAnalysis: START facilityId=${widget.facilityId}');
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Starting AI analysis — this may take a minute…')),
-    );
+
+    // 1. Show spinner immediately — don't wait for the stream to pick up 'running'.
+    setState(() => _isTriggering = true);
+
+    // 2. Write 'running' to Firestore right now so the status banner appears
+    //    on this device before the Cloud Function even starts writing.
     try {
-      _log.i('triggerAnalysis: calling Cloud Function analyzeEquipmentList');
-      final result = await FirebaseFunctions.instance
-          .httpsCallable(
-            'analyzeEquipmentList',
-            options: HttpsCallableOptions(timeout: const Duration(minutes: 10)),
-          )
-          .call({'facilityId': widget.facilityId});
-      _log.i('triggerAnalysis: Cloud Function returned → ${result.data}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI analysis complete — review the results below.')),
-        );
-      }
+      await _analysisRef.doc('_meta').set(
+        {'status': 'running', 'startedAt': FieldValue.serverTimestamp(), 'itemCount': 0},
+        SetOptions(merge: true),
+      );
     } catch (e) {
-      _log.e('triggerAnalysis: ERROR', error: e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Analysis failed: $e')),
-        );
-      }
+      _log.w('triggerAnalysis: could not pre-write status=running: $e');
     }
+
+    // 3. Fire the Cloud Function WITHOUT awaiting — the Firestore streams
+    //    drive all subsequent UI updates as items arrive in real-time.
+    _log.i('triggerAnalysis: calling Cloud Function (fire-and-forget)');
+    FirebaseFunctions.instance
+        .httpsCallable(
+          'analyzeEquipmentList',
+          options: HttpsCallableOptions(timeout: const Duration(minutes: 10)),
+        )
+        .call({'facilityId': widget.facilityId})
+        .then((result) {
+          _log.i('triggerAnalysis: Cloud Function returned → ${result.data}');
+          if (mounted) {
+            setState(() => _isTriggering = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('AI analysis complete — review the results below.')),
+            );
+          }
+        })
+        .catchError((Object e) {
+          _log.e('triggerAnalysis: ERROR', error: e);
+          // Write failed status so the status banner reflects the error.
+          _analysisRef.doc('_meta').update({
+            'status': 'failed',
+            'errorMessage': e.toString(),
+          }).catchError((_) {});
+          if (mounted) {
+            setState(() => _isTriggering = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Analysis failed: $e')),
+            );
+          }
+        });
   }
 
   Future<void> _handleExport(String format) async {
