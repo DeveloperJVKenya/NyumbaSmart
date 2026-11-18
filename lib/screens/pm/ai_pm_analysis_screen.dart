@@ -335,7 +335,8 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
     final isPublished = meta?.status == AiAnalysisStatus.done &&
         meta?.publishedSowId != null;
 
-    return ListView(
+    return SelectionArea(
+      child: ListView(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 80),
       children: [
         if (excludedCount > 0 && !_showExcluded)
@@ -361,7 +362,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
         else
           ...orderedCategories.map((cat) => _categorySection(cat, grouped[cat]!)),
       ],
-    );
+    ));
   }
 
   Widget _excludedBanner(int count) {

@@ -43,6 +43,9 @@ class _PreventiveMaintenanceScreenState
   late final Stream<int> _bimEquipmentCountStream;
   StreamSubscription<int>? _bimCountSub;
   int? _bimEquipmentCount;
+  StreamSubscription<AiPmAnalysisMeta?>? _aiMetaSub;
+  AiPmAnalysisMeta? _aiMeta;
+  bool _aiMetaLoaded = false;
 
   @override
   void initState() {
@@ -77,12 +80,16 @@ class _PreventiveMaintenanceScreenState
     _bimCountSub = _bimEquipmentCountStream.listen((n) {
       if (mounted) setState(() => _bimEquipmentCount = n);
     });
+    _aiMetaSub = _aiMetaStream.listen((m) {
+      if (mounted) setState(() { _aiMeta = m; _aiMetaLoaded = true; });
+    });
     _notificationService.initialize();
   }
 
   @override
   void dispose() {
     _bimCountSub?.cancel();
+    _aiMetaSub?.cancel();
     super.dispose();
   }
 
@@ -139,7 +146,11 @@ class _PreventiveMaintenanceScreenState
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: _tasksStream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                // Show spinner only on the very first open with no cached data.
+                // Firestore returns a cache snapshot almost immediately on
+                // subsequent visits, so hasData guards against an unnecessary flash.
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    !snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
@@ -392,22 +403,66 @@ class _PreventiveMaintenanceScreenState
   }
 
   Widget _aiAnalysisCard() {
-    return StreamBuilder<AiPmAnalysisMeta?>(
-      stream: _aiMetaStream,
-      builder: (context, snap) => _aiAnalysisCardInner(snap.data, _bimEquipmentCount),
-    );
+    return _aiAnalysisCardInner(_aiMeta, _bimEquipmentCount, _aiMetaLoaded);
   }
 
-  Widget _aiAnalysisCardInner(AiPmAnalysisMeta? meta, int? bimCount) {
+  Widget _aiAnalysisCardInner(AiPmAnalysisMeta? meta, int? bimCount, bool metaLoaded) {
+    // Show a neutral loading card until the first Firestore event arrives.
+    // Without this guard, a brief idle render flashes before the real state
+    // is known, causing a visible flicker on every screen open.
+    if (!metaLoaded) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('AI Equipment Analysis',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary, fontSize: 13.5)),
+                Text('Loading analysis status…',
+                    style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary)),
+              ]),
+            ),
+          ]),
+        ),
+      );
+    }
+
     final status = meta?.status ?? AiAnalysisStatus.idle;
     final isRunning = status == AiAnalysisStatus.running;
     final isDone = status == AiAnalysisStatus.done;
     final isPublished = isDone && meta?.publishedSowId != null;
 
-    // Use the live BIM equipment count when available; fall back to meta's
-    // stored count so the card is never blank while the stream loads.
+    // Detect stale analysis: analysis is done but BIM equipment count has
+    // since changed (new import or model deleted), so the results no longer
+    // match what is in Firestore.
+    final isStale = isDone &&
+        bimCount != null &&
+        (meta?.itemCount ?? 0) > 0 &&
+        bimCount != meta!.itemCount;
+
     final displayCount = bimCount ?? meta?.itemCount ?? 0;
-    final countLabel = bimCount == null ? '…' : '$displayCount';
+    final countLabel = '$displayCount';
 
     String subtitle;
     Color accentColor;
@@ -417,6 +472,10 @@ class _PreventiveMaintenanceScreenState
       subtitle = 'AI analysis in progress…';
       accentColor = AppColors.primary;
       icon = Icons.auto_awesome;
+    } else if (isStale) {
+      subtitle = 'Equipment list changed — $countLabel items ready, tap to re-run analysis';
+      accentColor = AppColors.warning;
+      icon = Icons.refresh_rounded;
     } else if (isPublished) {
       subtitle = 'Analysis published to Scope of Work — $countLabel items';
       accentColor = AppColors.success;
@@ -426,7 +485,7 @@ class _PreventiveMaintenanceScreenState
       accentColor = AppColors.warning;
       icon = Icons.pending_actions_outlined;
     } else {
-      subtitle = bimCount == null
+      subtitle = bimCount == null || bimCount == 0
           ? 'Tap to run AI analysis on your BIM equipment list'
           : 'Tap to run AI analysis on $countLabel BIM equipment items';
       accentColor = AppColors.primary;

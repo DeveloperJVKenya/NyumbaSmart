@@ -1649,6 +1649,21 @@ exports.analyzeEquipmentList = onCall({ timeoutSeconds: 540, memory: '512MiB' },
       totalWritten += eqChunk.length;
     }
 
+    // Prune stale analysis documents from previous runs whose equipment no
+    // longer belongs to any active BIM model.  Without this step, deleted
+    // imports leave ghost rows in the UI indefinitely.
+    const processedIds = new Set(equipment.map((e) => e.id));
+    const existingSnap = await analysisRef.get();
+    const staleDocs = existingSnap.docs.filter(
+      (d) => d.id !== '_meta' && !processedIds.has(d.id),
+    );
+    for (const staleBatch of chunk(staleDocs, 500)) {
+      const delBatch = db.batch();
+      staleBatch.forEach((d) => delBatch.delete(d.ref));
+      // eslint-disable-next-line no-await-in-loop
+      await delBatch.commit();
+    }
+
     await metaRef.set(
       { status: 'done', completedAt: Timestamp.now(), itemCount: totalWritten },
       { merge: true },
