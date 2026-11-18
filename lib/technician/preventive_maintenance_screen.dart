@@ -11,6 +11,7 @@ import 'package:cmms/models/ai_pm_analysis.dart';
 import 'package:cmms/models/preventive_maintenance_task.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
 import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/providers/bim_providers.dart';
 import 'package:cmms/screens/pm/ai_pm_analysis_screen.dart';
 import 'package:cmms/services/pm_scheduling_service.dart';
 import 'package:cmms/theme/app_theme.dart';
@@ -40,9 +41,8 @@ class _PreventiveMaintenanceScreenState
   String _organization = '-';
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _tasksStream;
   late final Stream<AiPmAnalysisMeta?> _aiMetaStream;
-  late final Stream<int> _bimEquipmentCountStream;
-  StreamSubscription<int>? _bimCountSub;
-  int? _bimEquipmentCount;
+  // bimEquipmentCount is now read via bimEquipmentCountProvider (Riverpod) in
+  // _aiAnalysisCard() — no manual subscription or state field needed here.
   StreamSubscription<AiPmAnalysisMeta?>? _aiMetaSub;
   AiPmAnalysisMeta? _aiMeta;
   bool _aiMetaLoaded = false;
@@ -66,20 +66,6 @@ class _PreventiveMaintenanceScreenState
         .map((s) => s.exists
             ? AiPmAnalysisMeta.fromMap(s.data()!, widget.facilityId)
             : null);
-    // Sum the equipmentCount from active (ready) BIM model documents.
-    // This matches exactly what each BIM card tagline displays, and excludes
-    // equipment left over from deleted model imports.
-    _bimEquipmentCountStream = FirebaseFirestore.instance
-        .collection('facilities')
-        .doc(widget.facilityId)
-        .collection('bimModels')
-        .where('status', isEqualTo: 'ready')
-        .snapshots()
-        .map((s) => s.docs.fold<int>(
-            0, (acc, d) => acc + ((d.data()['equipmentCount'] as int?) ?? 0)));
-    _bimCountSub = _bimEquipmentCountStream.listen((n) {
-      if (mounted) setState(() => _bimEquipmentCount = n);
-    });
     _aiMetaSub = _aiMetaStream.listen((m) {
       if (mounted) setState(() { _aiMeta = m; _aiMetaLoaded = true; });
     });
@@ -88,7 +74,6 @@ class _PreventiveMaintenanceScreenState
 
   @override
   void dispose() {
-    _bimCountSub?.cancel();
     _aiMetaSub?.cancel();
     super.dispose();
   }
@@ -403,7 +388,8 @@ class _PreventiveMaintenanceScreenState
   }
 
   Widget _aiAnalysisCard() {
-    return _aiAnalysisCardInner(_aiMeta, _bimEquipmentCount, _aiMetaLoaded);
+    final bimCount = ref.watch(bimEquipmentCountProvider(widget.facilityId)).asData?.value;
+    return _aiAnalysisCardInner(_aiMeta, bimCount, _aiMetaLoaded);
   }
 
   Widget _aiAnalysisCardInner(AiPmAnalysisMeta? meta, int? bimCount, bool metaLoaded) {

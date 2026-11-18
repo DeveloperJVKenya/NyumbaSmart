@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cmms/display_screens/equipment_supplied_screen.dart';
 import 'package:cmms/models/bim_model.dart';
 import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/providers/bim_providers.dart';
 import 'package:cmms/screens/bim/bim_contacts_screen.dart';
 import 'package:cmms/screens/bim/bim_import_screen.dart';
 import 'package:cmms/screens/bim/bim_spares_screen.dart';
@@ -34,19 +35,12 @@ class BimModelsScreen extends ConsumerStatefulWidget {
 class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
   final Logger _logger = Logger();
 
+  // Firestore reference kept for delete/write operations.
   late final DocumentReference<Map<String, dynamic>> _facility =
       FirebaseFirestore.instance.collection('facilities').doc(widget.facilityId);
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _modelsStream =
-      _facility.collection('bimModels').orderBy('uploadedAt', descending: true).snapshots();
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _spacesStream = _facility.collection('spaces').snapshots();
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _linkedEquipmentStream =
-      _facility.collection('equipment').where('bimSource', whereIn: ['cobie', 'ifc']).snapshots();
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _systemsStream =
-      _facility.collection('bimSystems').snapshots();
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _contactsStream =
-      _facility.collection('bimContacts').snapshots();
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _sparesStream =
-      _facility.collection('bimSpares').snapshots();
+  // Live data is now served by Riverpod StreamProviders in bim_providers.dart,
+  // not by local stream fields, so a single Firebase listener is shared across
+  // all screens that watch the same provider family key.
 
   /// An import that has said "processing" this long was interrupted (app closed, connection lost).
   static const Duration _staleAfter = Duration(minutes: 30);
@@ -59,6 +53,7 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
   Widget build(BuildContext context) {
     final roleInfo = ref.watch(currentUserRoleProvider).value;
     final canManage = canManageBim(roleInfo);
+    final modelsAsync = ref.watch(bimModelsProvider(widget.facilityId));
     return ResponsiveScreenWrapper(
       title: 'BIM Models',
       facilityId: widget.facilityId,
@@ -79,17 +74,14 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
           Text('Import history',
               style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
           const SizedBox(height: AppSpacing.sm),
-          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: _modelsStream,
-            builder: (context, snap) {
-              if (snap.hasError) {
-                _logger.e('bimModels load failed', error: snap.error);
-                return AppErrorBanner(message: 'Could not load BIM models: ${snap.error}');
-              }
-              if (!snap.hasData) return const AppSkeletonList(count: 2);
-              final models = snap.data!.docs.map(BimModel.fromSnapshot).toList();
-              if (models.isEmpty) return _buildEmpty(canManage);
-              return Column(children: [for (final m in models) _buildModelCard(m, canManage)]);
+          modelsAsync.when(
+            data: (models) => models.isEmpty
+                ? _buildEmpty(canManage)
+                : Column(children: [for (final m in models) _buildModelCard(m, canManage)]),
+            loading: () => const AppSkeletonList(count: 2),
+            error: (e, _) {
+              _logger.e('bimModels load failed', error: e);
+              return AppErrorBanner(message: 'Could not load BIM models: $e');
             },
           ),
         ],
@@ -98,6 +90,26 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
   }
 
   Widget _buildOverview() {
+    // Each Riverpod provider creates exactly one Firestore listener shared
+    // across this screen (and any other watcher for the same facilityId).
+    // Counts update live: when a cascade-delete clears the collection the
+    // stats drop to 0 without any refresh needed.
+    final spacesAsync = ref.watch(bimSpacesSnapshotProvider(widget.facilityId));
+    final eqCountAsync = ref.watch(bimActualEquipmentCountProvider(widget.facilityId));
+    final sysCountAsync = ref.watch(bimSystemsCountProvider(widget.facilityId));
+    final cntCountAsync = ref.watch(bimContactsCountProvider(widget.facilityId));
+    final sprCountAsync = ref.watch(bimSparesCountProvider(widget.facilityId));
+
+    final spaces = spacesAsync.asData?.value.docs ?? const [];
+    final floors = spaces.where((d) => d.data()['kind'] == BimSpaceKind.storey.name).length;
+    final rooms = spaces.length - floors;
+    final eqCount = eqCountAsync.asData?.value;
+    final sysCount = sysCountAsync.asData?.value;
+    final cntCount = cntCountAsync.asData?.value;
+    final sprCount = sprCountAsync.asData?.value;
+
+    String v(int? n, bool loaded) => loaded ? '${n ?? 0}' : '…';
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,45 +129,20 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
             style: GoogleFonts.poppins(fontSize: 13, height: 1.5, color: AppColors.textSecondary),
           ),
           const SizedBox(height: AppSpacing.md),
-          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: _spacesStream,
-            builder: (context, spaceSnap) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _linkedEquipmentStream,
-              builder: (context, eqSnap) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: _systemsStream,
-                builder: (context, sysSnap) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: _contactsStream,
-                  builder: (context, cntSnap) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: _sparesStream,
-                    builder: (context, sprSnap) {
-                      final spaces = spaceSnap.data?.docs ?? const [];
-                      final floors = spaces.where((d) => d.data()['kind'] == BimSpaceKind.storey.name).length;
-                      final rooms = spaces.length - floors;
-                      final linked = eqSnap.data?.docs.length;
-                      final sysCount = sysSnap.data?.docs.length;
-                      final cntCount = cntSnap.data?.docs.length;
-                      final sprCount = sprSnap.data?.docs.length;
-                      String v(int? n, bool loaded) => loaded ? '${n ?? 0}' : '…';
-                      return Wrap(spacing: 12, runSpacing: 12, children: [
-                        _tappable(BimStat(icon: Icons.layers_rounded, label: 'Floors', value: v(floors, spaceSnap.hasData)), _openSpaces),
-                        _tappable(BimStat(icon: Icons.meeting_room_rounded, label: 'Rooms', value: v(rooms, spaceSnap.hasData)), _openSpaces),
-                        _tappable(
-                          BimStat(icon: Icons.precision_manufacturing_rounded, label: 'BIM equipment', value: v(linked, eqSnap.hasData)),
-                          _openEquipment,
-                        ),
-                        if (sysSnap.hasData && (sysCount ?? 0) > 0)
-                          _tappable(BimStat(icon: Icons.account_tree_rounded, label: 'Systems', value: '$sysCount'), _openSystems),
-                        if (cntSnap.hasData && (cntCount ?? 0) > 0)
-                          _tappable(BimStat(icon: Icons.contacts_rounded, label: 'Contacts', value: '$cntCount'), _openContacts),
-                        if (sprSnap.hasData && (sprCount ?? 0) > 0)
-                          _tappable(BimStat(icon: Icons.inventory_2_rounded, label: 'Spares', value: '$sprCount'), _openSpares),
-                      ]);
-                    },
-                  ),
-                ),
-              ),
+          Wrap(spacing: 12, runSpacing: 12, children: [
+            _tappable(BimStat(icon: Icons.layers_rounded, label: 'Floors', value: v(floors, spacesAsync.hasValue)), _openSpaces),
+            _tappable(BimStat(icon: Icons.meeting_room_rounded, label: 'Rooms', value: v(rooms, spacesAsync.hasValue)), _openSpaces),
+            _tappable(
+              BimStat(icon: Icons.precision_manufacturing_rounded, label: 'BIM equipment', value: v(eqCount, eqCountAsync.hasValue)),
+              _openEquipment,
             ),
-          ),
+            if (sysCountAsync.hasValue && (sysCount ?? 0) > 0)
+              _tappable(BimStat(icon: Icons.account_tree_rounded, label: 'Systems', value: '$sysCount'), _openSystems),
+            if (cntCountAsync.hasValue && (cntCount ?? 0) > 0)
+              _tappable(BimStat(icon: Icons.contacts_rounded, label: 'Contacts', value: '$cntCount'), _openContacts),
+            if (sprCountAsync.hasValue && (sprCount ?? 0) > 0)
+              _tappable(BimStat(icon: Icons.inventory_2_rounded, label: 'Spares', value: '$sprCount'), _openSpares),
+          ]),
         ],
       ),
     );
@@ -418,14 +405,35 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
         Text(label, style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textPrimary)),
       ]);
 
+  /// Batch-deletes all documents in [col] that have bimModelId == [modelId].
+  /// Loops in pages of 450 to stay under Firestore's 500-op batch limit.
+  Future<void> _cascadeDelete(
+    CollectionReference<Map<String, dynamic>> col,
+    String modelId,
+  ) async {
+    const int pageSize = 450;
+    while (true) {
+      final snap =
+          await col.where('bimModelId', isEqualTo: modelId).limit(pageSize).get();
+      if (snap.docs.isEmpty) break;
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      if (snap.docs.length < pageSize) break;
+    }
+  }
+
   Future<void> _deleteModel(BimModel m) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Delete "${m.fileName}"?', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
         content: Text(
-          'This removes the import record${m.storagePath.isNotEmpty ? ' and the stored file' : ''}. '
-          'Spaces and equipment already written by this import are kept.',
+          'This permanently removes the import record${m.storagePath.isNotEmpty ? ', the stored file,' : ''} '
+          'and ALL data written by this import: floors, rooms, equipment, systems, contacts, '
+          'spares, maintenance jobs and AI analysis results.',
           style: GoogleFonts.poppins(fontSize: 13),
         ),
         actions: [
@@ -433,24 +441,84 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
+            child: const Text('Delete all'),
           ),
         ],
       ),
     );
     if (ok != true) return;
+
+    // Show progress so the user knows a potentially large deletion is running.
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(children: [
+          const CircularProgressIndicator(),
+          const SizedBox(width: 16),
+          Expanded(child: Text('Removing BIM data…', style: GoogleFonts.poppins())),
+        ]),
+      ),
+    );
+
     try {
-      if (m.storagePath.isNotEmpty) {
-        await FirebaseStorage.instance.ref(m.storagePath).delete();
+      // 1. Collect equipment IDs before deleting them (needed for aiPmAnalysis cleanup).
+      final eqSnap = await _facility
+          .collection('equipment')
+          .where('bimModelId', isEqualTo: m.id)
+          .get();
+      final equipIds = eqSnap.docs.map((d) => d.id).toList();
+
+      // 2. Delete the matching aiPmAnalysis documents (doc id == equipment id).
+      if (equipIds.isNotEmpty) {
+        final analysisRef = _facility.collection('aiPmAnalysis');
+        for (int i = 0; i < equipIds.length; i += 450) {
+          final chunk = equipIds.sublist(i, (i + 450).clamp(0, equipIds.length));
+          final batch = FirebaseFirestore.instance.batch();
+          for (final id in chunk) {
+            batch.delete(analysisRef.doc(id));
+          }
+          await batch.commit();
+        }
       }
+
+      // 3. Delete equipment documents.
+      for (int i = 0; i < eqSnap.docs.length; i += 450) {
+        final chunk = eqSnap.docs.sublist(i, (i + 450).clamp(0, eqSnap.docs.length));
+        final batch = FirebaseFirestore.instance.batch();
+        for (final doc in chunk) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+      }
+
+      // 4. Cascade-delete remaining sub-collections by bimModelId.
+      await _cascadeDelete(_facility.collection('spaces'), m.id);
+      await _cascadeDelete(_facility.collection('bimSystems'), m.id);
+      await _cascadeDelete(_facility.collection('bimContacts'), m.id);
+      await _cascadeDelete(_facility.collection('bimSpares'), m.id);
+      await _cascadeDelete(_facility.collection('preventive_maintenance'), m.id);
+
+      // 5. Delete Storage file (swallow 404 — file may already be gone).
+      if (m.storagePath.isNotEmpty) {
+        try {
+          await FirebaseStorage.instance.ref(m.storagePath).delete();
+        } catch (_) {}
+      }
+
+      // 6. Finally delete the bimModels record itself.
       await _facility.collection('bimModels').doc(m.id).delete();
+
       if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss progress dialog
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Deleted ${m.fileName}', style: GoogleFonts.poppins())),
+        SnackBar(content: Text('Deleted ${m.fileName} and all associated data', style: GoogleFonts.poppins())),
       );
     } catch (e) {
       _logger.e('BIM model delete failed', error: e);
       if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss progress dialog
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not delete: $e', style: GoogleFonts.poppins())),
       );
