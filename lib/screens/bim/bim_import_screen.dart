@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
-import 'package:cmms/display%20screens/equipment_supplied_screen.dart';
+import 'package:cmms/display_screens/equipment_supplied_screen.dart';
 import 'package:cmms/models/bim_model.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/screens/bim/bim_widgets.dart';
@@ -46,10 +46,12 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
   final Logger _logger = Logger();
   final BimImportService _service = BimImportService();
 
+  bool _picking = false;
   bool _parsing = false;
   bool _importing = false;
   bool _keepOriginal = true;
   bool _translateEnabled = false;
+  String _parseStage = '';
 
   String? _fileName;
   Uint8List? _bytes;
@@ -74,6 +76,10 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       _excludedTypes.clear();
     });
 
+    // Show "Opening file browser…" immediately — FilePicker.pickFile() blocks until
+    // the system dialog closes, so without this the button tap looks like it did nothing.
+    setState(() => _picking = true);
+
     try {
       // Mobile pickers filter by MIME/UTI and have none registered for .ifc, so a custom filter there
       // would grey the file out. Let the user pick any file and validate the extension below.
@@ -82,6 +88,8 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
         type: mobile ? FileType.any : FileType.custom,
         allowedExtensions: mobile ? null : const ['xlsx', 'ifc'],
       );
+      if (!mounted) return;
+      setState(() => _picking = false);
       if (file == null) return;
 
       final ext = (file.extension ?? '').toLowerCase();
@@ -98,7 +106,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             '${isIfc ? 'Ask for the MEP model on its own, or a COBie export, which is much smaller.' : ''}');
       }
 
-      setState(() => _parsing = true);
+      setState(() { _parsing = true; _parseStage = 'Reading file bytes…'; });
       final bytes = await file.readAsBytes();
 
       CobiePreview preview;
@@ -106,12 +114,14 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       String? building;
       String? site;
       if (isIfc) {
+        setState(() => _parseStage = 'Parsing IFC model structure…');
         final result = await compute(parseIfcBytes, bytes);
         preview = result.preview;
         schema = result.schemaVersion;
         building = result.buildingName;
         site = result.siteName;
       } else {
+        setState(() => _parseStage = 'Reading COBie workbook…');
         preview = await compute(_parseCobieBytes, bytes);
       }
       _logger.i('BIM parsed ($ext): ${preview.spaces.length} spaces, ${preview.equipment.length} equipment, '
@@ -130,6 +140,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
         _siteName = site;
         _preview = preview;
         _parsing = false;
+        _parseStage = '';
         // Auto-enable translation if Italian content is detected so equipment
         // names are stored in English and category matching works correctly.
         if (italianDetected) _translateEnabled = true;
@@ -139,7 +150,9 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       if (!mounted) return;
       setState(() {
         _error = e is FormatException ? e.message : 'Could not read this file: $e';
+        _picking = false;
         _parsing = false;
+        _parseStage = '';
       });
     }
   }
@@ -261,10 +274,12 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       children: [
         _buildIntro(),
         const SizedBox(height: AppSpacing.md),
+        if (_picking) ...[
+          _buildPickingIndicator(),
+          const SizedBox(height: AppSpacing.md),
+        ],
         if (_parsing) ...[
-          const LinearProgressIndicator(),
-          const SizedBox(height: 8),
-          Text('Reading the file. Large IFC models can take a minute…', style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary)),
+          _buildParsingProgress(),
           const SizedBox(height: AppSpacing.md),
         ],
         if (_error != null) ...[
@@ -312,8 +327,8 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               child: AppGradientButton(
                 label: _preview == null ? 'Choose file (.xlsx or .ifc)' : 'Choose a different file',
                 icon: Icons.upload_file_rounded,
-                isLoading: _parsing,
-                onPressed: (_parsing || _importing) ? null : _pickFile,
+                isLoading: _picking || _parsing,
+                onPressed: (_picking || _parsing || _importing) ? null : _pickFile,
               ),
             ),
             Text('IFC up to ${formatBytes(_maxIfcBytes)} · COBie up to ${formatBytes(_maxXlsxBytes)}',
@@ -587,6 +602,73 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
 
   TextStyle get _labelStyle => GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary);
   TextStyle get _hintStyle => GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary);
+
+  Widget _buildPickingIndicator() {
+    return AppCard(
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Opening file browser…',
+                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                const SizedBox(height: 2),
+                Text('Select a .xlsx or .ifc file from your device.',
+                    style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParsingProgress() {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Analysing file…',
+                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const LinearProgressIndicator(
+            backgroundColor: AppColors.surfaceAlt,
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+            minHeight: 5,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _parseStage.isNotEmpty ? _parseStage : 'Processing…',
+            style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Large IFC models can take up to a minute. A preview will appear when it\'s ready.',
+            style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildImportProgress() {
     return AppCard(

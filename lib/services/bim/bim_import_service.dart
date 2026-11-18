@@ -8,7 +8,22 @@ import 'package:cmms/models/preventive_maintenance_task.dart';
 import 'package:cmms/services/bim/cobie_parser.dart';
 import 'package:cmms/services/bim/italian_bim_glossary.dart';
 
-String _equipmentCategory(CobieEquipmentDraft e, BimSourceType sourceType) {
+/// Derives the CMMS maintenance category from the IFC filename discipline code.
+/// e.g. CF05-XX-M3-EE-EN0001-00.ifc → 'EE' → 'Electrical'
+String? _disciplineCategoryFromFileName(String fileName) {
+  final parts = fileName.split('.').first.split('-');
+  if (parts.length < 4) return null;
+  return switch (parts[3].toUpperCase()) {
+    'EE' => 'Electrical',
+    'ME' => 'Mechanical',
+    'ST' => 'Structural',
+    'FP' => 'Safety',
+    _ => null,
+  };
+}
+
+String _equipmentCategory(CobieEquipmentDraft e, BimSourceType sourceType,
+    {String? modelFallbackCategory}) {
   if (sourceType == BimSourceType.ifc) {
     // IFC parser sets type to the CMMS category directly (e.g. 'HVAC', 'Electrical').
     if (Equipment.knownCategories.contains(e.type)) return e.type;
@@ -22,8 +37,12 @@ String _equipmentCategory(CobieEquipmentDraft e, BimSourceType sourceType) {
         : null;
     final inferred = Equipment.normalisedCategory(translatedClass, translatedName);
     if (inferred != 'Unknown') return inferred;
+  } else {
+    final fromCoBie = Equipment.normalisedCategory(e.classification, e.type);
+    if (fromCoBie != 'Unknown') return fromCoBie;
   }
-  return Equipment.normalisedCategory(e.classification, e.type);
+  // Last resort: use the model-level discipline derived from the IFC filename.
+  return modelFallbackCategory ?? 'Unknown';
 }
 
 class BimImportResult {
@@ -92,6 +111,7 @@ class BimImportService {
     final facility = _db.collection('facilities').doc(facilityId);
     final models = facility.collection('bimModels');
     final bimSource = sourceType.name; // 'cobie' | 'ifc', stored on equipment as bimSource
+    final modelDisciplineCategory = _disciplineCategoryFromFileName(fileName);
 
     final previous = await models.count().get();
     final modelRef = models.doc();
@@ -213,7 +233,7 @@ class BimImportService {
           final update = <String, dynamic>{
             'name': e.name,
             'type': e.type,
-            'category': _equipmentCategory(e, sourceType),
+            'category': _equipmentCategory(e, sourceType, modelFallbackCategory: modelDisciplineCategory),
             'manufacturer': e.manufacturer,
             'modelNumber': e.modelNumber,
             'typeName': e.typeName.isEmpty ? null : e.typeName,
@@ -267,7 +287,7 @@ class BimImportService {
               typeName: e.typeName.isEmpty ? null : e.typeName,
               systemName: e.systemName,
               classification: e.classification,
-              category: _equipmentCategory(e, sourceType),
+              category: _equipmentCategory(e, sourceType, modelFallbackCategory: modelDisciplineCategory),
               installationDate: e.installationDate,
               warrantyStartDate: e.warrantyStart,
               warrantyEndDate: e.warrantyEnd,

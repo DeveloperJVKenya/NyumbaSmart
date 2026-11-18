@@ -1,12 +1,16 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/models/ai_pm_analysis.dart';
 import 'package:cmms/models/preventive_maintenance_task.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
+import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/screens/pm/ai_pm_analysis_screen.dart';
 import 'package:cmms/services/pm_scheduling_service.dart';
 import 'package:cmms/theme/app_theme.dart';
@@ -16,18 +20,18 @@ import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 /// generated automatically from BIM-linked equipment, and can be manually
 /// edited or added.  Unknown equipment types go to a review queue so the
 /// facility manager can decide whether to include them.
-class PreventiveMaintenanceScreen extends StatefulWidget {
+class PreventiveMaintenanceScreen extends ConsumerStatefulWidget {
   final String facilityId;
 
   const PreventiveMaintenanceScreen({super.key, required this.facilityId});
 
   @override
-  State<PreventiveMaintenanceScreen> createState() =>
+  ConsumerState<PreventiveMaintenanceScreen> createState() =>
       _PreventiveMaintenanceScreenState();
 }
 
 class _PreventiveMaintenanceScreenState
-    extends State<PreventiveMaintenanceScreen> {
+    extends ConsumerState<PreventiveMaintenanceScreen> {
   final Logger _logger = Logger(printer: PrettyPrinter());
   final NotificationService _notificationService = NotificationService();
 
@@ -36,6 +40,9 @@ class _PreventiveMaintenanceScreenState
   String _organization = '-';
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _tasksStream;
   late final Stream<AiPmAnalysisMeta?> _aiMetaStream;
+  late final Stream<int> _bimEquipmentCountStream;
+  StreamSubscription<int>? _bimCountSub;
+  int? _bimEquipmentCount;
 
   @override
   void initState() {
@@ -56,54 +63,27 @@ class _PreventiveMaintenanceScreenState
         .map((s) => s.exists
             ? AiPmAnalysisMeta.fromMap(s.data()!, widget.facilityId)
             : null);
+    // Sum the equipmentCount from active (ready) BIM model documents.
+    // This matches exactly what each BIM card tagline displays, and excludes
+    // equipment left over from deleted model imports.
+    _bimEquipmentCountStream = FirebaseFirestore.instance
+        .collection('facilities')
+        .doc(widget.facilityId)
+        .collection('bimModels')
+        .where('status', isEqualTo: 'ready')
+        .snapshots()
+        .map((s) => s.docs.fold<int>(
+            0, (acc, d) => acc + ((d.data()['equipmentCount'] as int?) ?? 0)));
+    _bimCountSub = _bimEquipmentCountStream.listen((n) {
+      if (mounted) setState(() => _bimEquipmentCount = n);
+    });
     _notificationService.initialize();
-    _getCurrentUserRole();
   }
 
-  Future<void> _getCurrentUserRole() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    try {
-      final adminDoc = await FirebaseFirestore.instance
-          .collection('Admins')
-          .doc(user.uid)
-          .get();
-      final developerDoc = await FirebaseFirestore.instance
-          .collection('Developers')
-          .doc(user.uid)
-          .get();
-      final technicianDoc = await FirebaseFirestore.instance
-          .collection('Technicians')
-          .doc(user.uid)
-          .get();
-      final userDoc = await FirebaseFirestore.instance
-          .collection('Users')
-          .doc(user.uid)
-          .get();
-
-      String newRole = 'User';
-      String newOrg = '-';
-
-      if (adminDoc.exists) {
-        newRole = 'Admin';
-        newOrg = adminDoc.data()?['organization'] ?? '-';
-      } else if (developerDoc.exists) {
-        newRole = 'Developer';
-        newOrg = 'JV Almacis';
-      } else if (technicianDoc.exists) {
-        newRole = 'Technician';
-        newOrg = technicianDoc.data()?['organization'] ?? '-';
-      } else if (userDoc.exists) {
-        final userData = userDoc.data();
-        newRole = (userData != null && userData['role'] == 'Technician')
-            ? 'Technician'
-            : 'User';
-      }
-
-      if (mounted) setState(() { _currentRole = newRole; _organization = newOrg; });
-    } catch (e) {
-      _logger.e('Error getting user role: $e');
-    }
+  @override
+  void dispose() {
+    _bimCountSub?.cancel();
+    super.dispose();
   }
 
   bool get _canGenerate =>
@@ -113,6 +93,14 @@ class _PreventiveMaintenanceScreenState
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(currentUserRoleProvider, (_, next) {
+      final info = next.value;
+      if (info == null || !mounted) return;
+      setState(() {
+        _currentRole = info.roleLabel;
+        _organization = info.organization;
+      });
+    });
     return ResponsiveScreenWrapper(
       title: 'Preventive Maintenance',
       facilityId: widget.facilityId,
@@ -142,11 +130,6 @@ class _PreventiveMaintenanceScreenState
 
   Widget _buildBody() {
     return LayoutBuilder(builder: (context, constraints) {
-      _logger.i(
-        'PM body constraints: '
-        'maxW=${constraints.maxWidth.toStringAsFixed(1)} '
-        'maxH=${constraints.maxHeight.toStringAsFixed(1)}',
-      );
       return Column(
         // stretch propagates tight bounded constraints down — prevents
         // loose-infinite from reaching Rows with Expanded children.
@@ -411,34 +394,44 @@ class _PreventiveMaintenanceScreenState
   Widget _aiAnalysisCard() {
     return StreamBuilder<AiPmAnalysisMeta?>(
       stream: _aiMetaStream,
-      builder: (context, snap) {
-        final meta = snap.data;
-        final status = meta?.status ?? AiAnalysisStatus.idle;
-        final isRunning = status == AiAnalysisStatus.running;
-        final isDone = status == AiAnalysisStatus.done;
-        final isPublished = isDone && meta?.publishedSowId != null;
+      builder: (context, snap) => _aiAnalysisCardInner(snap.data, _bimEquipmentCount),
+    );
+  }
 
-        String subtitle;
-        Color accentColor;
-        IconData icon;
+  Widget _aiAnalysisCardInner(AiPmAnalysisMeta? meta, int? bimCount) {
+    final status = meta?.status ?? AiAnalysisStatus.idle;
+    final isRunning = status == AiAnalysisStatus.running;
+    final isDone = status == AiAnalysisStatus.done;
+    final isPublished = isDone && meta?.publishedSowId != null;
 
-        if (isRunning) {
-          subtitle = 'AI analysis in progress…';
-          accentColor = AppColors.primary;
-          icon = Icons.auto_awesome;
-        } else if (isPublished) {
-          subtitle = 'Analysis published to Scope of Work — ${meta?.itemCount ?? 0} items';
-          accentColor = AppColors.success;
-          icon = Icons.verified_outlined;
-        } else if (isDone) {
-          subtitle = '${meta?.itemCount ?? 0} items analysed — tap to review & publish';
-          accentColor = AppColors.warning;
-          icon = Icons.pending_actions_outlined;
-        } else {
-          subtitle = 'Tap to run AI analysis on your BIM equipment list';
-          accentColor = AppColors.primary;
-          icon = Icons.auto_awesome_outlined;
-        }
+    // Use the live BIM equipment count when available; fall back to meta's
+    // stored count so the card is never blank while the stream loads.
+    final displayCount = bimCount ?? meta?.itemCount ?? 0;
+    final countLabel = bimCount == null ? '…' : '$displayCount';
+
+    String subtitle;
+    Color accentColor;
+    IconData icon;
+
+    if (isRunning) {
+      subtitle = 'AI analysis in progress…';
+      accentColor = AppColors.primary;
+      icon = Icons.auto_awesome;
+    } else if (isPublished) {
+      subtitle = 'Analysis published to Scope of Work — $countLabel items';
+      accentColor = AppColors.success;
+      icon = Icons.verified_outlined;
+    } else if (isDone) {
+      subtitle = '$countLabel items analysed — tap to review & publish';
+      accentColor = AppColors.warning;
+      icon = Icons.pending_actions_outlined;
+    } else {
+      subtitle = bimCount == null
+          ? 'Tap to run AI analysis on your BIM equipment list'
+          : 'Tap to run AI analysis on $countLabel BIM equipment items';
+      accentColor = AppColors.primary;
+      icon = Icons.auto_awesome_outlined;
+    }
 
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -495,8 +488,6 @@ class _PreventiveMaintenanceScreenState
             ),
           ),
         );
-      },
-    );
   }
 
   // ── Task list (per category) ───────────────────────────────────────────────
