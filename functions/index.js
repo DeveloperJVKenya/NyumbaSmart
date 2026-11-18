@@ -1544,8 +1544,11 @@ exports.analyzeEquipmentList = onCall({ timeoutSeconds: 540, memory: '512MiB' },
       // Only analyse equipment from currently active (ready) BIM model imports.
       // This excludes orphaned equipment left over from deleted model records.
       const bimModelsSnap = await db
-        .collection('facilities').doc(facilityId)
-        .collection('bimModels').where('status', '==', 'ready').get();
+        .collection('facilities')
+        .doc(facilityId)
+        .collection('bimModels')
+        .where('status', '==', 'ready')
+        .get();
       const activeBimModelIds = bimModelsSnap.docs.map((d) => d.id);
 
       if (activeBimModelIds.length === 0) {
@@ -1558,9 +1561,7 @@ exports.analyzeEquipmentList = onCall({ timeoutSeconds: 540, memory: '512MiB' },
 
       // Firestore whereIn supports up to 30 values per query.
       const docArrays = await Promise.all(
-        chunk(activeBimModelIds, 30).map((ids) =>
-          equipRef.where('bimModelId', 'in', ids).get().then((s) => s.docs),
-        ),
+        chunk(activeBimModelIds, 30).map((ids) => equipRef.where('bimModelId', 'in', ids).get().then((s) => s.docs)),
       );
       equipmentDocs = docArrays.flat();
     }
