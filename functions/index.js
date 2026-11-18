@@ -1592,6 +1592,28 @@ exports.analyzeEquipmentList = onCall({ timeoutSeconds: 540, memory: '512MiB' },
     const batchSize = 40;
     let totalWritten = 0;
 
+    // Prune stale analysis documents BEFORE running AI so ghost rows are
+    // cleared even if the AI phase later times out.  Doing this first also
+    // keeps the UI count accurate as new results stream in.
+    const currentIds = new Set(equipment.map((e) => e.id));
+    const preSnap = await analysisRef.get();
+    const staleDocs = preSnap.docs.filter(
+      (d) => d.id !== '_meta' && !currentIds.has(d.id),
+    );
+    console.log(
+      'analyzeEquipmentList cleanup:'
+      + ` equipment=${equipment.length},`
+      + ` existing=${preSnap.docs.length},`
+      + ` stale=${staleDocs.length}`,
+    );
+    for (const staleBatch of chunk(staleDocs, 500)) {
+      const delBatch = db.batch();
+      staleBatch.forEach((d) => delBatch.delete(d.ref));
+      // eslint-disable-next-line no-await-in-loop
+      await delBatch.commit();
+    }
+    console.log(`analyzeEquipmentList cleanup: deleted ${staleDocs.length} stale docs`);
+
     for (let i = 0; i < equipment.length; i += batchSize) {
       const eqChunk = equipment.slice(i, i + batchSize);
       let results;
@@ -1647,21 +1669,6 @@ exports.analyzeEquipmentList = onCall({ timeoutSeconds: 540, memory: '512MiB' },
       // eslint-disable-next-line no-await-in-loop
       await writeBatch.commit();
       totalWritten += eqChunk.length;
-    }
-
-    // Prune stale analysis documents from previous runs whose equipment no
-    // longer belongs to any active BIM model.  Without this step, deleted
-    // imports leave ghost rows in the UI indefinitely.
-    const processedIds = new Set(equipment.map((e) => e.id));
-    const existingSnap = await analysisRef.get();
-    const staleDocs = existingSnap.docs.filter(
-      (d) => d.id !== '_meta' && !processedIds.has(d.id),
-    );
-    for (const staleBatch of chunk(staleDocs, 500)) {
-      const delBatch = db.batch();
-      staleBatch.forEach((d) => delBatch.delete(d.ref));
-      // eslint-disable-next-line no-await-in-loop
-      await delBatch.commit();
     }
 
     await metaRef.set(
