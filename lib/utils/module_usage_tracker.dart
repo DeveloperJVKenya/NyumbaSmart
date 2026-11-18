@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ModuleUsageTracker {
   ModuleUsageTracker._();
 
-  static const _storageKey = 'ns_module_usage_v1';
+  static String _key(String facilityId) => 'ns_module_usage_v1_$facilityId';
 
   static const defaultModuleNames = [
     'Work Orders',
@@ -13,30 +13,34 @@ class ModuleUsageTracker {
     'Preventive Maintenance',
   ];
 
-  static Future<void> reset() async {
+  static Future<void> reset(String facilityId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_storageKey);
+      await prefs.remove(_key(facilityId));
     } catch (_) {}
   }
 
-  static Future<void> track(String moduleName) async {
+  static Future<void> track(String moduleName, {required String facilityId}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_storageKey);
+      final raw = prefs.getString(_key(facilityId));
       final Map<String, int> counts = raw != null
           ? (jsonDecode(raw) as Map<String, dynamic>)
               .map((k, v) => MapEntry(k, (v as num).toInt()))
           : {};
       counts[moduleName] = (counts[moduleName] ?? 0) + 1;
-      await prefs.setString(_storageKey, jsonEncode(counts));
+      await prefs.setString(_key(facilityId), jsonEncode(counts));
     } catch (_) {}
   }
 
-  static Future<List<String>> getTop(int n, {List<String>? allowedNames}) async {
+  static Future<List<String>> getTop(
+    int n, {
+    required String facilityId,
+    List<String>? allowedNames,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_storageKey);
+      final raw = prefs.getString(_key(facilityId));
 
       Map<String, int> counts = {};
       if (raw != null) {

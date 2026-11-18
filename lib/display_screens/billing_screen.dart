@@ -1,30 +1,33 @@
 ﻿import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cmms/models/billing_data.dart';
+import 'package:cmms/models/user_model.dart';
+import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
-import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class BillingScreen extends StatefulWidget {
+class BillingScreen extends ConsumerStatefulWidget {
   final String facilityId;
 
   const BillingScreen({super.key, required this.facilityId});
 
   @override
-  State<BillingScreen> createState() => _BillingScreenState();
+  ConsumerState<BillingScreen> createState() => _BillingScreenState();
 }
 
-class _BillingScreenState extends State<BillingScreen> {
+class _BillingScreenState extends ConsumerState<BillingScreen> {
   final logger = Logger(printer: PrettyPrinter());
   final TextEditingController _titleController = TextEditingController();
   double? _uploadProgress;
@@ -41,7 +44,6 @@ class _BillingScreenState extends State<BillingScreen> {
   @override
   void initState() {
     super.initState();
-    _getCurrentUserInfo();
     logger.i('BillingScreen initialized with facilityId: ${widget.facilityId}');
   }
 
@@ -51,69 +53,6 @@ class _BillingScreenState extends State<BillingScreen> {
     super.dispose();
   }
 
-  Future<void> _getCurrentUserInfo() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      final adminDoc = await FirebaseFirestore.instance.collection('Admins').doc(user.uid).get();
-      final developerDoc = await FirebaseFirestore.instance.collection('Developers').doc(user.uid).get();
-      final technicianDoc = await FirebaseFirestore.instance.collection('Technicians').doc(user.uid).get();
-      final userDoc = await FirebaseFirestore.instance.collection('Users').doc(user.uid).get();
-
-      String newRole = 'User';
-      String newOrg = '-';
-      String? username;
-      bool isClient = false;
-      bool isAdminClient = false;
-
-      if (adminDoc.exists) {
-        newRole = 'Admin';
-        final data = adminDoc.data()!;
-        newOrg = data['organization'] ?? '-';
-        username = data['username'] ?? data['name'] ?? data['displayName'];
-        isClient = newOrg != 'JV Almacis';
-        isAdminClient = isClient;
-        logger.i('User is Admin, org: $newOrg, isClient: $isClient, isAdminClient: $isAdminClient');
-      } else if (developerDoc.exists) {
-        newRole = 'Technician';
-        newOrg = 'JV Almacis';
-        final data = developerDoc.data()!;
-        username = data['username'] ?? data['name'] ?? data['displayName'];
-        logger.i('User is Developer (JV Almacis), org: $newOrg');
-      } else if (technicianDoc.exists) {
-        newRole = 'Technician';
-        final data = technicianDoc.data()!;
-        newOrg = data['organization'] ?? '-';
-        username = data['username'] ?? data['name'] ?? data['displayName'];
-        isClient = newOrg != 'JV Almacis';
-        logger.i('User is Technician, org: $newOrg, isClient: $isClient');
-      } else if (userDoc.exists) {
-        final userData = userDoc.data()!;
-        if (userData['role'] == 'Technician') {
-          newRole = 'Technician';
-          newOrg = userData['organization'] ?? '-';
-        } else {
-          newRole = 'User';
-          newOrg = userData['organization'] ?? '-';
-        }
-        username = userData['username'] ?? userData['name'] ?? userData['displayName'];
-        isClient = newOrg != 'JV Almacis';
-        logger.i('User from Users collection, role: $newRole, org: $newOrg, isClient: $isClient');
-      }
-
-      if (mounted) {
-        setState(() {
-          _currentRole = newRole;
-          _organization = newOrg;
-          _isAdminClient = isAdminClient;
-        });
-        logger.i('Updated user info for Billing: isAdminClient=$isAdminClient, org=$newOrg, username=$username');
-      }
-    } catch (e) {
-      logger.e('Error getting user info: $e');
-    }
-  }
 
   bool get _canUpload => _isAdmin && _organization == 'JV Almacis';
   bool get _isAdmin => _currentRole == 'Admin';
@@ -522,7 +461,8 @@ class _BillingScreenState extends State<BillingScreen> {
           if (isPdf) {
             final tempDir = await getTemporaryDirectory();
             final filePath = '${tempDir.path}/$fileName';
-            await Dio().download(url, filePath);
+            final response = await http.get(Uri.parse(url));
+            await File(filePath).writeAsBytes(response.bodyBytes);
             final file = File(filePath);
             if (await file.exists()) {
               if (mounted) {
@@ -574,7 +514,8 @@ class _BillingScreenState extends State<BillingScreen> {
           if (isPdf) {
             final tempDir = await getTemporaryDirectory();
             final filePath = '${tempDir.path}/$fileName';
-            await Dio().download(url, filePath);
+            final response = await http.get(Uri.parse(url));
+            await File(filePath).writeAsBytes(response.bodyBytes);
             final file = File(filePath);
             if (await file.exists()) {
               if (mounted) {
@@ -652,7 +593,8 @@ class _BillingScreenState extends State<BillingScreen> {
       } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
         final tempDir = await getTemporaryDirectory();
         final filePath = '${tempDir.path}/$fileName';
-        await Dio().download(url, filePath);
+        final response = await http.get(Uri.parse(url));
+        await File(filePath).writeAsBytes(response.bodyBytes);
         final file = File(filePath);
         if (await file.exists()) {
           if (mounted) {
@@ -668,7 +610,8 @@ class _BillingScreenState extends State<BillingScreen> {
           throw 'Could not access downloads directory';
         }
         final filePath = '${downloadsDir.path}/$fileName';
-        await Dio().download(url, filePath);
+        final response = await http.get(Uri.parse(url));
+        await File(filePath).writeAsBytes(response.bodyBytes);
         final file = File(filePath);
         if (await file.exists()) {
           if (mounted) {
@@ -855,6 +798,15 @@ class _BillingScreenState extends State<BillingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(currentUserRoleProvider, (_, next) {
+      final info = next.value;
+      if (info == null || !mounted) return;
+      setState(() {
+        _currentRole = info.roleLabel;
+        _organization = info.organization;
+        _isAdminClient = info.role == UserRole.admin && info.isClient;
+      });
+    });
     return ResponsiveScreenWrapper(
       title: 'Billing',
       facilityId: widget.facilityId,

@@ -4,21 +4,22 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/request.dart';
+import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/widgets/equipment_picker_field.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'dart:typed_data';
-// Import the new file download helper
 import 'package:cmms/utils/file_download_helper.dart';
 
-class RequestScreen extends StatefulWidget {
+class RequestScreen extends ConsumerStatefulWidget {
   final String facilityId;
 
   /// When set (e.g. "Report a problem" from an equipment card or the 3D viewer), the create form
@@ -28,10 +29,10 @@ class RequestScreen extends StatefulWidget {
   const RequestScreen({super.key, required this.facilityId, this.initialEquipment});
 
   @override
-  State<RequestScreen> createState() => _RequestScreenState();
+  ConsumerState<RequestScreen> createState() => _RequestScreenState();
 }
 
-class _RequestScreenState extends State<RequestScreen> with TickerProviderStateMixin {
+class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -75,7 +76,7 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _getCurrentUserInfo();
+    _loadCreatedBy();
     _setupAutomaticStatusUpdates();
     if (widget.initialEquipment != null) {
       _selectedEquipment = widget.initialEquipment;
@@ -93,68 +94,32 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
     super.dispose();
   }
 
-  Future<void> _getCurrentUserInfo() async {
+  Future<void> _loadCreatedBy() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     try {
-      final adminDoc = await FirebaseFirestore.instance.collection('Admins').doc(user.uid).get();
-      final developerDoc = await FirebaseFirestore.instance.collection('Developers').doc(user.uid).get();
-      final technicianDoc = await FirebaseFirestore.instance.collection('Technicians').doc(user.uid).get();
-      final userDoc = await FirebaseFirestore.instance.collection('Users').doc(user.uid).get();
-
-      String newRole = 'User';
-      String newOrg = '-';
-      String? email = user.email;
+      final uid = user.uid;
       String? username;
-      bool isClient = false;
-
-      if (adminDoc.exists) {
-        newRole = 'Admin';
-        final data = adminDoc.data()!;
-        newOrg = data['organization'] ?? '-';
-        username = data['username'] ?? data['name'] ?? data['displayName'];
-      } else if (developerDoc.exists) {
-        newRole = 'Technician';
-        newOrg = 'JV Almacis';
-        final data = developerDoc.data()!;
-        username = data['username'] ?? data['name'] ?? data['displayName'];
-      } else if (technicianDoc.exists) {
-        newRole = 'Technician';
-        final data = technicianDoc.data()!;
-        newOrg = data['organization'] ?? '-';
-        username = data['username'] ?? data['name'] ?? data['displayName'];
-      } else if (userDoc.exists) {
-        final userData = userDoc.data()!;
-        if (userData['role'] == 'Technician') {
-          newRole = 'Technician';
-          newOrg = userData['organization'] ?? '-';
-        } else {
-          newRole = 'User';
-          newOrg = userData['organization'] ?? '-';
+      for (final col in ['Admins', 'Developers', 'Technicians', 'Users']) {
+        final doc = await FirebaseFirestore.instance.collection(col).doc(uid).get();
+        if (doc.exists) {
+          final d = doc.data()!;
+          username = d['username'] as String? ?? d['name'] as String? ?? d['displayName'] as String?;
+          break;
         }
-        username = userData['username'] ?? userData['name'] ?? userData['displayName'];
       }
-
-      // Determine if user is client (organization != 'JV Almacis')
-      isClient = newOrg != 'JV Almacis';
-
       if (mounted) {
         setState(() {
-          _currentRole = newRole;
-          _organization = newOrg;
-          _isClient = isClient;
-          _createdByEmail = email;
+          _createdByEmail = user.email;
           _createdByUsername = username;
         });
-        _logger.i('Updated client status for Work Requests: isClient=$isClient, org=$newOrg, username=$username');
       }
     } catch (e) {
-      _logger.e('Error getting user info: $e');
+      _logger.e('Error loading user display name: $e');
     }
   }
 
-  // Add this method after _getCurrentUserInfo()
+
   Future<String> _getUsernameFromCollection(String userId) async {
     try {
       // Check Users collection first
@@ -872,6 +837,15 @@ class _RequestScreenState extends State<RequestScreen> with TickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(currentUserRoleProvider, (_, next) {
+      final info = next.value;
+      if (info == null || !mounted) return;
+      setState(() {
+        _currentRole = info.roleLabel;
+        _organization = info.organization;
+        _isClient = info.isClient;
+      });
+    });
     return ResponsiveScreenWrapper(
       title: 'Work Requests',
       facilityId: widget.facilityId,

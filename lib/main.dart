@@ -214,7 +214,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       routes: {
         '/home': (context) {
           final args = ModalRoute.of(context)?.settings.arguments as String?;
-          return DashboardScreen(facilityId: args ?? '', role: '');
+          return DashboardScreen(facilityId: args ?? '');
         },
         '/login': (context) => const LoginScreen(),
         '/registration': (context) => const RegistrationScreen(),

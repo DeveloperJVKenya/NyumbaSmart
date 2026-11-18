@@ -1,15 +1,17 @@
 ﻿import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cmms/models/reports.dart';
+import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
-import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:open_file/open_file.dart';
@@ -17,16 +19,16 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class ReportsScreen extends StatefulWidget {
+class ReportsScreen extends ConsumerStatefulWidget {
   final String facilityId;
 
   const ReportsScreen({super.key, required this.facilityId});
 
   @override
-  State<ReportsScreen> createState() => _ReportsScreenState();
+  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportsScreenState extends State<ReportsScreen> {
+class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   final logger = Logger(printer: PrettyPrinter());
   final TextEditingController _titleController = TextEditingController();
   double? _uploadProgress;
@@ -37,53 +39,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   void initState() {
     super.initState();
-    _getCurrentUserRole();
     logger.i('ReportsScreen initialized with facilityId: ${widget.facilityId}');
   }
 
-  Future<void> _getCurrentUserRole() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      final adminDoc = await FirebaseFirestore.instance.collection('Admins').doc(user.uid).get();
-      final developerDoc = await FirebaseFirestore.instance.collection('Developers').doc(user.uid).get();
-      final technicianDoc = await FirebaseFirestore.instance.collection('Technicians').doc(user.uid).get();
-      final userDoc = await FirebaseFirestore.instance.collection('Users').doc(user.uid).get();
-
-      String newRole = 'User';
-      String newOrg = '-';
-
-      if (adminDoc.exists) {
-        newRole = 'Admin';
-        newOrg = adminDoc.data()?['organization'] ?? '-';
-      } else if (developerDoc.exists) {
-        newRole = 'Technician';
-        newOrg = 'JV Almacis';
-      } else if (technicianDoc.exists) {
-        newRole = 'Technician';
-        newOrg = technicianDoc.data()?['organization'] ?? '-';
-      } else if (userDoc.exists) {
-        final userData = userDoc.data();
-        if (userData != null && userData['role'] == 'Technician') {
-          newRole = 'Technician';
-          newOrg = '-';
-        } else {
-          newRole = 'User';
-          newOrg = '-';
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _currentRole = newRole;
-          _organization = newOrg;
-        });
-      }
-    } catch (e) {
-      logger.e('Error getting user role: $e');
-    }
-  }
 
   @override
   void dispose() {
@@ -327,7 +285,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
         if (fileName.toLowerCase().endsWith('.pdf')) {
           final tempDir = await getTemporaryDirectory();
           final filePath = '${tempDir.path}/$fileName';
-          await Dio().download(url, filePath);
+          final viewResponse = await http.get(Uri.parse(url));
+          await File(filePath).writeAsBytes(viewResponse.bodyBytes);
           final file = File(filePath);
           if (await file.exists()) {
             if (mounted) {
@@ -399,7 +358,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
         final downloadsDir = await getExternalStorageDirectory();
         final filePath = '${downloadsDir!.path}/$fileName';
-        await Dio().download(url, filePath);
+        final dlResponse = await http.get(Uri.parse(url));
+        await File(filePath).writeAsBytes(dlResponse.bodyBytes);
 
         final file = File(filePath);
         if (await file.exists()) {
@@ -522,6 +482,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(currentUserRoleProvider, (_, next) {
+      final info = next.value;
+      if (info == null || !mounted) return;
+      setState(() {
+        _currentRole = info.roleLabel;
+        _organization = info.organization;
+      });
+    });
     return Scaffold(
       body: ResponsiveScreenWrapper(
         title: 'Reports',

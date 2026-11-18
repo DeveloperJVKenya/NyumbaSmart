@@ -159,16 +159,6 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
               : (_canVerify ? _verifyBar(meta) : null),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              // ── Constraint diagnostic ─────────────────────────────────────
-              // Log the actual incoming constraints for every rebuild so we can
-              // pinpoint any frame that delivers infinite width to this Column.
-              _log.i(
-                'LayoutBuilder constraints: '
-                'maxW=${constraints.maxWidth.toStringAsFixed(1)} '
-                'maxH=${constraints.maxHeight.toStringAsFixed(1)} '
-                'minW=${constraints.minWidth.toStringAsFixed(1)} '
-                'metaStatus=${meta?.status.name ?? 'null'}',
-              );
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -177,13 +167,6 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
                     child: StreamBuilder<List<AiPmAnalysisItem>>(
                       stream: _itemsStream,
                       builder: (context, snap) {
-                        final state = snap.connectionState.name;
-                        final count = snap.data?.length ?? 0;
-                        _log.i(
-                          'ItemsStream rebuild: state=$state '
-                          'count=$count '
-                          'metaStatus=${meta?.status.name ?? 'null'}',
-                        );
                         if (snap.connectionState == ConnectionState.waiting && snap.data == null) {
                           return const Center(child: CircularProgressIndicator());
                         }
@@ -409,17 +392,17 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEF3C7),
+        color: AppColors.accent.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
       ),
       child: Row(children: [
-        const Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 18),
+        Icon(Icons.warning_amber_rounded, color: AppColors.accent, size: 18),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             '$count item${count == 1 ? '' : 's'} have unknown categories — assign categories before publishing.',
-            style: GoogleFonts.poppins(fontSize: 12.5, color: const Color(0xFF92400E)),
+            style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.warning),
           ),
         ),
       ]),

@@ -4,21 +4,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cmms/models/user_model.dart';
 import 'package:cmms/models/work_order.dart';
+import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/widgets/equipment_picker_field.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'dart:typed_data';
-// Import the new file download helper
 import 'package:cmms/utils/file_download_helper.dart';
 
-class WorkOrderScreen extends StatefulWidget {
+class WorkOrderScreen extends ConsumerStatefulWidget {
   final String facilityId;
 
   /// When set (e.g. "New work order" from an equipment card or the 3D viewer), the create form
@@ -28,10 +30,10 @@ class WorkOrderScreen extends StatefulWidget {
   const WorkOrderScreen({super.key, required this.facilityId, this.initialEquipment});
 
   @override
-  State<WorkOrderScreen> createState() => _WorkOrderScreenState();
+  ConsumerState<WorkOrderScreen> createState() => _WorkOrderScreenState();
 }
 
-class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderStateMixin {
+class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -57,6 +59,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
   bool _isAdminClient = false;
   String? _createdByEmail;
   String? _createdByUsername;
+  final Map<String, String> _usernameCache = {};
   double? _uploadProgress;
   late TabController _tabController;
   bool _isSubmitting = false;
@@ -86,7 +89,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _getCurrentUserInfo();
+    _loadCreatedBy();
     if (widget.initialEquipment != null) {
       _selectedEquipment = widget.initialEquipment;
       _showForm = true;
@@ -103,139 +106,50 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
     super.dispose();
   }
 
-  Future<void> _getCurrentUserInfo() async {
+  Future<void> _loadCreatedBy() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     try {
-      final adminDoc = await FirebaseFirestore.instance.collection('Admins').doc(user.uid).get();
-      final developerDoc = await FirebaseFirestore.instance.collection('Developers').doc(user.uid).get();
-      final technicianDoc = await FirebaseFirestore.instance.collection('Technicians').doc(user.uid).get();
-      final userDoc = await FirebaseFirestore.instance.collection('Users').doc(user.uid).get();
-
-      String newRole = 'User';
-      String newOrg = '-';
-      String? email = user.email;
+      final uid = user.uid;
       String? username;
-      bool isClient = false;
-      bool isJVAlmacisUser = false;
-      bool isAdminClient = false;
-
-      if (adminDoc.exists) {
-        newRole = 'Admin';
-        final data = adminDoc.data()!;
-        newOrg = data['organization'] ?? '-';
-        username = data['username'] ?? data['name'] ?? data['displayName'];
-        isClient = newOrg != 'JV Almacis';
-        isJVAlmacisUser = newOrg == 'JV Almacis';
-        isAdminClient = isClient; // Admin client has special privileges
-      } else if (developerDoc.exists) {
-        newRole = 'Technician';
-        newOrg = 'JV Almacis';
-        final data = developerDoc.data()!;
-        username = data['username'] ?? data['name'] ?? data['displayName'];
-        isJVAlmacisUser = true;
-      } else if (technicianDoc.exists) {
-        newRole = 'Technician';
-        final data = technicianDoc.data()!;
-        newOrg = data['organization'] ?? '-';
-        username = data['username'] ?? data['name'] ?? data['displayName'];
-        isClient = newOrg != 'JV Almacis';
-        isJVAlmacisUser = newOrg == 'JV Almacis';
-      } else if (userDoc.exists) {
-        final userData = userDoc.data()!;
-        if (userData['role'] == 'Technician') {
-          newRole = 'Technician';
-          newOrg = userData['organization'] ?? '-';
-        } else {
-          newRole = 'User';
-          newOrg = userData['organization'] ?? '-';
+      for (final col in ['Admins', 'Developers', 'Technicians', 'Users']) {
+        final doc = await FirebaseFirestore.instance.collection(col).doc(uid).get();
+        if (doc.exists) {
+          final d = doc.data()!;
+          username = d['username'] as String? ?? d['name'] as String? ?? d['displayName'] as String?;
+          break;
         }
-        username = userData['username'] ?? userData['name'] ?? userData['displayName'];
-        isClient = newOrg != 'JV Almacis';
-        isJVAlmacisUser = newOrg == 'JV Almacis';
       }
-
       if (mounted) {
         setState(() {
-          _currentRole = newRole;
-          _organization = newOrg;
-          _isJVAlmacisUser = isJVAlmacisUser;
-          _isAdminClient = isAdminClient;
-          _createdByEmail = email;
+          _createdByEmail = user.email;
           _createdByUsername = username;
         });
-        _logger.i('Updated user info for Work Orders: isJVAlmacis=$isJVAlmacisUser, org=$newOrg, username=$username');
       }
     } catch (e) {
-      _logger.e('Error getting user info: $e');
+      _logger.e('Error loading user display name: $e');
     }
   }
 
-  // Add this method to fetch username from Users collection
   Future<String> _getUsernameFromCollection(String userId) async {
+    if (_usernameCache.containsKey(userId)) return _usernameCache[userId]!;
     try {
-      // Check Users collection first
-      final userDoc = await FirebaseFirestore.instance
-          .collection('Users')
-          .doc(userId)
-          .get();
-          
-      if (userDoc.exists) {
-        final userData = userDoc.data()!;
-        final username = userData['username'] ?? userData['name'] ?? userData['displayName'];
-        if (username != null && username.isNotEmpty) {
-          return username;
+      String? found;
+      for (final col in ['Users', 'Admins', 'Technicians', 'Developers']) {
+        final doc = await FirebaseFirestore.instance.collection(col).doc(userId).get();
+        if (doc.exists) {
+          final d = doc.data()!;
+          final u = (d['username'] ?? d['name'] ?? d['displayName']) as String?;
+          if (u != null && u.isNotEmpty) { found = u; break; }
         }
       }
-          
-      // Fallback to other collections if not found in Users
-      final adminDoc = await FirebaseFirestore.instance
-          .collection('Admins')
-          .doc(userId)
-          .get();
-          
-      if (adminDoc.exists) {
-        final adminData = adminDoc.data()!;
-        final username = adminData['username'] ?? adminData['name'] ?? adminData['displayName'];
-        if (username != null && username.isNotEmpty) {
-          return username;
-        }
+      if (found == null) {
+        final authUser = await FirebaseAuth.instance.userChanges().first;
+        if (authUser != null && authUser.uid == userId) found = authUser.email;
       }
-          
-      final techDoc = await FirebaseFirestore.instance
-          .collection('Technicians')
-          .doc(userId)
-          .get();
-          
-      if (techDoc.exists) {
-        final techData = techDoc.data()!;
-        final username = techData['username'] ?? techData['name'] ?? techData['displayName'];
-        if (username != null && username.isNotEmpty) {
-          return username;
-        }
-      }
-          
-      final devDoc = await FirebaseFirestore.instance
-          .collection('Developers')
-          .doc(userId)
-          .get();
-          
-      if (devDoc.exists) {
-        final devData = devDoc.data()!;
-        final username = devData['username'] ?? devData['name'] ?? devData['displayName'];
-        if (username != null && username.isNotEmpty) {
-          return username;
-        }
-      }
-          
-      // Final fallback to email from Firebase Auth
-      final user = await FirebaseAuth.instance.userChanges().first;
-      if (user != null && user.uid == userId) {
-        return user.email ?? 'Unknown User';
-      }
-          
-      return 'Unknown User';
+      final result = found ?? 'Unknown User';
+      _usernameCache[userId] = result;
+      return result;
     } catch (e) {
       _logger.e('Error fetching username for user $userId: $e');
       return 'Unknown User';
@@ -945,6 +859,16 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> with TickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(currentUserRoleProvider, (_, next) {
+      final info = next.value;
+      if (info == null || !mounted) return;
+      setState(() {
+        _currentRole = info.roleLabel;
+        _organization = info.organization;
+        _isJVAlmacisUser = info.isServiceProviderOrg;
+        _isAdminClient = info.role == UserRole.admin && info.isClient;
+      });
+    });
     return ResponsiveScreenWrapper(
       title: 'Work Orders',
       facilityId: widget.facilityId,

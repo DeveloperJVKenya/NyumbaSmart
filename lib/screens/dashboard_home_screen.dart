@@ -3,15 +3,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/utils/module_usage_tracker.dart';
-import 'package:cmms/display%20screens/locations_screen.dart';
-import 'package:cmms/display%20screens/schedule_maintenance_screen.dart';
+import 'package:cmms/display_screens/locations_screen.dart';
+import 'package:cmms/display_screens/schedule_maintenance_screen.dart';
 import 'package:cmms/technician/preventive_maintenance_screen.dart';
-import 'package:cmms/display%20screens/work_order_screen.dart';
-import 'package:cmms/display%20screens/request_screen.dart';
-import 'package:cmms/display%20screens/reports_screen.dart';
-import 'package:cmms/display%20screens/inventory_screen.dart';
-import 'package:cmms/display%20screens/kpi_screen.dart';
-import 'package:cmms/display%20screens/billing_screen.dart';
+import 'package:cmms/display_screens/work_order_screen.dart';
+import 'package:cmms/display_screens/request_screen.dart';
+import 'package:cmms/display_screens/reports_screen.dart';
+import 'package:cmms/display_screens/inventory_screen.dart';
+import 'package:cmms/display_screens/kpi_screen.dart';
+import 'package:cmms/display_screens/billing_screen.dart';
 import 'package:cmms/screens/bim/bim_models_screen.dart';
 
 // ── Module catalogue ──────────────────────────────────────────────────────────
@@ -230,11 +230,11 @@ class _QuickAccessSectionState extends State<_QuickAccessSection> {
         .where((m) => m.roles.isEmpty || m.roles.contains(widget.role))
         .map((m) => m.title)
         .toList();
-    _topFuture = ModuleUsageTracker.getTop(4, allowedNames: allowed);
+    _topFuture = ModuleUsageTracker.getTop(4, facilityId: widget.facilityId, allowedNames: allowed);
   }
 
   Future<void> _open(BuildContext context, String title) async {
-    await ModuleUsageTracker.track(title);
+    await ModuleUsageTracker.track(title, facilityId: widget.facilityId);
     final id = widget.facilityId;
     final screenMap = <String, Widget Function()>{
       'Work Orders': () => WorkOrderScreen(facilityId: id),

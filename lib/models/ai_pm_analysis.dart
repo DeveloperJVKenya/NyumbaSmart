@@ -4,16 +4,11 @@ enum AiPmVerificationStatus { draft, verified, published }
 
 extension AiPmVerificationStatusX on AiPmVerificationStatus {
   String get value => name;
-  static AiPmVerificationStatus fromString(String? v) {
-    switch (v) {
-      case 'verified':
-        return AiPmVerificationStatus.verified;
-      case 'published':
-        return AiPmVerificationStatus.published;
-      default:
-        return AiPmVerificationStatus.draft;
-    }
-  }
+  static AiPmVerificationStatus fromString(String? v) => switch (v) {
+        'verified' => AiPmVerificationStatus.verified,
+        'published' => AiPmVerificationStatus.published,
+        _ => AiPmVerificationStatus.draft,
+      };
 }
 
 /// One AI-generated PM analysis row for a single piece of equipment.
@@ -96,18 +91,18 @@ class AiPmAnalysisItem {
         'aiTools': aiTools,
         'aiEstimatedHours': aiEstimatedHours,
         'aiSpares': aiSpares,
-        'editedFrequencyMonths': editedFrequencyMonths,
-        'editedReason': editedReason,
-        'editedTools': editedTools,
-        'editedEstimatedHours': editedEstimatedHours,
-        'editedSpares': editedSpares,
-        'editedCategory': editedCategory,
+        if (editedFrequencyMonths != null) 'editedFrequencyMonths': editedFrequencyMonths,
+        if (editedReason != null) 'editedReason': editedReason,
+        if (editedTools != null) 'editedTools': editedTools,
+        if (editedEstimatedHours != null) 'editedEstimatedHours': editedEstimatedHours,
+        if (editedSpares != null) 'editedSpares': editedSpares,
+        if (editedCategory != null) 'editedCategory': editedCategory,
         'aiGenerated': aiGenerated,
         'excluded': excluded,
         'verificationStatus': verificationStatus.value,
-        'verifiedBy': verifiedBy,
-        'verifiedAt': verifiedAt != null ? Timestamp.fromDate(verifiedAt!) : null,
-        'publishedAt': publishedAt != null ? Timestamp.fromDate(publishedAt!) : null,
+        if (verifiedBy != null) 'verifiedBy': verifiedBy,
+        if (verifiedAt != null) 'verifiedAt': Timestamp.fromDate(verifiedAt!),
+        if (publishedAt != null) 'publishedAt': Timestamp.fromDate(publishedAt!),
         'createdAt': Timestamp.fromDate(createdAt),
       };
 
@@ -189,18 +184,12 @@ enum AiAnalysisStatus { idle, running, done, failed }
 
 extension AiAnalysisStatusX on AiAnalysisStatus {
   String get value => name;
-  static AiAnalysisStatus fromString(String? v) {
-    switch (v) {
-      case 'running':
-        return AiAnalysisStatus.running;
-      case 'done':
-        return AiAnalysisStatus.done;
-      case 'failed':
-        return AiAnalysisStatus.failed;
-      default:
-        return AiAnalysisStatus.idle;
-    }
-  }
+  static AiAnalysisStatus fromString(String? v) => switch (v) {
+        'running' => AiAnalysisStatus.running,
+        'done' => AiAnalysisStatus.done,
+        'failed' => AiAnalysisStatus.failed,
+        _ => AiAnalysisStatus.idle,
+      };
 }
 
 /// Meta-document at `facilities/{facilityId}/aiPmAnalysis/_meta`.

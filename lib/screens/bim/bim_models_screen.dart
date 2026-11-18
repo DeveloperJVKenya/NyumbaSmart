@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:cmms/display%20screens/equipment_supplied_screen.dart';
+import 'package:cmms/display_screens/equipment_supplied_screen.dart';
 import 'package:cmms/models/bim_model.dart';
 import 'package:cmms/providers/auth_providers.dart';
 import 'package:cmms/screens/bim/bim_contacts_screen.dart';

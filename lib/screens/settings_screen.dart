@@ -613,7 +613,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFCC5DE8)),
             onPressed: () async {
               Navigator.pop(context);
-              await ModuleUsageTracker.reset();
+              await ModuleUsageTracker.reset(widget.facilityId);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content:

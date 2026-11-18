@@ -64,7 +64,7 @@ class SplashScreenState extends ConsumerState<SplashScreen>
     // Firebase session is still active, reading to the user as a logout.
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (context) => DashboardScreen(facilityId: '', role: info.roleLabel),
+        builder: (context) => DashboardScreen(facilityId: ''),
       ),
       (route) => false,
     );

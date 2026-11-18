@@ -1,9 +1,9 @@
-﻿import 'package:cmms/display%20screens/role_assignment_screen.dart';
+﻿import 'package:cmms/display_screens/role_assignment_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cmms/display%20screens/facility_screen.dart';
+import 'package:cmms/display_screens/facility_screen.dart';
 import 'package:cmms/screens/dashboard_home_screen.dart';
 import 'package:cmms/screens/organization_selection_screen.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
@@ -23,9 +23,8 @@ import 'package:flutter/services.dart';
 /// in-session facility/organization *selection* remains local state.
 class DashboardScreen extends ConsumerStatefulWidget {
   final String facilityId;
-  final String role;
 
-  const DashboardScreen({super.key, required this.facilityId, required this.role});
+  const DashboardScreen({super.key, required this.facilityId});
 
   @override
   DashboardScreenState createState() => DashboardScreenState();
@@ -134,6 +133,7 @@ class DashboardScreenState extends ConsumerState<DashboardScreen> {
         await ref.read(notificationServiceProvider).clearFcmToken(uid);
       }
       await FirebaseAuth.instance.signOut();
+      sidebarScrollOffset.value = 0;
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,

@@ -3,71 +3,40 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 enum PmTaskOrigin { ocr, excel, manual, legacy, bim }
 
 extension PmTaskOriginExtension on PmTaskOrigin {
-  String get value => toString().split('.').last;
+  String get value => name;
 
-  static PmTaskOrigin fromString(String? value) {
-    switch (value) {
-      case 'ocr':
-        return PmTaskOrigin.ocr;
-      case 'excel':
-        return PmTaskOrigin.excel;
-      case 'legacy':
-        return PmTaskOrigin.legacy;
-      case 'bim':
-        return PmTaskOrigin.bim;
-      default:
-        return PmTaskOrigin.manual;
-    }
-  }
+  static PmTaskOrigin fromString(String? value) => switch (value) {
+        'ocr' => PmTaskOrigin.ocr,
+        'excel' => PmTaskOrigin.excel,
+        'legacy' => PmTaskOrigin.legacy,
+        'bim' => PmTaskOrigin.bim,
+        _ => PmTaskOrigin.manual,
+      };
 }
 
 enum PmTaskStatus { pending, due, inProgress, completed, overdue }
 
 extension PmTaskStatusExtension on PmTaskStatus {
-  String get value {
-    switch (this) {
-      case PmTaskStatus.pending:
-        return 'pending';
-      case PmTaskStatus.due:
-        return 'due';
-      case PmTaskStatus.inProgress:
-        return 'in_progress';
-      case PmTaskStatus.completed:
-        return 'completed';
-      case PmTaskStatus.overdue:
-        return 'overdue';
-    }
-  }
+  String get value => switch (this) {
+        PmTaskStatus.inProgress => 'in_progress',
+        _ => name,
+      };
 
-  String get displayName {
-    switch (this) {
-      case PmTaskStatus.pending:
-        return 'Pending';
-      case PmTaskStatus.due:
-        return 'Due';
-      case PmTaskStatus.inProgress:
-        return 'In Progress';
-      case PmTaskStatus.completed:
-        return 'Completed';
-      case PmTaskStatus.overdue:
-        return 'Overdue';
-    }
-  }
+  String get displayName => switch (this) {
+        PmTaskStatus.pending => 'Pending',
+        PmTaskStatus.due => 'Due',
+        PmTaskStatus.inProgress => 'In Progress',
+        PmTaskStatus.completed => 'Completed',
+        PmTaskStatus.overdue => 'Overdue',
+      };
 
-  static PmTaskStatus fromString(String? value) {
-    switch (value) {
-      case 'due':
-        return PmTaskStatus.due;
-      case 'in_progress':
-        return PmTaskStatus.inProgress;
-      case 'completed':
-        return PmTaskStatus.completed;
-      case 'overdue':
-        return PmTaskStatus.overdue;
-      default:
-        return PmTaskStatus.pending;
-    }
-  }
+  static PmTaskStatus fromString(String? value) => switch (value) {
+        'due' => PmTaskStatus.due,
+        'in_progress' => PmTaskStatus.inProgress,
+        'completed' => PmTaskStatus.completed,
+        'overdue' => PmTaskStatus.overdue,
+        _ => PmTaskStatus.pending,
+      };
 }
 
 /// A single preventive maintenance activity scheduled for a facility, stored at
@@ -197,6 +166,11 @@ class PreventiveMaintenanceTask {
     DateTime? updatedAt,
     String? notes,
     String? assignedTo,
+    String? equipmentId,
+    String? equipmentName,
+    List<String>? toolsRequired,
+    double? estimatedHours,
+    List<String>? spares,
   }) {
     return PreventiveMaintenanceTask(
       id: id,
@@ -215,8 +189,11 @@ class PreventiveMaintenanceTask {
       updatedAt: updatedAt ?? this.updatedAt,
       notes: notes ?? this.notes,
       assignedTo: assignedTo ?? this.assignedTo,
-      equipmentId: equipmentId,
-      equipmentName: equipmentName,
+      equipmentId: equipmentId ?? this.equipmentId,
+      equipmentName: equipmentName ?? this.equipmentName,
+      toolsRequired: toolsRequired ?? this.toolsRequired,
+      estimatedHours: estimatedHours ?? this.estimatedHours,
+      spares: spares ?? this.spares,
     );
   }
 }

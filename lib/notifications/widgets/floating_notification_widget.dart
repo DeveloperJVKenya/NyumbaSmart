@@ -231,7 +231,7 @@ class _FloatingNotificationWidgetState extends ConsumerState<FloatingNotificatio
 
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => DashboardScreen(facilityId: facility.facilityId, role: '')),
+      MaterialPageRoute(builder: (context) => DashboardScreen(facilityId: facility.facilityId)),
     );
   }
 }

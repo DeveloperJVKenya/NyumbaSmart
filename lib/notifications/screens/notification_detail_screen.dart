@@ -175,7 +175,7 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
             title: Text(facility.facilityName, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
             subtitle: Text('${facility.count} task${facility.count == 1 ? '' : 's'}', style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary)),
             trailing: TextButton(
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => DashboardScreen(facilityId: facility.facilityId, role: ''))),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => DashboardScreen(facilityId: facility.facilityId))),
               child: Text('Open', style: GoogleFonts.poppins(color: AppColors.primary, fontWeight: FontWeight.w600)),
             ),
           ),

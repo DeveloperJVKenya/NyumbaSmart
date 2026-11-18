@@ -3,22 +3,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
-import 'package:cmms/display%20screens/locations_screen.dart';
-import 'package:cmms/display%20screens/building_survey_screen.dart';
-import 'package:cmms/display%20screens/documentations_screen.dart';
-import 'package:cmms/display%20screens/drawings_screen.dart';
-import 'package:cmms/display%20screens/schedule_maintenance_screen.dart';
+import 'package:cmms/display_screens/locations_screen.dart';
+import 'package:cmms/display_screens/building_survey_screen.dart';
+import 'package:cmms/display_screens/documentations_screen.dart';
+import 'package:cmms/display_screens/drawings_screen.dart';
+import 'package:cmms/display_screens/schedule_maintenance_screen.dart';
 import 'package:cmms/technician/preventive_maintenance_screen.dart';
-import 'package:cmms/display%20screens/reports_screen.dart';
-import 'package:cmms/display%20screens/request_screen.dart';
-import 'package:cmms/display%20screens/work_order_screen.dart';
-import 'package:cmms/display%20screens/price_list_screen.dart';
-import 'package:cmms/display%20screens/billing_screen.dart';
-import 'package:cmms/display%20screens/equipment_supplied_screen.dart';
-import 'package:cmms/display%20screens/inventory_screen.dart';
-import 'package:cmms/display%20screens/vendor_screen.dart';
-import 'package:cmms/display%20screens/kpi_screen.dart';
-import 'package:cmms/display%20screens/report_screen.dart';
+import 'package:cmms/display_screens/reports_screen.dart';
+import 'package:cmms/display_screens/request_screen.dart';
+import 'package:cmms/display_screens/work_order_screen.dart';
+import 'package:cmms/display_screens/price_list_screen.dart';
+import 'package:cmms/display_screens/billing_screen.dart';
+import 'package:cmms/display_screens/equipment_supplied_screen.dart';
+import 'package:cmms/display_screens/inventory_screen.dart';
+import 'package:cmms/display_screens/vendor_screen.dart';
+import 'package:cmms/display_screens/kpi_screen.dart';
+import 'package:cmms/display_screens/report_screen.dart';
 import 'package:cmms/screens/bim/bim_models_screen.dart';
 import 'package:cmms/screens/bim/bim_viewer_screen.dart';
 import 'package:cmms/screens/bim/spaces_screen.dart';
@@ -34,7 +34,8 @@ import 'package:cmms/utils/module_usage_tracker.dart';
 // never loses their scroll context when moving between routes.
 // A plain ValueNotifier (file-level singleton) is sufficient — no Riverpod
 // provider needed since this state is app-wide and never streamed.
-final _sidebarScrollOffset = ValueNotifier<double>(0.0);
+// Reset to 0 on sign-out so the next session starts at the top.
+final sidebarScrollOffset = ValueNotifier<double>(0.0);
 
 /// Dashboard shell (AppBar + drawer/sidebar/rail + content). Role and
 /// organization are sourced live from [currentUserRoleProvider] instead of
@@ -87,14 +88,14 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
     // Restore scroll position from the last navigation so users don't lose
     // their position in the sidebar menu when they tap into a sub-screen.
     _sidebarScrollCtrl = ScrollController(
-      initialScrollOffset: _sidebarScrollOffset.value,
+      initialScrollOffset: sidebarScrollOffset.value,
     );
     _sidebarScrollCtrl.addListener(_persistSidebarScroll);
   }
 
   void _persistSidebarScroll() {
     if (_sidebarScrollCtrl.hasClients) {
-      _sidebarScrollOffset.value = _sidebarScrollCtrl.offset;
+      sidebarScrollOffset.value = _sidebarScrollCtrl.offset;
     }
   }
 
@@ -399,7 +400,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
   }
 
   List<String> _getMenuItemsForRole(String role, String organization) {
-    final Map<String, List<String>> jvAlmacisMenus = {
+    const roleMenus = <String, List<String>>{
       'Admin': [
         'Facilities', 'Locations', 'Building Information', 'Assets & BIM', 'Scope of Work',
         'Preventive Maintenance', 'Reports', 'Work on Request', 'Work Orders',
@@ -408,34 +409,14 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
       'Technician': [
         'Facilities', 'Locations', 'Building Information', 'Assets & BIM', 'Preventive Maintenance',
         'Scope of Work', 'Reports', 'Work on Request', 'Work Orders', 'Billing',
-        'Inventory and Parts', 'Vendors', 'KPIs',
-        'Report', 'Settings',
+        'Inventory and Parts', 'Vendors', 'KPIs', 'Report', 'Settings',
       ],
     };
 
-    final Map<String, List<String>> clientOrganizationMenus = {
-      'Admin': [
-        'Facilities', 'Locations', 'Building Information', 'Assets & BIM', 'Scope of Work',
-        'Preventive Maintenance', 'Reports', 'Work on Request', 'Work Orders',
-        'Price Lists', 'Billing', 'Inventory and Parts', 'Vendors', 'KPIs', 'Report', 'Settings',
-      ],
-      'Technician': [
-        'Facilities', 'Locations', 'Building Information', 'Assets & BIM', 'Preventive Maintenance',
-        'Scope of Work', 'Reports', 'Work on Request', 'Work Orders', 'Billing',
-        'Inventory and Parts', 'Vendors', 'KPIs',
-        'Report', 'Settings',
-      ],
-    };
+    const userMenus = ['Facilities', 'Settings'];
 
-    final List<String> userMenus = ['Facilities', 'Settings'];
-
-    if (role == 'User' || organization == '-') {
-      return userMenus;
-    } else if (organization == 'JV Almacis') {
-      return jvAlmacisMenus[role] ?? userMenus;
-    } else {
-      return clientOrganizationMenus[role] ?? userMenus;
-    }
+    if (role == 'User' || organization == '-') return userMenus;
+    return roleMenus[role] ?? userMenus;
   }
 
   List<Widget> _buildMenuItems(String role, String organization, bool isMobile) {
@@ -583,7 +564,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
 
   void _handleSubMenuNavigation(String title, bool isMobile) {
     if (isMobile) Navigator.pop(context);
-    ModuleUsageTracker.track(title);
+    ModuleUsageTracker.track(title, facilityId: widget.facilityId);
 
     if (widget.facilityId.isEmpty && !['Settings'].contains(title)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -615,14 +596,14 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
   void _handleMenuNavigation(String title, bool isMobile) {
     if (isMobile) Navigator.pop(context);
     if (title != 'Facilities' && title != 'Settings') {
-      ModuleUsageTracker.track(title);
+      ModuleUsageTracker.track(title, facilityId: widget.facilityId);
     }
 
     if (title == 'Facilities') {
       widget.onFacilityReset?.call();
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) => const DashboardScreen(facilityId: '', role: 'User')),
+        MaterialPageRoute(builder: (context) => const DashboardScreen(facilityId: '')),
         (route) => false,
       );
       return;

@@ -93,7 +93,7 @@ class RegistrationScreenState extends State<RegistrationScreen> {
       // so the back button can't land on a stale auth screen.
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (context) => DashboardScreen(facilityId: '', role: UserRole.user.label),
+          builder: (context) => DashboardScreen(facilityId: ''),
         ),
         (route) => false,
       );

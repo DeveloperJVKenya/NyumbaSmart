@@ -173,7 +173,7 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
     // auth screen while the Firebase session is still signed in.
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (context) => DashboardScreen(facilityId: '', role: role),
+        builder: (context) => DashboardScreen(facilityId: ''),
       ),
       (route) => false,
     );
