@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:logger/logger.dart';
 
@@ -21,10 +22,12 @@ class GeocodingService {
   GeocodingService({Logger? logger}) : _logger = logger ?? Logger(printer: PrettyPrinter());
 
   final Logger _logger;
-  final Geocoding _geocoding = Geocoding();
+  // geocoding package has no web implementation — constructing Geocoding()
+  // on web throws a null platform error immediately.
+  final Geocoding? _geocoding = kIsWeb ? null : Geocoding();
 
   Future<GeoCoordinates?> geocode(String query) async {
-    if (query.trim().isEmpty) return null;
+    if (query.trim().isEmpty || _geocoding == null) return null;
     try {
       final results = await _geocoding.locationFromAddress('$query, Kenya');
       if (results.isEmpty) return null;
@@ -38,6 +41,7 @@ class GeocodingService {
   /// Coordinates → human-readable address, used by the map picker to show
   /// what a dropped/dragged pin resolves to.
   Future<String?> reverseGeocode(double latitude, double longitude) async {
+    if (_geocoding == null) return null;
     try {
       final placemarks = await _geocoding.placemarkFromCoordinates(latitude, longitude);
       if (placemarks.isEmpty) return null;
