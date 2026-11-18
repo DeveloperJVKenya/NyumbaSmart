@@ -335,8 +335,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
     final isPublished = meta?.status == AiAnalysisStatus.done &&
         meta?.publishedSowId != null;
 
-    return SelectionArea(
-      child: ListView(
+    return ListView(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 80),
       children: [
         if (excludedCount > 0 && !_showExcluded)
@@ -362,7 +361,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
         else
           ...orderedCategories.map((cat) => _categorySection(cat, grouped[cat]!)),
       ],
-    ));
+    );
   }
 
   Widget _excludedBanner(int count) {
@@ -617,7 +616,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
                   ),
                 ],
                 Expanded(
-                  child: Text(
+                  child: SelectableText(
                     item.typeName.isNotEmpty ? item.typeName : item.equipmentName,
                     style: textStyle,
                   ),
@@ -645,15 +644,15 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
               2,
             ),
             // Maintenance Interval
-            dCell(Text(_frequencyLabel(item.frequencyMonths), style: subStyle), 2),
+            dCell(SelectableText(_frequencyLabel(item.frequencyMonths), style: subStyle), 2),
             // Reason for Maintenance
             dCell(
-              Text(item.reason, style: subStyle, maxLines: 3, overflow: TextOverflow.ellipsis),
+              SelectableText(item.reason, style: subStyle, maxLines: 3),
               4,
             ),
             // Estimated Hours
             dCell(
-              Text(
+              SelectableText(
                 '${item.estimatedHours % 1 == 0 ? item.estimatedHours.toInt() : item.estimatedHours}h',
                 style: subStyle,
               ),
@@ -661,11 +660,10 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
             ),
             // Tools
             dCell(
-              Text(
+              SelectableText(
                 item.tools.isEmpty ? '—' : item.tools.join(', '),
                 style: subStyle,
                 maxLines: 3,
-                overflow: TextOverflow.ellipsis,
               ),
               2,
             ),
@@ -685,7 +683,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
                   }
                 },
                 itemBuilder: (_) => [
-                  if (!isExcluded && item.verificationStatus == AiPmVerificationStatus.draft)
+                  if (!isExcluded)
                     const PopupMenuItem(value: 'edit', child: Row(children: [
                       Icon(Icons.edit_outlined, size: 16), SizedBox(width: 8), Text('Edit'),
                     ])),
