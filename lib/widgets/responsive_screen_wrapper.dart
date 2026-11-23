@@ -78,6 +78,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
   final Logger _logger = Logger(printer: PrettyPrinter());
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late final ScrollController _sidebarScrollCtrl;
+  final GlobalKey _activeItemKey = GlobalKey();
 
   static bool _isBuildingInfoExpanded = false;
   static bool _isAssetsBimExpanded = false;
@@ -85,18 +86,31 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
   @override
   void initState() {
     super.initState();
-    // Restore scroll position from the last navigation so users don't lose
-    // their position in the sidebar menu when they tap into a sub-screen.
+    if (_buildingInfoSubTitles.contains(widget.title)) _isBuildingInfoExpanded = true;
+    if (_assetsBimSubTitles.contains(widget.title)) _isAssetsBimExpanded = true;
     _sidebarScrollCtrl = ScrollController(
       initialScrollOffset: sidebarScrollOffset.value,
     );
     _sidebarScrollCtrl.addListener(_persistSidebarScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActiveItem());
   }
 
   void _persistSidebarScroll() {
     if (_sidebarScrollCtrl.hasClients) {
       sidebarScrollOffset.value = _sidebarScrollCtrl.offset;
     }
+  }
+
+  void _scrollToActiveItem() {
+    if (!mounted) return;
+    final ctx = _activeItemKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      alignment: 0.1,
+    );
   }
 
   @override
@@ -133,6 +147,9 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
     'Floors & Rooms': Color(0xFF9775FA),
     'Equipment Supplied': Color(0xFF9775FA),
   };
+
+  static const _buildingInfoSubTitles = ['Building Survey', 'Documentations', 'Drawings'];
+  static const _assetsBimSubTitles = ['BIM Models', '3D Viewer', 'Floors & Rooms', 'Equipment Supplied'];
 
   void _handleDeveloperIconTap(bool isMobile) async {
     _logger.i('App icon clicked by developer, navigating to DeveloperScreen');
@@ -238,11 +255,11 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
 
   Widget _buildDrawer(String role, String organization, bool isDeveloper, bool isClient, bool isMobile) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: context.panelColor,
       child: Column(
         children: [
           _buildSidebarHeader(role, organization, isDeveloper, isClient, isMobile),
-          const Divider(height: 1, color: Color(0xFFE5E7EB)),
+          Divider(height: 1, color: context.dividerColor),
           Expanded(child: ListView(
             controller: _sidebarScrollCtrl,
             children: _buildMenuItems(role, organization, isMobile),
@@ -255,14 +272,14 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
   Widget _buildSidebar(String role, String organization, bool isDeveloper, bool isClient, bool isMobile) {
     return Container(
       width: 260,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(right: BorderSide(color: Color(0xFFE5E7EB))),
+      decoration: BoxDecoration(
+        color: context.panelColor,
+        border: Border(right: BorderSide(color: context.dividerColor)),
       ),
       child: Column(
         children: [
           _buildSidebarHeader(role, organization, isDeveloper, isClient, isMobile),
-          const Divider(height: 1, color: Color(0xFFE5E7EB)),
+          Divider(height: 1, color: context.dividerColor),
           Expanded(child: ListView(
             controller: _sidebarScrollCtrl,
             children: _buildMenuItems(role, organization, isMobile),
@@ -443,7 +460,13 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
     if (coreItems.isNotEmpty) {
       w.add(_menuSectionHeader('Core'));
       for (final i in coreItems) {
-        w.add(_menuTile(icon: i['icon'] as IconData, title: i['title'] as String, onTap: () => _handleMenuNavigation(i['title'] as String, isMobile)));
+        final t = i['title'] as String;
+        final active = t == widget.title;
+        w.add(_menuTile(
+          icon: i['icon'] as IconData, title: t,
+          onTap: () => _handleMenuNavigation(t, isMobile),
+          isActive: active, itemKey: active ? _activeItemKey : null,
+        ));
       }
     }
 
@@ -462,18 +485,33 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
         final title = i['title'] as String;
         final icon = i['icon'] as IconData;
         if (i['isParent'] == true) {
+          final subActive = _buildingInfoSubTitles.contains(widget.title);
+          final parentActive = title == widget.title || subActive;
           w.add(_menuTile(
             icon: icon, title: title,
             trailing: Icon(_isBuildingInfoExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 16, color: const Color(0xFF9CA3AF)),
             onTap: () => setState(() => _isBuildingInfoExpanded = !_isBuildingInfoExpanded),
+            isActive: parentActive,
+            itemKey: parentActive && !subActive ? _activeItemKey : null,
           ));
           if (_isBuildingInfoExpanded) {
             for (final s in buildingInfoSubs) {
-              w.add(_menuTile(icon: s['icon'] as IconData, title: s['title'] as String, indent: true, onTap: () => _handleSubMenuNavigation(s['title'] as String, isMobile)));
+              final st = s['title'] as String;
+              final sa = st == widget.title;
+              w.add(_menuTile(
+                icon: s['icon'] as IconData, title: st, indent: true,
+                onTap: () => _handleSubMenuNavigation(st, isMobile),
+                isActive: sa, itemKey: sa ? _activeItemKey : null,
+              ));
             }
           }
         } else {
-          w.add(_menuTile(icon: icon, title: title, onTap: () => _handleMenuNavigation(title, isMobile)));
+          final active = title == widget.title;
+          w.add(_menuTile(
+            icon: icon, title: title,
+            onTap: () => _handleMenuNavigation(title, isMobile),
+            isActive: active, itemKey: active ? _activeItemKey : null,
+          ));
         }
       }
     }
@@ -490,18 +528,33 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
         final title = i['title'] as String;
         final icon = i['icon'] as IconData;
         if (i['isParent'] == true) {
+          final subActive = _assetsBimSubTitles.contains(widget.title);
+          final parentActive = title == widget.title || subActive;
           w.add(_menuTile(
             icon: icon, title: title,
             trailing: Icon(_isAssetsBimExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 16, color: const Color(0xFF9CA3AF)),
             onTap: () => setState(() => _isAssetsBimExpanded = !_isAssetsBimExpanded),
+            isActive: parentActive,
+            itemKey: parentActive && !subActive ? _activeItemKey : null,
           ));
           if (_isAssetsBimExpanded) {
             for (final s in assetsBimSubs) {
-              w.add(_menuTile(icon: s['icon'] as IconData, title: s['title'] as String, indent: true, onTap: () => _handleSubMenuNavigation(s['title'] as String, isMobile)));
+              final st = s['title'] as String;
+              final sa = st == widget.title;
+              w.add(_menuTile(
+                icon: s['icon'] as IconData, title: st, indent: true,
+                onTap: () => _handleSubMenuNavigation(st, isMobile),
+                isActive: sa, itemKey: sa ? _activeItemKey : null,
+              ));
             }
           }
         } else {
-          w.add(_menuTile(icon: icon, title: title, onTap: () => _handleMenuNavigation(title, isMobile)));
+          final active = title == widget.title;
+          w.add(_menuTile(
+            icon: icon, title: title,
+            onTap: () => _handleMenuNavigation(title, isMobile),
+            isActive: active, itemKey: active ? _activeItemKey : null,
+          ));
         }
       }
     }
@@ -516,15 +569,26 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
     if (finItems.isNotEmpty) {
       w.add(_menuSectionHeader('Financial'));
       for (final i in finItems) {
-        w.add(_menuTile(icon: i['icon'] as IconData, title: i['title'] as String, onTap: () => _handleMenuNavigation(i['title'] as String, isMobile)));
+        final t = i['title'] as String;
+        final active = t == widget.title;
+        w.add(_menuTile(
+          icon: i['icon'] as IconData, title: t,
+          onTap: () => _handleMenuNavigation(t, isMobile),
+          isActive: active, itemKey: active ? _activeItemKey : null,
+        ));
       }
     }
 
     // ── SYSTEM ────────────────────────────────────────────────────────────
     if (allowedItems.contains('Settings')) {
       w.add(const SizedBox(height: 4));
-      w.add(const Divider(height: 1, indent: 16, endIndent: 16, color: Color(0xFFE5E7EB)));
-      w.add(_menuTile(icon: Icons.settings_rounded, title: 'Settings', onTap: () => _handleMenuNavigation('Settings', isMobile)));
+      w.add(Divider(height: 1, indent: 16, endIndent: 16, color: context.dividerColor));
+      final settingsActive = 'Settings' == widget.title;
+      w.add(_menuTile(
+        icon: Icons.settings_rounded, title: 'Settings',
+        onTap: () => _handleMenuNavigation('Settings', isMobile),
+        isActive: settingsActive, itemKey: settingsActive ? _activeItemKey : null,
+      ));
     }
 
     w.add(const SizedBox(height: 16));
@@ -536,7 +600,7 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 3),
       child: Text(
         label.toUpperCase(),
-        style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: const Color(0xFFADB5BD), letterSpacing: 0.9),
+        style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: context.textSecondary.withValues(alpha: 0.7), letterSpacing: 0.9),
       ),
     );
   }
@@ -548,17 +612,19 @@ class _ResponsiveScreenWrapperState extends ConsumerState<ResponsiveScreenWrappe
     Widget? trailing,
     bool indent = false,
     Color? iconColor,
+    bool isActive = false,
+    Key? itemKey,
   }) {
-    final effectiveColor = indent
-        ? const Color(0xFF9CA3AF)
-        : (iconColor ?? _itemColors[title] ?? AppColors.primary);
+    final effectiveColor = iconColor ?? _itemColors[title] ?? AppColors.primary;
     return _SidebarTile(
+      key: itemKey,
       icon: icon,
       title: title,
       onTap: onTap,
       trailing: trailing,
       indent: indent,
       effectiveColor: effectiveColor,
+      isActive: isActive,
     );
   }
 
@@ -653,14 +719,17 @@ class _SidebarTile extends StatefulWidget {
   final Widget? trailing;
   final bool indent;
   final Color effectiveColor;
+  final bool isActive;
 
   const _SidebarTile({
+    super.key,
     required this.icon,
     required this.title,
     required this.onTap,
     this.trailing,
     this.indent = false,
     required this.effectiveColor,
+    this.isActive = false,
   });
 
   @override
@@ -674,6 +743,8 @@ class _SidebarTileState extends State<_SidebarTile> {
   Widget build(BuildContext context) {
     final c = widget.effectiveColor;
     final isIndent = widget.indent;
+    final isActive = widget.isActive;
+    final highlight = isActive || _hovered;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.5),
@@ -686,21 +757,19 @@ class _SidebarTileState extends State<_SidebarTile> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
             decoration: BoxDecoration(
-              color: _hovered
-                  ? c.withValues(alpha: isIndent ? 0.05 : 0.09)
+              color: highlight
+                  ? c.withValues(alpha: isIndent ? 0.08 : (isActive ? 0.12 : 0.09))
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(AppRadius.md),
-              border: !isIndent
-                  ? Border(
-                      left: BorderSide(
-                        color: _hovered ? c : Colors.transparent,
-                        width: 3,
-                      ),
-                    )
-                  : null,
+              border: Border(
+                left: BorderSide(
+                  color: highlight ? c : Colors.transparent,
+                  width: 3,
+                ),
+              ),
             ),
             padding: EdgeInsets.only(
-              left: isIndent ? 36 : (_hovered ? 9 : 12),
+              left: isIndent ? (highlight ? 33 : 36) : (highlight ? 9 : 12),
               right: 12,
               top: 10,
               bottom: 10,
@@ -708,9 +777,7 @@ class _SidebarTileState extends State<_SidebarTile> {
             child: Row(
               children: [
                 Icon(widget.icon,
-                    color: _hovered && !isIndent
-                        ? c
-                        : c.withValues(alpha: isIndent ? 0.75 : 0.85),
+                    color: highlight ? c : c.withValues(alpha: isIndent ? 0.75 : 0.85),
                     size: isIndent ? 18 : 20),
                 const SizedBox(width: 12),
                 Expanded(
@@ -718,14 +785,10 @@ class _SidebarTileState extends State<_SidebarTile> {
                     widget.title,
                     style: GoogleFonts.poppins(
                       fontSize: isIndent ? 13 : 13.5,
-                      color: _hovered && !isIndent
-                          ? c.withValues(alpha: 0.9)
-                          : (isIndent
-                              ? const Color(0xFF6B7280)
-                              : AppColors.textPrimary),
-                      fontWeight: isIndent
-                          ? FontWeight.w400
-                          : (_hovered ? FontWeight.w600 : FontWeight.w500),
+                      color: highlight
+                          ? c
+                          : (isIndent ? const Color(0xFF6B7280) : context.textPrimary),
+                      fontWeight: highlight ? FontWeight.w600 : (isIndent ? FontWeight.w400 : FontWeight.w500),
                     ),
                   ),
                 ),

@@ -74,7 +74,7 @@ class NeedAccountScreen extends StatelessWidget {
                             style: GoogleFonts.poppins(
                               fontSize: isMobile ? 24 : isTablet ? 26 : 28,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
+                              color: context.textPrimary,
                               letterSpacing: 0.5,
                               shadows: [
                                 Shadow(

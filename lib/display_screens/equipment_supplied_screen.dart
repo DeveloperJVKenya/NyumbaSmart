@@ -1,10 +1,10 @@
-﻿import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:intl/intl.dart';
+import 'package:cmms/utils/app_date_format.dart';
 import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -209,8 +209,8 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
               children: [
                 LinearProgressIndicator(
                   value: _uploadProgress,
-                  backgroundColor: Colors.grey[300],
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueGrey),
+                  backgroundColor: context.surfaceAltColor,
+                  valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -326,15 +326,15 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
 
   bool _isImported(Equipment e) => e.bimSource == 'cobie' || e.bimSource == 'ifc';
 
-  Widget _tag(IconData icon, String label, MaterialColor color) => Container(
+  Widget _tag(IconData icon, String label, Color color) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(color: color[50], borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 13, color: color[700]),
+          Icon(icon, size: 13, color: color),
           const SizedBox(width: 4),
           Flexible(
             child: Text(label,
-                style: GoogleFonts.poppins(fontSize: 11, color: color[800], fontWeight: FontWeight.w500),
+                style: GoogleFonts.poppins(fontSize: 11, color: color, fontWeight: FontWeight.w500),
                 overflow: TextOverflow.ellipsis),
           ),
         ]),
@@ -359,13 +359,13 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       organization: '-',
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => setState(() => _showForm = !_showForm),
-        backgroundColor: Colors.blueGrey[800],
-        icon: Icon(_showForm ? Icons.close : Icons.add, color: Colors.white),
+        backgroundColor: AppColors.primary,
+        icon: Icon(_showForm ? Icons.close_rounded : Icons.add_rounded, color: Colors.white),
         label: Text(
           _showForm ? 'Cancel' : 'New Equipment',
           style: GoogleFonts.poppins(color: Colors.white),
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
       ),
       child: _buildBody(),
     );
@@ -419,7 +419,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.bold,
               fontSize: fontSizeTitle,
-              color: Colors.blueGrey[900],
+              color: context.textPrimary,
             ),
           ),
           const SizedBox(height: 16),
@@ -463,17 +463,24 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.precision_manufacturing_outlined,
-                        size: 64,
-                        color: Colors.grey[400],
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: context.textSecondary.withValues(alpha: 0.08),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.precision_manufacturing_outlined,
+                          size: 48,
+                          color: context.textSecondary,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'No equipment found',
                         style: GoogleFonts.poppins(
                           fontSize: fontSizeSubtitle,
-                          color: Colors.grey[600],
+                          color: context.textSecondary,
                         ),
                       ),
                     ],
@@ -500,50 +507,51 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       if (_spaces.isNotEmpty) _buildSpaceFilter(fontSize),
     ];
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Container(
       margin: EdgeInsets.all(padding),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            isMobile
-                ? Column(
-                    children: [
-                      for (final f in filters) ...[f, const SizedBox(height: 12)],
+      padding: EdgeInsets.all(padding),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          isMobile
+              ? Column(
+                  children: [
+                    for (final f in filters) ...[f, const SizedBox(height: 12)],
+                  ],
+                )
+              : Row(
+                  children: [
+                    for (var i = 0; i < filters.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 16),
+                      Expanded(flex: filters.length == 4 && i == 3 ? 2 : 1, child: filters[i]),
                     ],
-                  )
-                : Row(
-                    children: [
-                      for (var i = 0; i < filters.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 16),
-                        Expanded(flex: filters.length == 4 && i == 3 ? 2 : 1, child: filters[i]),
-                      ],
-                    ],
-                  ),
-            const SizedBox(height: 10),
-            FilterChip(
-              label: Text('Major components only',
-                  style: GoogleFonts.poppins(
-                      fontSize: 12.5,
-                      color: _majorOnly ? Colors.white : Colors.blueGrey[700])),
-              avatar: Icon(
-                Icons.filter_list_rounded,
-                size: 16,
-                color: _majorOnly ? Colors.white : Colors.blueGrey[600],
-              ),
-              selected: _majorOnly,
-              onSelected: (v) => setState(() => _majorOnly = v),
-              selectedColor: Colors.blueGrey[700],
-              backgroundColor: Colors.grey[100],
-              checkmarkColor: Colors.white,
-              side: BorderSide(color: Colors.blueGrey[300]!),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ],
+                ),
+          const SizedBox(height: 10),
+          FilterChip(
+            label: Text('Major components only',
+                style: GoogleFonts.poppins(
+                    fontSize: 12.5,
+                    color: _majorOnly ? Colors.white : context.textSecondary)),
+            avatar: Icon(
+              Icons.filter_list_rounded,
+              size: 16,
+              color: _majorOnly ? Colors.white : context.textSecondary,
             ),
-          ],
-        ),
+            selected: _majorOnly,
+            onSelected: (v) => setState(() => _majorOnly = v),
+            selectedColor: AppColors.primary,
+                        checkmarkColor: Colors.white,
+            side: BorderSide(color: _majorOnly ? AppColors.primary : AppColors.surfaceAlt),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ],
       ),
     );
   }
@@ -570,13 +578,20 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       onChanged: (v) => setState(() => _spaceFilter = v ?? 'All'),
       decoration: InputDecoration(
         labelText: 'Floor / Room',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+        ),
         filled: true,
-        fillColor: Colors.grey[100],
+        fillColor: context.surfaceColor,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary),
       ),
-      style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
+      style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w500),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
@@ -598,40 +613,45 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       onChanged: (v) => setState(() => _formSpaceId = v),
       decoration: InputDecoration(
         labelText: 'Floor / Room (optional)',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: Colors.grey[100],
+        fillColor: context.surfaceColor,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary),
       ),
-      style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
+      style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w500),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
   Widget _buildFilterDropdown(String label, String value, List<String> items, ValueChanged<String?> onChanged, double fontSize) {
     return DropdownButtonFormField<String>(
       initialValue: value,
+      isExpanded: true,
       items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize)))).toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: Colors.grey[100],
+        fillColor: context.surfaceColor,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary),
       ),
-      style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
-      dropdownColor: Colors.white,
-      icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+      style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w500),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
@@ -648,12 +668,22 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   }
 
   Widget _buildEquipmentCard(Equipment equipment, bool isMobile, double fontSize) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
-      child: ExpansionTile(
-        leading: CircleAvatar(
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Material(
+          color: Colors.transparent,
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+            leading: CircleAvatar(
           backgroundColor: _getStatusColor(equipment.status),
           child: Icon(
             _getStatusIcon(equipment.status),
@@ -665,7 +695,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
           equipment.name,
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w600,
-            color: Colors.blueGrey[900],
+            color: context.textPrimary,
             fontSize: fontSize,
           ),
         ),
@@ -676,14 +706,14 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
               'Type: ${equipment.type} | Status: ${equipment.status}',
               style: GoogleFonts.poppins(
                 fontSize: fontSize - 2,
-                color: Colors.grey[600],
+                color: context.textSecondary,
               ),
             ),
             Text(
               'Serial: ${equipment.serialNumber.isEmpty ? 'N/A' : equipment.serialNumber}',
               style: GoogleFonts.poppins(
                 fontSize: fontSize - 2,
-                color: Colors.grey[600],
+                color: context.textSecondary,
               ),
             ),
             if (_spaceById(equipment.spaceId) != null || _isImported(equipment))
@@ -694,9 +724,9 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                   runSpacing: 4,
                   children: [
                     if (_spaceById(equipment.spaceId) != null)
-                      _tag(Icons.meeting_room_outlined, _spaceLabel(_spaceById(equipment.spaceId)!), Colors.blueGrey),
+                      _tag(Icons.meeting_room_outlined, _spaceLabel(_spaceById(equipment.spaceId)!), context.textSecondary),
                     if (_isImported(equipment))
-                      _tag(Icons.view_in_ar_outlined, equipment.bimSource == 'cobie' ? 'COBie' : 'IFC', Colors.indigo),
+                      _tag(Icons.view_in_ar_outlined, equipment.bimSource == 'cobie' ? 'COBie' : 'IFC', AppColors.primary),
                   ],
                 ),
               ),
@@ -721,7 +751,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                 if (equipment.isBimLinked) _buildDetailRow('IFC GlobalId', equipment.bimGlobalId!, fontSize),
                 _buildDetailRow('Purchase Price', '\$${equipment.purchasePrice.toStringAsFixed(2)}', fontSize),
                 _buildDetailRow('Warranty', '${equipment.warrantyMonths} months', fontSize),
-                _buildDetailRow('Created', equipment.createdAt != null ? DateFormat.yMMMd().format(equipment.createdAt!) : 'Unknown date', fontSize),
+                _buildDetailRow('Created', equipment.createdAt != null ? AppDateFormat.format(equipment.createdAt!) : 'Unknown date', fontSize),
                 if (equipment.notes.isNotEmpty) _buildDetailRow('Notes', equipment.notes, fontSize),
                 if (equipment.attachments.isNotEmpty) _buildAttachmentsSection(equipment.attachments, fontSize),
                 if (equipment.maintenanceHistory.isNotEmpty) _buildHistorySection(equipment.maintenanceHistory, fontSize),
@@ -733,6 +763,9 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
             ),
           ),
         ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -749,7 +782,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
               '$label:',
               style: GoogleFonts.poppins(
                 fontWeight: FontWeight.w500,
-                color: Colors.blueGrey[700],
+                color: context.textSecondary,
                 fontSize: fontSize - 2,
               ),
             ),
@@ -758,7 +791,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
             child: Text(
               value,
               style: GoogleFonts.poppins(
-                color: Colors.grey[800],
+                color: context.textPrimary,
                 fontSize: fontSize - 2,
               ),
             ),
@@ -778,7 +811,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
             'Attachments:',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.w500,
-              color: Colors.blueGrey[700],
+              color: context.textSecondary,
               fontSize: fontSize - 2,
             ),
           ),
@@ -791,7 +824,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                         attachment['name'] ?? 'Unknown',
                         style: GoogleFonts.poppins(fontSize: fontSize - 4),
                       ),
-                      backgroundColor: Colors.blue[50],
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.08),
                     ))
                 .toList(),
           ),
@@ -810,7 +843,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
             'Maintenance History:',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.w500,
-              color: Colors.blueGrey[700],
+              color: context.textSecondary,
               fontSize: fontSize - 2,
             ),
           ),
@@ -819,7 +852,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                 margin: const EdgeInsets.only(bottom: 4),
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                  color: context.surfaceAltColor,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
@@ -827,13 +860,13 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                   children: [
                     Text(
                       entry['action'] ?? '',
-                      style: GoogleFonts.poppins(fontSize: fontSize - 2, fontWeight: FontWeight.w500),
+                      style: GoogleFonts.poppins(fontSize: fontSize - 2, fontWeight: FontWeight.w500, color: context.textPrimary),
                     ),
                     Text(
-                      'at ${entry['timestamp'] != null ? DateFormat.yMMMd().format((entry['timestamp'] as Timestamp).toDate()) : 'Unknown date'}',
+                      'at ${entry['timestamp'] != null ? AppDateFormat.format((entry['timestamp'] as Timestamp).toDate()) : 'Unknown date'}',
                       style: GoogleFonts.poppins(
                         fontSize: fontSize - 4,
-                        color: Colors.grey[600],
+                        color: context.textSecondary,
                       ),
                     ),
                     if (entry['notes'] != null && entry['notes'].isNotEmpty)
@@ -878,7 +911,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                     style: GoogleFonts.poppins(
                         fontSize: fontSize - 2,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary)),
+                        color: context.textPrimary)),
               ]),
               const SizedBox(height: 8),
               ...records.asMap().entries.map((e) {
@@ -910,28 +943,28 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: AppColors.surface,
+                              color: context.surfaceColor,
                               borderRadius: BorderRadius.circular(AppRadius.sm),
                               border: Border.all(color: AppColors.success.withValues(alpha: 0.15)),
                             ),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Row(children: [
                                 Expanded(child: Text(
-                                  DateFormat('d MMM yyyy').format(rec.actualDate),
-                                  style: GoogleFonts.poppins(fontSize: fontSize - 3, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                                  AppDateFormat.format(rec.actualDate),
+                                  style: GoogleFonts.poppins(fontSize: fontSize - 3, fontWeight: FontWeight.w600, color: context.textPrimary),
                                 )),
-                                Text('Next: ${DateFormat('d MMM yy').format(rec.nextDueDate)}',
+                                Text('Next: ${AppDateFormat.formatShort(rec.nextDueDate)}',
                                     style: GoogleFonts.poppins(fontSize: fontSize - 4, color: AppColors.primary)),
                               ]),
                               if (rec.completedByName.isNotEmpty) ...[
                                 const SizedBox(height: 2),
                                 Text('by ${rec.completedByName}',
-                                    style: GoogleFonts.poppins(fontSize: fontSize - 4, color: AppColors.textSecondary)),
+                                    style: GoogleFonts.poppins(fontSize: fontSize - 4, color: context.textSecondary)),
                               ],
                               if (rec.notes.isNotEmpty) ...[
                                 const SizedBox(height: 4),
                                 Text(rec.notes,
-                                    style: GoogleFonts.poppins(fontSize: fontSize - 3, color: AppColors.textSecondary)),
+                                    style: GoogleFonts.poppins(fontSize: fontSize - 3, color: context.textSecondary)),
                               ],
                             ]),
                           ),
@@ -958,24 +991,24 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
         if (equipment.isBimLinked)
           TextButton.icon(
             onPressed: () => _push(BimViewerScreen(facilityId: widget.facilityId, focusGlobalId: equipment.bimGlobalId)),
-            icon: const Icon(Icons.threed_rotation_rounded, size: 16, color: Colors.indigo),
-            label: Text('Show in 3D', style: GoogleFonts.poppins(color: Colors.indigo)),
+            icon: const Icon(Icons.threed_rotation_rounded, size: 16, color: AppColors.primary),
+            label: Text('Show in 3D', style: GoogleFonts.poppins(color: AppColors.primary)),
           ),
         TextButton.icon(
           onPressed: () => _push(WorkOrderScreen(facilityId: widget.facilityId, initialEquipment: ref)),
-          icon: const Icon(Icons.build_outlined, size: 16, color: Colors.blueGrey),
-          label: Text('New Work Order', style: GoogleFonts.poppins(color: Colors.blueGrey)),
+          icon: Icon(Icons.build_outlined, size: 16, color: context.textSecondary),
+          label: Text('New Work Order', style: GoogleFonts.poppins(color: context.textSecondary)),
         ),
         TextButton.icon(
           onPressed: () => _push(RequestScreen(facilityId: widget.facilityId, initialEquipment: ref)),
-          icon: const Icon(Icons.report_problem_outlined, size: 16, color: Colors.blueGrey),
-          label: Text('Report Problem', style: GoogleFonts.poppins(color: Colors.blueGrey)),
+          icon: const Icon(Icons.report_problem_outlined, size: 16, color: AppColors.warning),
+          label: Text('Report Problem', style: GoogleFonts.poppins(color: AppColors.warning)),
         ),
         TextButton.icon(
           onPressed: () => _showUpdateStatusDialog(equipment),
-          icon: const Icon(Icons.edit, size: 16, color: Colors.blueGrey),
-          label: Text('Update Status', style: GoogleFonts.poppins(color: Colors.blueGrey)),
-          style: TextButton.styleFrom(foregroundColor: Colors.blueGrey[700]),
+          icon: Icon(Icons.edit_rounded, size: 16, color: context.textSecondary),
+          label: Text('Update Status', style: GoogleFonts.poppins(color: context.textSecondary)),
+          style: TextButton.styleFrom(foregroundColor: context.textSecondary),
         ),
       ],
     );
@@ -985,34 +1018,50 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
     final isMobile = MediaQuery.of(context).size.width <= 600;
     final isTablet = MediaQuery.of(context).size.width > 600 && MediaQuery.of(context).size.width <= 900;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Container(
       margin: EdgeInsets.all(padding),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Add New Equipment',
-                    style: GoogleFonts.poppins(
-                      fontSize: fontSizeTitle,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[900],
+      padding: EdgeInsets.all(padding),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                      ),
+                      child: const Icon(Icons.precision_manufacturing_outlined, color: AppColors.primary, size: 20),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.blueGrey),
-                    onPressed: () => setState(() => _showForm = false),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Add New Equipment',
+                      style: GoogleFonts.poppins(
+                        fontSize: fontSizeTitle,
+                        fontWeight: FontWeight.bold,
+                        color: context.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: Icon(Icons.close_rounded, color: context.textSecondary),
+                  onPressed: () => setState(() => _showForm = false),
+                ),
+              ],
+            ),
               const SizedBox(height: 16),
               isMobile
                   ? Column(
@@ -1091,14 +1140,14 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton.icon(
+                    child: OutlinedButton.icon(
                       onPressed: _uploadAttachment,
-                      icon: const Icon(Icons.attach_file, color: Colors.white),
-                      label: Text('Add Attachment', style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSizeSubtitle)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey[600],
+                      icon: const Icon(Icons.attach_file_rounded, color: AppColors.primary),
+                      label: Text('Add Attachment', style: GoogleFonts.poppins(color: AppColors.primary, fontSize: fontSizeSubtitle)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.primary),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                       ),
                     ),
                   ),
@@ -1116,8 +1165,8 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
                               entry.value['name'] ?? 'Unknown',
                               style: GoogleFonts.poppins(fontSize: fontSizeSubtitle - 4),
                             ),
-                            backgroundColor: Colors.blue[50],
-                            deleteIcon: const Icon(Icons.close, size: 16),
+                            backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+                            deleteIcon: const Icon(Icons.close_rounded, size: 16),
                             onDeleted: () {
                               setState(() {
                                 _attachmentUrls.removeAt(entry.key);
@@ -1130,19 +1179,27 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _addEquipment,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueGrey[800],
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
-                  child: Text(
-                    'Add Equipment',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: fontSizeSubtitle,
-                      fontWeight: FontWeight.w600,
+                  child: ElevatedButton.icon(
+                    onPressed: _addEquipment,
+                    icon: const Icon(Icons.add_rounded, color: Colors.white),
+                    label: Text(
+                      'Add Equipment',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: fontSizeSubtitle,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     ),
                   ),
                 ),
@@ -1150,7 +1207,6 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
             ],
           ),
         ),
-      ),
     );
   }
 
@@ -1167,15 +1223,16 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: Colors.grey[100],
+        fillColor: context.surfaceColor,
         contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary),
         prefixText: prefixText,
       ),
       style: GoogleFonts.poppins(fontSize: fontSize),
@@ -1188,6 +1245,7 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   Widget _buildTypeDropdown(double fontSize) {
     return DropdownButtonFormField<String>(
       initialValue: _typeController.text.isEmpty ? 'Electrical' : _typeController.text,
+      isExpanded: true,
       items: ['Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'IT Equipment']
           .map((type) => DropdownMenuItem(value: type, child: Text(type, style: GoogleFonts.poppins(fontSize: fontSize))))
           .toList(),
@@ -1198,25 +1256,27 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       },
       decoration: InputDecoration(
         labelText: 'Equipment Type',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: Colors.grey[100],
+        fillColor: context.surfaceColor,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary),
       ),
-      style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
-      dropdownColor: Colors.white,
-      icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+      style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w500),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
   Widget _buildStatusDropdown(double fontSize) {
     return DropdownButtonFormField<String>(
       initialValue: _status,
+      isExpanded: true,
       items: ['Active', 'Inactive', 'Under Repair', 'Decommissioned']
           .map((status) => DropdownMenuItem(value: status, child: Text(status, style: GoogleFonts.poppins(fontSize: fontSize))))
           .toList(),
@@ -1227,19 +1287,20 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
       },
       decoration: InputDecoration(
         labelText: 'Status',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: Colors.grey[100],
+        fillColor: context.surfaceColor,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary),
       ),
-      style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
-      dropdownColor: Colors.white,
-      icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+      style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w500),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
@@ -1252,42 +1313,48 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
         title: Text('Update Equipment Status', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
               initialValue: selectedStatus,
+              isExpanded: true,
               items: ['Active', 'Inactive', 'Under Repair', 'Decommissioned']
                   .map((status) => DropdownMenuItem(value: status, child: Text(status, style: GoogleFonts.poppins())))
                   .toList(),
               onChanged: (value) => selectedStatus = value!,
               decoration: InputDecoration(
                 labelText: 'Status',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  borderSide: const BorderSide(color: AppColors.primary, width: 2),
                 ),
                 filled: true,
-                fillColor: Colors.grey[100],
-                labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+                fillColor: context.surfaceColor,
+                labelStyle: GoogleFonts.poppins(color: context.textSecondary),
               ),
-              style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
+              style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w500),
+              dropdownColor: context.cardColor,
+              icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: notesController,
               decoration: InputDecoration(
                 labelText: 'Notes (optional)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  borderSide: const BorderSide(color: AppColors.primary, width: 2),
                 ),
                 filled: true,
-                fillColor: Colors.grey[100],
-                labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+                fillColor: context.surfaceColor,
+                labelStyle: GoogleFonts.poppins(color: context.textSecondary),
               ),
               style: GoogleFonts.poppins(),
               maxLines: 2,
@@ -1295,20 +1362,27 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
           ],
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(context),
             child: Text('Cancel', style: GoogleFonts.poppins()),
           ),
-          ElevatedButton(
-            onPressed: () {
-              _updateStatus(equipment.id, selectedStatus, notesController.text);
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blueGrey[800],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
-            child: Text('Update', style: GoogleFonts.poppins(color: Colors.white)),
+            child: ElevatedButton(
+              onPressed: () {
+                _updateStatus(equipment.id, selectedStatus, notesController.text);
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+              ),
+              child: Text('Update', style: GoogleFonts.poppins(color: Colors.white)),
+            ),
           ),
         ],
       ),
@@ -1331,15 +1405,15 @@ class _EquipmentSuppliedScreenState extends State<EquipmentSuppliedScreen> {
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'active':
-        return Colors.green.shade600;
+        return AppColors.success;
       case 'inactive':
-        return Colors.grey.shade600;
+        return context.textSecondary;
       case 'under repair':
-        return Colors.orange.shade600;
+        return AppColors.warning;
       case 'decommissioned':
-        return Colors.red.shade600;
+        return AppColors.error;
       default:
-        return Colors.grey.shade600;
+        return context.textSecondary;
     }
   }
 

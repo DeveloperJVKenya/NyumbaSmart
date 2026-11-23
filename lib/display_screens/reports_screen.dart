@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cmms/models/reports.dart';
 import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,7 +13,7 @@ import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
+import 'package:cmms/utils/app_date_format.dart';
 import 'package:logger/logger.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
@@ -498,14 +499,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         organization: _organization,
         child: _buildBody(),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          setState(() {
-            _isUploadVisible = !_isUploadVisible; // Toggle visibility
-          });
-        },
-        backgroundColor: Colors.blueGrey[800],
-        child: const Icon(Icons.upload, color: Colors.white),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => setState(() => _isUploadVisible = !_isUploadVisible),
+        backgroundColor: AppColors.primary,
+        icon: Icon(_isUploadVisible ? Icons.close_rounded : Icons.upload_file_rounded, color: Colors.white),
+        label: Text(
+          _isUploadVisible ? 'Cancel' : 'Upload Report',
+          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
       ),
     );
   }
@@ -524,61 +526,61 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_isUploadVisible) ...[
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: EdgeInsets.all(padding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Upload Report',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: fontSizeTitle,
-                        color: Colors.blueGrey[900],
+            Container(
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: context.surfaceColor,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: Border.all(color: context.surfaceAltColor),
+                boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+              ),
+              padding: EdgeInsets.all(padding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                        ),
+                        child: const Icon(Icons.upload_file_rounded, color: Colors.white, size: 22),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    isMobile
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _buildTextField(fontSizeSubtitle),
-                              const SizedBox(height: 12),
-                              _buildUploadButton(fontSizeSubtitle),
-                            ],
-                          )
-                        : Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: _buildTextField(fontSizeSubtitle),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                flex: 1,
-                                child: _buildUploadButton(fontSizeSubtitle),
-                              ),
-                            ],
-                          ),
-                  ],
-                ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Upload Report',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: fontSizeTitle, color: context.textPrimary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  isMobile
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildTextField(fontSizeSubtitle),
+                            const SizedBox(height: 12),
+                            _buildUploadButton(fontSizeSubtitle),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(flex: 3, child: _buildTextField(fontSizeSubtitle)),
+                            const SizedBox(width: 12),
+                            Expanded(flex: 1, child: _buildUploadButton(fontSizeSubtitle)),
+                          ],
+                        ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
           ],
 
-          // Sectional title for reports
           Center(
             child: Text(
               'Uploaded Reports',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.bold,
-                fontSize: fontSizeTitle,
-                color: Colors.black,
-              ),
+              style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: fontSizeTitle, color: context.textPrimary),
             ),
           ),
           const SizedBox(height: 16),
@@ -601,36 +603,29 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
               final docs = snapshot.data?.docs ?? [];
               if (docs.isEmpty) {
-                return Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.picture_as_pdf,
-                          size: 64,
-                          color: Colors.grey[400],
+                return Container(
+                  decoration: BoxDecoration(
+                    color: context.surfaceColor,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(color: context.surfaceAltColor),
+                    boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+                  ),
+                  padding: const EdgeInsets.all(40.0),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No reports uploaded yet',
-                          style: GoogleFonts.poppins(
-                            fontSize: fontSizeSubtitle,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Use the upload button above to add your first report',
-                          style: GoogleFonts.poppins(
-                            fontSize: fontSizeSubtitle - 2,
-                            color: Colors.grey[500],
-                          ),
-                        ),
-                      ],
-                    ),
+                        child: Icon(Icons.picture_as_pdf_rounded, size: 48, color: Colors.red.withValues(alpha: 0.5)),
+                      ),
+                      const SizedBox(height: 16),
+                      Text('No reports uploaded yet', style: GoogleFonts.poppins(fontSize: fontSizeSubtitle, color: context.textSecondary, fontWeight: FontWeight.w500)),
+                      const SizedBox(height: 6),
+                      Text('Use the upload button above to add your first report', style: GoogleFonts.poppins(fontSize: fontSizeSubtitle - 2, color: context.textSecondary.withValues(alpha: 0.7)), textAlign: TextAlign.center),
+                    ],
                   ),
                 );
               }
@@ -647,96 +642,116 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 groupedReports[year]!.add(report);
               }
 
-              // Displaying grouped reports with ExpansionTile
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: groupedReports.entries.map((entry) {
                   final year = entry.key;
                   final reports = entry.value;
 
-                  return ExpansionTile(
-                    title: Text(
-                      '$year',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: fontSizeTitle,
-                        color: Colors.blueGrey[900],
-                      ),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: context.surfaceColor,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      border: Border.all(color: context.surfaceAltColor),
+                      boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
                     ),
-                    children: reports.map((report) {
-                      return Card(
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          leading: Icon(
-                            _getFileIcon(report.fileName),
-                            color: _getFileIconColor(report.fileName),
-                            size: isMobile ? 32 : 36,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Theme(
+                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                        initiallyExpanded: true,
+                        title: Text(
+                          '$year',
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: fontSizeTitle, color: context.textPrimary),
+                        ),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
                           ),
-                          title: Text(
-                            report.title,
-                            style: GoogleFonts.poppins(
-                              color: Colors.blueGrey[900],
-                              fontWeight: FontWeight.w500,
-                              fontSize: fontSizeSubtitle,
+                          child: Text('${reports.length}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                        ),
+                        children: reports.map((report) {
+                          final fileIconColor = _getFileIconColor(report.fileName);
+                          return Container(
+                            margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                            decoration: BoxDecoration(
+                              color: context.surfaceColor,
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
+                              border: Border.all(color: context.surfaceAltColor),
                             ),
-                          ),
-                          subtitle: Text(
-                            'Uploaded: ${report.uploadedAt != null ? DateFormat('MMM dd, yyyy').format(report.uploadedAt!) : 'Unknown date'}',
-                            style: GoogleFonts.poppins(
-                              fontSize: isMobile ? 12 : 14,
-                              color: Colors.grey[600],
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: fileIconColor.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                                    ),
+                                    child: Icon(_getFileIcon(report.fileName), color: fileIconColor, size: isMobile ? 24 : 28),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(report.title, style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w600, fontSize: fontSizeSubtitle)),
+                                        const SizedBox(height: 2),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.calendar_today_rounded, size: 11, color: context.textSecondary),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              report.uploadedAt != null ? AppDateFormat.format(report.uploadedAt!) : 'Unknown date',
+                                              style: GoogleFonts.poppins(fontSize: isMobile ? 11 : 12, color: context.textSecondary),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuButton<String>(
+                                    onSelected: (value) {
+                                      if (value == 'view') {
+                                        _viewDocument(report.downloadUrl, report.fileName);
+                                      } else if (value == 'download') {
+                                        _downloadDocument(report.downloadUrl, report.fileName);
+                                      } else if (value == 'delete') {
+                                        _deleteDocument(report.downloadUrl, report.fileName, report.id);
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem(
+                                        value: 'view',
+                                        child: Row(children: [Icon(Icons.visibility_rounded, color: AppColors.primary, size: 18), const SizedBox(width: 10), Text('View', style: GoogleFonts.poppins())]),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'download',
+                                        child: Row(children: [Icon(Icons.download_rounded, color: AppColors.success, size: 18), const SizedBox(width: 10), Text('Download', style: GoogleFonts.poppins())]),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(children: [Icon(Icons.delete_rounded, color: AppColors.error, size: 18), const SizedBox(width: 10), Text('Delete', style: GoogleFonts.poppins(color: AppColors.error))]),
+                                      ),
+                                    ],
+                                    icon: Icon(Icons.more_vert_rounded, color: context.textSecondary),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          trailing: PopupMenuButton<String>(
-                            onSelected: (value) {
-                              if (value == 'view') {
-                                _viewDocument(report.downloadUrl, report.fileName);
-                              } else if (value == 'download') {
-                                _downloadDocument(report.downloadUrl, report.fileName);
-                              } else if (value == 'delete') {
-                                _deleteDocument(report.downloadUrl, report.fileName, report.id);
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              PopupMenuItem(
-                                value: 'view',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.visibility, color: Colors.blue[700], size: 20),
-                                    const SizedBox(width: 8),
-                                    Text('View', style: GoogleFonts.poppins()),
-                                  ],
-                                ),
+                          );
+                        }).toList(),
                               ),
-                              PopupMenuItem(
-                                value: 'download',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.download, color: Colors.green[700], size: 20),
-                                    const SizedBox(width: 8),
-                                    Text('Download', style: GoogleFonts.poppins()),
-                                  ],
-                                ),
-                              ),
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.delete, color: Colors.red[700], size: 20),
-                                    const SizedBox(width: 8),
-                                    Text('Delete', style: GoogleFonts.poppins()),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            icon: const Icon(Icons.more_vert, color: Colors.blueGrey),
+                            ),
                           ),
                         ),
-                      );
-                    }).toList(),
                   );
                 }).toList(),
               );
@@ -752,38 +767,35 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       controller: _titleController,
       decoration: InputDecoration(
         labelText: 'Report Title (Optional)',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[400]!, width: 1),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
+        prefixIcon: Icon(Icons.title_rounded, size: 18, color: context.textSecondary),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
         filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
-        hintStyle: GoogleFonts.poppins(color: Colors.grey[400]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
       ),
       style: GoogleFonts.poppins(fontSize: fontSize),
     );
   }
 
   Widget _buildUploadButton(double fontSize) {
-    return ElevatedButton.icon(
-      onPressed: _uploadDocument,
-      icon: const Icon(Icons.upload_file, color: Colors.white),
-      label: Text(
-        'Upload PDF',
-        style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSize),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: AppColors.primaryGradient,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.blueGrey[800],
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        elevation: 4,
+      child: ElevatedButton.icon(
+        onPressed: _uploadDocument,
+        icon: const Icon(Icons.upload_file_rounded, color: Colors.white),
+        label: Text('Upload PDF', style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.w600)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+        ),
       ),
     );
   }
@@ -799,8 +811,8 @@ class PDFViewerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(fileName, style: GoogleFonts.poppins(color: Colors.white)),
-        backgroundColor: Colors.blueGrey[800],
+        title: Text(fileName, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        backgroundColor: AppColors.primary,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SafeArea(

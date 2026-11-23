@@ -42,6 +42,10 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
   // not by local stream fields, so a single Firebase listener is shared across
   // all screens that watch the same provider family key.
 
+  // Guards the one-time orphan cleanup so it fires at most once per screen
+  // session, not on every rebuild that detects no active models.
+  bool _orphanCleanupTriggered = false;
+
   /// An import that has said "processing" this long was interrupted (app closed, connection lost).
   static const Duration _staleAfter = Duration(minutes: 30);
 
@@ -54,6 +58,20 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
     final roleInfo = ref.watch(currentUserRoleProvider).value;
     final canManage = canManageBim(roleInfo);
     final modelsAsync = ref.watch(bimModelsProvider(widget.facilityId));
+
+    // Trigger orphan cleanup once when models list transitions to empty.
+    // ref.listen fires only on value changes — not on every build — so it
+    // won't flood the frame scheduler the way addPostFrameCallback did.
+    ref.listen<AsyncValue<List<BimModel>>>(
+      bimModelsProvider(widget.facilityId),
+      (_, next) {
+        if (next.asData?.value.isEmpty == true && !_orphanCleanupTriggered) {
+          _orphanCleanupTriggered = true;
+          _cleanupOrphanedBimData();
+        }
+      },
+    );
+
     return ResponsiveScreenWrapper(
       title: 'BIM Models',
       facilityId: widget.facilityId,
@@ -72,7 +90,7 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
           _buildOverview(),
           const SizedBox(height: AppSpacing.lg),
           Text('Import history',
-              style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w600, color: context.textPrimary)),
           const SizedBox(height: AppSpacing.sm),
           modelsAsync.when(
             data: (models) => models.isEmpty
@@ -90,25 +108,31 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
   }
 
   Widget _buildOverview() {
-    // Each Riverpod provider creates exactly one Firestore listener shared
-    // across this screen (and any other watcher for the same facilityId).
-    // Counts update live: when a cascade-delete clears the collection the
-    // stats drop to 0 without any refresh needed.
+    // Gate all counts on there being at least one bimModels record.
+    // Sub-collection data left by old deletes (before cascade-delete was
+    // added) would otherwise show non-zero counts for an empty facility.
+    final modelsAsync = ref.watch(bimModelsProvider(widget.facilityId));
+    final hasModels = modelsAsync.asData?.value.isNotEmpty ?? true;
+
     final spacesAsync = ref.watch(bimSpacesSnapshotProvider(widget.facilityId));
     final eqCountAsync = ref.watch(bimActualEquipmentCountProvider(widget.facilityId));
     final sysCountAsync = ref.watch(bimSystemsCountProvider(widget.facilityId));
     final cntCountAsync = ref.watch(bimContactsCountProvider(widget.facilityId));
     final sprCountAsync = ref.watch(bimSparesCountProvider(widget.facilityId));
 
-    final spaces = spacesAsync.asData?.value.docs ?? const [];
+    final spaces = hasModels
+        ? (spacesAsync.asData?.value.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[])
+        : const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
     final floors = spaces.where((d) => d.data()['kind'] == BimSpaceKind.storey.name).length;
     final rooms = spaces.length - floors;
-    final eqCount = eqCountAsync.asData?.value;
-    final sysCount = sysCountAsync.asData?.value;
-    final cntCount = cntCountAsync.asData?.value;
-    final sprCount = sprCountAsync.asData?.value;
+    final eqCount = hasModels ? eqCountAsync.asData?.value : 0;
+    final sysCount = hasModels ? sysCountAsync.asData?.value : 0;
+    final cntCount = hasModels ? cntCountAsync.asData?.value : 0;
+    final sprCount = hasModels ? sprCountAsync.asData?.value : 0;
 
-    String v(int? n, bool loaded) => loaded ? '${n ?? 0}' : '…';
+    // Show '…' only while models exist and counts are still loading.
+    final loaded = !hasModels || (spacesAsync.hasValue && eqCountAsync.hasValue);
+    String v(int? n) => loaded ? '${n ?? 0}' : '…';
 
     return AppCard(
       child: Column(
@@ -119,33 +143,73 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text('Building model data',
-                  style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w600, color: context.textPrimary)),
             ),
           ]),
           const SizedBox(height: 6),
           Text(
             'Floors, rooms and equipment imported from COBie spreadsheets and IFC models. Imported equipment is '
             'linked to its model element by IFC GlobalId and to the room it sits in.',
-            style: GoogleFonts.poppins(fontSize: 13, height: 1.5, color: AppColors.textSecondary),
+            style: GoogleFonts.poppins(fontSize: 13, height: 1.5, color: context.textSecondary),
           ),
           const SizedBox(height: AppSpacing.md),
           Wrap(spacing: 12, runSpacing: 12, children: [
-            _tappable(BimStat(icon: Icons.layers_rounded, label: 'Floors', value: v(floors, spacesAsync.hasValue)), _openSpaces),
-            _tappable(BimStat(icon: Icons.meeting_room_rounded, label: 'Rooms', value: v(rooms, spacesAsync.hasValue)), _openSpaces),
+            _tappable(BimStat(icon: Icons.layers_rounded, label: 'Floors', value: v(floors)), _openSpaces),
+            _tappable(BimStat(icon: Icons.meeting_room_rounded, label: 'Rooms', value: v(rooms)), _openSpaces),
             _tappable(
-              BimStat(icon: Icons.precision_manufacturing_rounded, label: 'BIM equipment', value: v(eqCount, eqCountAsync.hasValue)),
+              BimStat(icon: Icons.precision_manufacturing_rounded, label: 'BIM equipment', value: v(eqCount)),
               _openEquipment,
             ),
-            if (sysCountAsync.hasValue && (sysCount ?? 0) > 0)
+            if ((sysCount ?? 0) > 0)
               _tappable(BimStat(icon: Icons.account_tree_rounded, label: 'Systems', value: '$sysCount'), _openSystems),
-            if (cntCountAsync.hasValue && (cntCount ?? 0) > 0)
+            if ((cntCount ?? 0) > 0)
               _tappable(BimStat(icon: Icons.contacts_rounded, label: 'Contacts', value: '$cntCount'), _openContacts),
-            if (sprCountAsync.hasValue && (sprCount ?? 0) > 0)
+            if ((sprCount ?? 0) > 0)
               _tappable(BimStat(icon: Icons.inventory_2_rounded, label: 'Spares', value: '$sprCount'), _openSpares),
           ]),
         ],
       ),
     );
+  }
+
+  /// Removes all BIM sub-collection documents for this facility regardless of
+  /// bimModelId. Called once when no model records remain but orphaned docs are
+  /// detected — cleans up data left by the previous non-cascade delete behaviour.
+  Future<void> _cleanupOrphanedBimData() async {
+    _logger.i('Cleaning up orphaned BIM data for ${widget.facilityId}');
+    try {
+      await _batchDeleteQuery(_facility.collection('spaces'));
+      await _batchDeleteQuery(
+          _facility.collection('equipment').where('bimSource', whereIn: ['cobie', 'ifc']));
+      await _batchDeleteQuery(_facility.collection('bimSystems'));
+      await _batchDeleteQuery(_facility.collection('bimContacts'));
+      await _batchDeleteQuery(_facility.collection('bimSpares'));
+      await _batchDeleteQuery(
+          _facility.collection('preventive_maintenance').where('bimModelId', isNull: false));
+      final analysisSnap = await _facility.collection('aiPmAnalysis').get();
+      final orphanDocs = analysisSnap.docs.where((d) => d.id != '_meta').toList();
+      for (int i = 0; i < orphanDocs.length; i += 450) {
+        final chunk = orphanDocs.sublist(i, (i + 450).clamp(0, orphanDocs.length));
+        final wb = FirebaseFirestore.instance.batch();
+        for (final doc in chunk) { wb.delete(doc.reference); }
+        await wb.commit();
+      }
+      _logger.i('Orphaned BIM data removed for ${widget.facilityId}');
+    } catch (e) {
+      _logger.e('Orphan cleanup failed', error: e);
+    }
+  }
+
+  Future<void> _batchDeleteQuery(Query<Map<String, dynamic>> query) async {
+    const int pageSize = 450;
+    while (true) {
+      final snap = await query.limit(pageSize).get();
+      if (snap.docs.isEmpty) break;
+      final b = FirebaseFirestore.instance.batch();
+      for (final doc in snap.docs) { b.delete(doc.reference); }
+      await b.commit();
+      if (snap.docs.length < pageSize) break;
+    }
   }
 
   Widget _tappable(Widget child, VoidCallback onTap) => InkWell(
@@ -180,14 +244,14 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
         const Icon(Icons.view_in_ar_outlined, size: 56, color: AppColors.primaryLight),
         const SizedBox(height: 12),
         Text('No BIM data imported yet',
-            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: context.textPrimary)),
         const SizedBox(height: 6),
         Text(
           canManage
               ? 'Ask the contractor or design team for a COBie handover spreadsheet (.xlsx) or an IFC export (.ifc) of the building.'
               : 'An administrator can import COBie or IFC files for this facility.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+          style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
         ),
         if (canManage) ...[
           const SizedBox(height: AppSpacing.md),
@@ -283,7 +347,7 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
       BimImportStatus.failed => ('Failed', AppColors.error, Icons.error_rounded),
       BimImportStatus.processing when interrupted => ('Interrupted', AppColors.warning, Icons.warning_amber_rounded),
       BimImportStatus.processing => ('Importing…', AppColors.primary, Icons.sync_rounded),
-      BimImportStatus.uploaded => ('Uploaded', AppColors.textSecondary, Icons.cloud_done_rounded),
+      BimImportStatus.uploaded => ('Uploaded', context.textSecondary, Icons.cloud_done_rounded),
     };
     final isIfc = m.sourceType == BimSourceType.ifc;
     final disc = _disciplineCode(m.fileName);
@@ -309,7 +373,7 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(m.fileName,
-                          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary),
                           overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 2),
                       Text(
@@ -319,7 +383,7 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
                           formatBytes(m.sizeBytes),
                           DateFormat.yMMMd().add_jm().format(m.uploadedAt),
                         ].join('  ·  '),
-                        style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary),
+                        style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary),
                       ),
                     ],
                   ),
@@ -400,9 +464,9 @@ class _BimModelsScreenState extends ConsumerState<BimModelsScreen> {
   }
 
   Widget _count(IconData icon, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 16, color: AppColors.textSecondary),
+        Icon(icon, size: 16, color: context.textSecondary),
         const SizedBox(width: 4),
-        Text(label, style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textPrimary)),
+        Text(label, style: GoogleFonts.poppins(fontSize: 12.5, color: context.textPrimary)),
       ]);
 
   /// Batch-deletes all documents in [col] that have bimModelId == [modelId].

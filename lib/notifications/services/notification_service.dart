@@ -32,6 +32,9 @@ class NotificationService {
   static const String _soundEnabledKey = 'notification_sound_enabled';
   static const String _vibrationEnabledKey = 'notification_vibration_enabled';
   static const String _screenWakeEnabledKey = 'notification_screen_wake_enabled';
+  static const String _emailNotifKey = 'ns_pref_email_notifications';
+  static const String _pushNotifKey = 'ns_pref_push_notifications';
+  static const String _woAlertsKey = 'ns_pref_wo_alerts';
 
   // The web push certificate key for this Firebase project — required to obtain an FCM token on
   // web (mobile/desktop don't need it).
@@ -345,6 +348,48 @@ class NotificationService {
         .add(notification.toCreateMap());
   }
 
+  /// Writes an in-app digest item directly to [targetUserId]'s notification feed.
+  /// This surfaces immediately in the user's notification bell without waiting for the
+  /// hourly Cloud Function. It does NOT send an FCM push — targeted FCM pushes require
+  /// a server-side trigger. Category is always 'work_event'.
+  Future<void> sendInAppNotification({
+    required String targetUserId,
+    required String title,
+    required String body,
+    String priority = 'normal',
+  }) async {
+    try {
+      final batch = _firestore.batch();
+      final itemRef = _firestore
+          .collection('NotificationDigests')
+          .doc(targetUserId)
+          .collection('items')
+          .doc();
+      batch.set(itemRef, {
+        'userId': targetUserId,
+        'runId': 'work_event_${DateTime.now().millisecondsSinceEpoch}',
+        'kind': 'custom',
+        'title': title,
+        'body': body,
+        'totalCount': 1,
+        'facilityCount': 0,
+        'facilities': const [],
+        'createdAt': FieldValue.serverTimestamp(),
+        'readAt': null,
+        'reTriggerCount': 0,
+        'isAlert': priority == 'urgent',
+      });
+      batch.set(
+        _firestore.collection('NotificationDigests').doc(targetUserId),
+        {'unreadCount': FieldValue.increment(1)},
+        SetOptions(merge: true),
+      );
+      await batch.commit();
+    } catch (e) {
+      _logger.e('Error sending in-app notification to $targetUserId: $e');
+    }
+  }
+
   /// Sends a test push to the caller's own device(s) via the `sendTestNotification` Cloud
   /// Function — replaces the old client-side direct-FCM-HTTP path that bundled a service-account
   /// credential in the app.
@@ -466,5 +511,68 @@ class NotificationService {
   Future<void> setScreenWakeEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_screenWakeEnabledKey, enabled);
+  }
+
+  Future<bool> areEmailNotificationsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_emailNotifKey) ?? true;
+  }
+
+  Future<void> setEmailNotificationsEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_emailNotifKey, enabled);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await _firestore.collection('Users').doc(user.uid).update({
+          'emailNotificationsEnabled': enabled,
+          'lastSettingsUpdate': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        _logger.e('Error updating email notifications in Firestore: $e');
+      }
+    }
+  }
+
+  Future<bool> arePushNotificationsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_pushNotifKey) ?? true;
+  }
+
+  Future<void> setPushNotificationsEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_pushNotifKey, enabled);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await _firestore.collection('Users').doc(user.uid).update({
+          'pushNotificationsEnabled': enabled,
+          'lastSettingsUpdate': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        _logger.e('Error updating push notifications in Firestore: $e');
+      }
+    }
+  }
+
+  Future<bool> areWorkOrderAlertsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_woAlertsKey) ?? true;
+  }
+
+  Future<void> setWorkOrderAlertsEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_woAlertsKey, enabled);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await _firestore.collection('Users').doc(user.uid).update({
+          'workOrderAlertsEnabled': enabled,
+          'lastSettingsUpdate': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        _logger.e('Error updating work order alerts in Firestore: $e');
+      }
+    }
   }
 }

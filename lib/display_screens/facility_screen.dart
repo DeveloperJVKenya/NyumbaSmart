@@ -250,11 +250,11 @@ class FacilityScreenState extends State<FacilityScreen> {
                   IconButton(
                     onPressed: _cancelAddingFacility,
                     icon: const Icon(Icons.arrow_back_rounded),
-                    color: AppColors.textPrimary,
+                    color: context.textPrimary,
                   ),
                   Text(
                     'Add New Facility',
-                    style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                    style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: context.textPrimary),
                   ),
                 ],
               ),
@@ -264,15 +264,15 @@ class FacilityScreenState extends State<FacilityScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
+                    color: context.surfaceAltColor,
                     borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Organization', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textSecondary)),
+                      Text('Organization', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: context.textSecondary)),
                       const SizedBox(height: 4),
-                      Text(widget.userOrganization!, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                      Text(widget.userOrganization!, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: context.textPrimary)),
                     ],
                   ),
                 ),
@@ -282,14 +282,14 @@ class FacilityScreenState extends State<FacilityScreen> {
               const SizedBox(height: 16),
               AppTextField(controller: _locationController, label: 'Location', icon: Icons.location_on_rounded),
               const SizedBox(height: 16),
-              Text('Address', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textSecondary)),
+              Text('Address', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500, color: context.textSecondary)),
               const SizedBox(height: 8),
               if (_pickedLocation != null)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
+                    color: context.surfaceAltColor,
                     borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                   child: Row(
@@ -301,7 +301,7 @@ class FacilityScreenState extends State<FacilityScreen> {
                           _addressController.text.isNotEmpty
                               ? _addressController.text
                               : '${_pickedLocation!.latitude}, ${_pickedLocation!.longitude}',
-                          style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textPrimary),
+                          style: GoogleFonts.poppins(fontSize: 13.5, color: context.textPrimary),
                         ),
                       ),
                       TextButton(onPressed: _pickLocation, child: const Text('Change')),
@@ -329,8 +329,8 @@ class FacilityScreenState extends State<FacilityScreen> {
                   OutlinedButton(
                     onPressed: _cancelAddingFacility,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.textPrimary,
-                      side: BorderSide(color: AppColors.textSecondary.withValues(alpha: 0.35)),
+                      foregroundColor: context.textPrimary,
+                      side: BorderSide(color: context.textSecondary.withValues(alpha: 0.35)),
                       minimumSize: const Size(0, 48),
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                     ),
@@ -365,7 +365,7 @@ class FacilityScreenState extends State<FacilityScreen> {
                 const SizedBox(height: 16),
                 Text('Error loading facilities', style: GoogleFonts.poppins(fontSize: 16, color: AppColors.error, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
-                Text('${snapshot.error}', style: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: 13), textAlign: TextAlign.center),
+                Text('${snapshot.error}', style: GoogleFonts.poppins(color: context.textSecondary, fontSize: 13), textAlign: TextAlign.center),
               ],
             ),
           );
@@ -378,17 +378,17 @@ class FacilityScreenState extends State<FacilityScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.business_rounded, size: 56, color: AppColors.textSecondary.withValues(alpha: 0.4)),
+                Icon(Icons.business_rounded, size: 56, color: context.textSecondary.withValues(alpha: 0.4)),
                 const SizedBox(height: 16),
                 Text(
                   widget.userOrganization != null && widget.userOrganization!.isNotEmpty && widget.userOrganization != '-'
                       ? 'No facilities found for ${widget.userOrganization}'
                       : 'No facilities added yet',
-                  style: GoogleFonts.poppins(fontSize: 16, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                  style: GoogleFonts.poppins(fontSize: 16, color: context.textSecondary, fontWeight: FontWeight.w500),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
-                Text('Tap the + button to add a new facility', style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary.withValues(alpha: 0.8)), textAlign: TextAlign.center),
+                Text('Tap the + button to add a new facility', style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary.withValues(alpha: 0.8)), textAlign: TextAlign.center),
               ],
             ),
           );
@@ -494,25 +494,25 @@ class FacilityScreenState extends State<FacilityScreen> {
               child: const Icon(Icons.waving_hand_rounded, size: 44, color: Colors.white),
             ),
             const SizedBox(height: 24),
-            Text('Welcome to NyumbaSmart', style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary), textAlign: TextAlign.center),
+            Text('Welcome to NyumbaSmart', style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: context.textPrimary), textAlign: TextAlign.center),
             const SizedBox(height: 8),
-            Text('The ultimate system for your maintenance success!', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.textSecondary), textAlign: TextAlign.center),
+            Text('The ultimate system for your maintenance success!', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: context.textSecondary), textAlign: TextAlign.center),
             const SizedBox(height: 32),
             AppCard(
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  Text('Getting Started', style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.textPrimary), textAlign: TextAlign.center),
+                  Text('Getting Started', style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.bold, color: context.textPrimary), textAlign: TextAlign.center),
                   const SizedBox(height: 16),
                   Text(
                     'To access all features tailored for you, please reach out to your system administrator for role assignment.',
-                    style: GoogleFonts.poppins(fontSize: 14.5, color: AppColors.textSecondary, height: 1.4),
+                    style: GoogleFonts.poppins(fontSize: 14.5, color: context.textSecondary, height: 1.4),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
                   Text(
                     'The interface will update automatically once your role is assigned. If it doesn\'t update, use the refresh button below.',
-                    style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary.withValues(alpha: 0.85), height: 1.4),
+                    style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary.withValues(alpha: 0.85), height: 1.4),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -524,7 +524,7 @@ class FacilityScreenState extends State<FacilityScreen> {
               child: AppGradientButton(label: 'Refresh Screen', icon: Icons.refresh_rounded, onPressed: _checkUserRole),
             ),
             const SizedBox(height: 24),
-            Text('Need help? Contact your system administrator.', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic), textAlign: TextAlign.center),
+            Text('Need help? Contact your system administrator.', style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary, fontStyle: FontStyle.italic), textAlign: TextAlign.center),
           ],
         ),
       ),
@@ -550,7 +550,7 @@ class FacilityScreenState extends State<FacilityScreen> {
             : FloatingActionButton.extended(
                 onPressed: () => setState(() => _isAddingFacility = true),
                 backgroundColor: widget.isSelectionActive ? AppColors.accent : AppColors.primary,
-                foregroundColor: widget.isSelectionActive ? AppColors.textPrimary : Colors.white,
+                foregroundColor: widget.isSelectionActive ? context.textPrimary : Colors.white,
                 icon: const Icon(Icons.add_rounded),
                 label: Text('Add Facility', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                 elevation: 4,
@@ -587,7 +587,7 @@ class FacilityScreenState extends State<FacilityScreen> {
                                       : 'Facilities',
                                   style: BrandFonts.display(
                                     fontSize: isMobile ? 22 : 26,
-                                    color: AppColors.textPrimary,
+                                    color: context.textPrimary,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: -0.5,
                                   ),
@@ -595,7 +595,7 @@ class FacilityScreenState extends State<FacilityScreen> {
                                 const SizedBox(height: 4),
                                 Text(
                                   hasSelectedFacility ? 'Switch facility or manage the active one' : 'Select a facility to get started',
-                                  style: GoogleFonts.poppins(fontSize: isMobile ? 12.5 : 13.5, color: AppColors.textSecondary),
+                                  style: GoogleFonts.poppins(fontSize: isMobile ? 12.5 : 13.5, color: context.textSecondary),
                                 ),
                               ],
                             ),
@@ -827,8 +827,8 @@ class _FacilityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = isSelected ? Colors.white : (isInteractable ? AppColors.textPrimary : AppColors.textSecondary.withValues(alpha: 0.6));
-    final fgMuted = isSelected ? Colors.white.withValues(alpha: 0.85) : (isInteractable ? AppColors.textSecondary : AppColors.textSecondary.withValues(alpha: 0.5));
+    final fg = isSelected ? Colors.white : (isInteractable ? context.textPrimary : context.textSecondary.withValues(alpha: 0.6));
+    final fgMuted = isSelected ? Colors.white.withValues(alpha: 0.85) : (isInteractable ? context.textSecondary : context.textSecondary.withValues(alpha: 0.5));
 
     return Material(
       color: Colors.transparent,

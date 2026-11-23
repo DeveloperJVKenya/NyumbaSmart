@@ -59,7 +59,7 @@ class BimStat extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 140),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
+        color: context.surfaceAltColor,
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Row(
@@ -71,8 +71,8 @@ class BimStat extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(value,
-                  style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-              Text(label, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                  style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: context.textPrimary)),
+              Text(label, style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
             ],
           ),
         ],
@@ -132,7 +132,7 @@ class BimNotice extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 20),
           const SizedBox(width: 10),
-          Expanded(child: Text(message, style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textPrimary))),
+          Expanded(child: Text(message, style: GoogleFonts.poppins(fontSize: 13, color: context.textPrimary))),
         ],
       ),
     );

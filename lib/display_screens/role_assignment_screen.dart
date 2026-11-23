@@ -135,7 +135,7 @@ class _RoleAssignmentScreenState extends ConsumerState<RoleAssignmentScreen> {
                     style: GoogleFonts.poppins(
                       fontSize: isMobile ? 18 : 22,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                      color: context.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -152,9 +152,12 @@ class _RoleAssignmentScreenState extends ConsumerState<RoleAssignmentScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        SizedBox(
-                          height: 54,
-                          child: ElevatedButton(
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: AppColors.primaryGradient,
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                          ),
+                          child: ElevatedButton.icon(
                             onPressed: () {
                               if (_uidController.text.isEmpty) {
                                 _snack('Please enter a User UID');
@@ -162,8 +165,14 @@ class _RoleAssignmentScreenState extends ConsumerState<RoleAssignmentScreen> {
                               }
                               _assignRole(_uidController.text);
                             },
-                            style: ElevatedButton.styleFrom(minimumSize: const Size(110, 54)),
-                            child: const Text('Assign'),
+                            icon: const Icon(Icons.assignment_ind_rounded, color: Colors.white, size: 18),
+                            label: Text('Assign', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              minimumSize: const Size(110, 54),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                            ),
                           ),
                         ),
                       ],
@@ -172,7 +181,7 @@ class _RoleAssignmentScreenState extends ConsumerState<RoleAssignmentScreen> {
                   const SizedBox(height: 24),
                   Text(
                     'Available Users (Unassigned Role)',
-                    style: GoogleFonts.poppins(fontSize: isMobile ? 16 : 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                    style: GoogleFonts.poppins(fontSize: isMobile ? 16 : 18, fontWeight: FontWeight.w600, color: context.textPrimary),
                   ),
                   const SizedBox(height: 12),
                   Expanded(
@@ -188,7 +197,7 @@ class _RoleAssignmentScreenState extends ConsumerState<RoleAssignmentScreen> {
                         }
                         final users = snapshot.data?.docs ?? [];
                         if (users.isEmpty) {
-                          return Center(child: Text('No eligible users found.', style: GoogleFonts.poppins(color: AppColors.textSecondary)));
+                          return Center(child: Text('No eligible users found.', style: GoogleFonts.poppins(color: context.textSecondary)));
                         }
 
                         return ListView.builder(
@@ -208,10 +217,22 @@ class _RoleAssignmentScreenState extends ConsumerState<RoleAssignmentScreen> {
                                   ),
                                   title: Text(user['username'] ?? 'No Username', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                                   subtitle: Text('Email: ${user['email'] ?? 'N/A'}', style: GoogleFonts.poppins(fontSize: 12.5)),
-                                  trailing: ElevatedButton(
-                                    onPressed: () => _assignRole(uid),
-                                    style: ElevatedButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 16)),
-                                    child: const Text('Assign', style: TextStyle(fontSize: 13)),
+                                  trailing: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: AppColors.primaryGradient,
+                                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: () => _assignRole(uid),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        shadowColor: Colors.transparent,
+                                        minimumSize: const Size(0, 40),
+                                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                                      ),
+                                      child: Text('Assign', style: GoogleFonts.poppins(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600)),
+                                    ),
                                   ),
                                 ),
                               ),

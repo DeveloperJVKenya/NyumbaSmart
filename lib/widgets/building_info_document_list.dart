@@ -182,7 +182,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
         FloatingActionButton.extended(
           heroTag: 'building_info_secondary_fab',
           onPressed: widget.onSecondaryAction,
-          backgroundColor: AppColors.surfaceAlt,
+          backgroundColor: context.surfaceAltColor,
           foregroundColor: AppColors.primaryDark,
           icon: Icon(widget.secondaryActionIcon ?? Icons.add_rounded, color: AppColors.primaryDark),
           label: Text(
@@ -260,12 +260,12 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
             children: [
               Text(
                 widget.listHeading,
-                style: GoogleFonts.poppins(fontSize: isMobile ? 18 : 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                style: GoogleFonts.poppins(fontSize: isMobile ? 18 : 22, fontWeight: FontWeight.bold, color: context.textPrimary),
               ),
               const SizedBox(height: 2),
               Text(
                 'Browse, search and manage every uploaded file',
-                style: GoogleFonts.poppins(fontSize: isMobile ? 12.5 : 13.5, color: AppColors.textSecondary),
+                style: GoogleFonts.poppins(fontSize: isMobile ? 12.5 : 13.5, color: context.textSecondary),
               ),
             ],
           ),
@@ -278,15 +278,15 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
     return TextField(
       controller: _searchController,
       onChanged: (value) => setState(() => _searchQuery = value.trim().toLowerCase()),
-      style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textPrimary),
+      style: GoogleFonts.poppins(fontSize: 14, color: context.textPrimary),
       decoration: InputDecoration(
         hintText: 'Search by title or file name…',
-        hintStyle: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textSecondary.withValues(alpha: 0.8)),
+        hintStyle: GoogleFonts.poppins(fontSize: 13.5, color: context.textSecondary.withValues(alpha: 0.8)),
         prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary),
         suffixIcon: _searchQuery.isEmpty
             ? null
             : IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSecondary),
+                icon: Icon(Icons.close_rounded, size: 18, color: context.textSecondary),
                 onPressed: () => setState(() {
                   _searchController.clear();
                   _searchQuery = '';
@@ -332,7 +332,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
             gradient: selected ? AppColors.primaryGradient : null,
             color: selected ? null : AppColors.card,
             borderRadius: BorderRadius.circular(AppRadius.pill),
-            border: Border.all(color: selected ? Colors.transparent : AppColors.textSecondary.withValues(alpha: 0.2)),
+            border: Border.all(color: selected ? Colors.transparent : context.textSecondary.withValues(alpha: 0.2)),
           ),
           child: Center(
             child: Text(
@@ -340,7 +340,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
               style: GoogleFonts.poppins(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
-                color: selected ? Colors.white : AppColors.textSecondary,
+                color: selected ? Colors.white : context.textSecondary,
               ),
             ),
           ),
@@ -395,7 +395,7 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
               padding: const EdgeInsets.only(bottom: AppSpacing.sm, left: 4),
               child: Text(
                 '${items.length} ${items.length == 1 ? 'file' : 'files'}',
-                style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w500, color: AppColors.textSecondary),
+                style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w500, color: context.textSecondary),
               ),
             ),
             // An adaptive grid on wide screens and a single column on
@@ -453,11 +453,11 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
         padding: const EdgeInsets.symmetric(vertical: 48),
         child: Column(
           children: [
-            Icon(icon, size: 56, color: AppColors.textSecondary.withValues(alpha: 0.4)),
+            Icon(icon, size: 56, color: context.textSecondary.withValues(alpha: 0.4)),
             const SizedBox(height: 16),
-            Text(message, style: GoogleFonts.poppins(fontSize: 16, color: AppColors.textSecondary, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
+            Text(message, style: GoogleFonts.poppins(fontSize: 16, color: context.textSecondary, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
             const SizedBox(height: 8),
-            Text(hint, style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary.withValues(alpha: 0.8))),
+            Text(hint, style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary.withValues(alpha: 0.8))),
           ],
         ),
       ),
@@ -479,8 +479,8 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
             builder: (sheetContext, setSheetState) {
               return Container(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-                decoration: const BoxDecoration(
-                  color: AppColors.card,
+                decoration: BoxDecoration(
+                  color: context.cardColor,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
                 ),
                 child: Column(
@@ -492,10 +492,10 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
                         width: 40,
                         height: 4,
                         margin: const EdgeInsets.only(bottom: 20),
-                        decoration: BoxDecoration(color: AppColors.textSecondary.withValues(alpha: 0.25), borderRadius: BorderRadius.circular(4)),
+                        decoration: BoxDecoration(color: context.textSecondary.withValues(alpha: 0.25), borderRadius: BorderRadius.circular(4)),
                       ),
                     ),
-                    Text('Upload ${widget.title}', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                    Text('Upload ${widget.title}', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: context.textPrimary)),
                     const SizedBox(height: 20),
                     AppTextField(controller: titleController, label: 'Title (optional)', icon: Icons.title_rounded),
                     if (widget.showCategorySelector) ...[
@@ -720,9 +720,9 @@ class _BuildingInfoScreenState extends ConsumerState<BuildingInfoScreen> {
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
         title: Text('Delete "$fileName"?', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-        content: Text('This cannot be undone.', style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+        content: Text('This cannot be undone.', style: GoogleFonts.poppins(color: context.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text('Cancel', style: GoogleFonts.poppins(color: AppColors.textPrimary))),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text('Cancel', style: GoogleFonts.poppins(color: context.textPrimary))),
           TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text('Delete', style: GoogleFonts.poppins(color: AppColors.error, fontWeight: FontWeight.w600))),
         ],
       ),
@@ -803,7 +803,7 @@ class _DocumentCardState extends State<_DocumentCard> {
   Widget _menu() {
     return PopupMenuButton<String>(
       padding: EdgeInsets.zero,
-      icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary),
+      icon: Icon(Icons.more_vert_rounded, color: context.textSecondary),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
       onSelected: (value) {
         if (value == 'view') onView();
@@ -821,7 +821,7 @@ class _DocumentCardState extends State<_DocumentCard> {
   Widget _categoryPill() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(AppRadius.pill)),
+      decoration: BoxDecoration(color: context.surfaceAltColor, borderRadius: BorderRadius.circular(AppRadius.pill)),
       child: Text(
         document.category,
         style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.primaryDark),
@@ -835,11 +835,11 @@ class _DocumentCardState extends State<_DocumentCard> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.calendar_today_rounded, size: 13, color: AppColors.textSecondary.withValues(alpha: 0.8)),
+        Icon(Icons.calendar_today_rounded, size: 13, color: context.textSecondary.withValues(alpha: 0.8)),
         const SizedBox(width: 6),
         Text(
           document.uploadedAt != null ? DateFormat('MMM dd, yyyy').format(document.uploadedAt!) : 'Unknown date',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary.withValues(alpha: 0.8)),
+          style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary.withValues(alpha: 0.8)),
         ),
       ],
     );
@@ -868,7 +868,7 @@ class _DocumentCardState extends State<_DocumentCard> {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 140),
                 decoration: BoxDecoration(
-                  color: AppColors.card,
+                  color: context.cardColor,
                   borderRadius: BorderRadius.circular(AppRadius.lg),
                   boxShadow: [
                     BoxShadow(
@@ -895,7 +895,7 @@ class _DocumentCardState extends State<_DocumentCard> {
                         children: [
                           Text(
                             document.title,
-                            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: context.textPrimary),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),

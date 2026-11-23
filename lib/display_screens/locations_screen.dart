@@ -261,7 +261,7 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
           children: [
             const Icon(Icons.error_outline_rounded, size: 48, color: AppColors.error),
             const SizedBox(height: 12),
-            Text(message, style: GoogleFonts.poppins(color: AppColors.textSecondary), textAlign: TextAlign.center),
+            Text(message, style: GoogleFonts.poppins(color: context.textSecondary), textAlign: TextAlign.center),
           ],
         ),
       ),
@@ -281,7 +281,7 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
           children: [
             Text(
               facility.name,
-              style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold, color: context.textPrimary),
             ),
             const SizedBox(height: AppSpacing.md),
             AppCard(
@@ -316,9 +316,9 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
         const SizedBox(width: 10),
         SizedBox(
           width: 96,
-          child: Text(label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          child: Text(label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: context.textSecondary)),
         ),
-        Expanded(child: Text(value, style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textPrimary))),
+        Expanded(child: Text(value, style: GoogleFonts.poppins(fontSize: 14, color: context.textPrimary))),
       ],
     );
   }
@@ -345,11 +345,11 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
       return AppCard(
         child: Column(
           children: [
-            const Icon(Icons.location_off_rounded, size: 40, color: AppColors.textSecondary),
+            Icon(Icons.location_off_rounded, size: 40, color: context.textSecondary),
             const SizedBox(height: 8),
             Text(
               'Could not resolve a map location for this address.',
-              style: GoogleFonts.poppins(color: AppColors.textSecondary),
+              style: GoogleFonts.poppins(color: context.textSecondary),
               textAlign: TextAlign.center,
             ),
           ],
@@ -377,12 +377,12 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
     return AppCard(
       child: Row(
         children: [
-          const Icon(Icons.desktop_windows_rounded, color: AppColors.textSecondary),
+          Icon(Icons.desktop_windows_rounded, color: context.textSecondary),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               'An interactive map isn\'t available on this platform yet — use "Get Directions" below.',
-              style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+              style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
             ),
           ),
         ],

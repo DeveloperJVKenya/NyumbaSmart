@@ -283,7 +283,7 @@ class _QuickAccessSectionState extends State<_QuickAccessSection> {
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: context.textPrimary,
                       letterSpacing: -0.2,
                     )),
                 const Spacer(),
@@ -291,7 +291,7 @@ class _QuickAccessSectionState extends State<_QuickAccessSection> {
                   isDefault ? 'Default picks' : 'Based on usage',
                   style: GoogleFonts.poppins(
                       fontSize: 11.5,
-                      color: AppColors.textSecondary),
+                      color: context.textSecondary),
                 ),
               ],
             ),
@@ -301,7 +301,7 @@ class _QuickAccessSectionState extends State<_QuickAccessSection> {
                   ? 'Your top 4 will appear here as you use the app'
                   : 'Your 4 most-opened modules',
               style: GoogleFonts.poppins(
-                  fontSize: 12, color: AppColors.textSecondary),
+                  fontSize: 12, color: context.textSecondary),
             ),
             const SizedBox(height: 14),
             if (snapshot.connectionState == ConnectionState.waiting &&
@@ -316,41 +316,44 @@ class _QuickAccessSectionState extends State<_QuickAccessSection> {
   }
 
   Widget _buildSkeleton() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 14,
-          crossAxisSpacing: 14,
-          childAspectRatio: 1.0),
-      itemCount: 4,
-      itemBuilder: (_, _) => Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0F2F7),
-          borderRadius: BorderRadius.circular(AppRadius.lg),
+    return LayoutBuilder(builder: (context, constraints) {
+      final cols = constraints.maxWidth > 600 ? 4 : 2;
+      final cardWidth = (constraints.maxWidth - (cols - 1) * 14) / cols;
+      return Wrap(
+        spacing: 14,
+        runSpacing: 14,
+        children: List.generate(
+          4,
+          (_) => Container(
+            width: cardWidth,
+            height: 110,
+            decoration: BoxDecoration(
+              color: context.surfaceAltColor,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildGrid(BuildContext context, List<_ModuleItem> modules) {
     return LayoutBuilder(builder: (context, constraints) {
-      final crossCount = constraints.maxWidth > 600 ? 4 : 2;
-      return GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: crossCount,
-          mainAxisSpacing: 14,
-          crossAxisSpacing: 14,
-          childAspectRatio: crossCount == 4 ? 0.85 : 1.0,
-        ),
-        itemCount: modules.length,
-        itemBuilder: (context, i) => _ModuleCard(
-          module: modules[i],
-          onTap: () => _open(context, modules[i].title),
-        ),
+      final cols = constraints.maxWidth > 600 ? 4 : 2;
+      final cardWidth = (constraints.maxWidth - (cols - 1) * 14) / cols;
+      return Wrap(
+        spacing: 14,
+        runSpacing: 14,
+        children: [
+          for (var i = 0; i < modules.length; i++)
+            SizedBox(
+              width: cardWidth,
+              child: _ModuleCard(
+                module: modules[i],
+                onTap: () => _open(context, modules[i].title),
+              ),
+            ),
+        ],
       );
     });
   }
@@ -382,52 +385,49 @@ class _ModuleCardState extends State<_ModuleCard> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           decoration: BoxDecoration(
-            color: _hovered ? m.color.withValues(alpha: 0.08) : Colors.white,
+            color: _hovered
+                ? m.color.withValues(alpha: 0.1)
+                : context.cardColor,
             borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(
               color: _hovered
                   ? m.color.withValues(alpha: 0.4)
-                  : const Color(0xFFE5E7EB),
+                  : context.dividerColor,
             ),
             boxShadow: _hovered
                 ? [
                     BoxShadow(
-                        color: m.color.withValues(alpha: 0.12),
+                        color: m.color.withValues(alpha: 0.14),
                         blurRadius: 12,
                         offset: const Offset(0, 4))
                   ]
-                : const [
+                : [
                     BoxShadow(
-                        color: Color(0x08000000),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 4,
-                        offset: Offset(0, 2))
+                        offset: const Offset(0, 2))
                   ],
           ),
           padding: const EdgeInsets.all(14),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: m.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(11),
-                  boxShadow: [
-                    BoxShadow(
-                        color: m.color.withValues(alpha: 0.15),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3))
-                  ],
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(m.icon, color: m.color, size: 22),
+                child: Icon(m.icon, color: m.color, size: 21),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(m.title,
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: context.textPrimary,
                     height: 1.25,
                     letterSpacing: -0.2,
                   ),
@@ -436,8 +436,8 @@ class _ModuleCardState extends State<_ModuleCard> {
               const SizedBox(height: 3),
               Text(m.subtitle,
                   style: GoogleFonts.poppins(
-                      fontSize: 11.5,
-                      color: AppColors.textSecondary),
+                      fontSize: 11,
+                      color: context.textSecondary),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
             ],

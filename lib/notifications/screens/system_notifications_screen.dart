@@ -26,8 +26,7 @@ class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         title: Text('System Notifications', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
         actions: [
@@ -49,7 +48,7 @@ class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: AppColors.card,
+                    color: context.cardColor,
                     borderRadius: BorderRadius.circular(AppRadius.lg),
                     boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 10))],
                   ),
@@ -65,7 +64,7 @@ class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
                           ),
                           const SizedBox(width: 14),
                           Expanded(
-                            child: Text('Regenerate Maintenance Schedule', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                            child: Text('Regenerate Maintenance Schedule', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: context.textPrimary)),
                           ),
                         ],
                       ),
@@ -75,7 +74,7 @@ class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
                         'task forward on its own frequency until it lands on a date that isn\'t in the past. '
                         'Due/alert notifications themselves are generated automatically every hour by the server '
                         '— this only affects when tasks are next due.',
-                        style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+                        style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
                       ),
                       const SizedBox(height: 16),
                       InkWell(
@@ -83,7 +82,7 @@ class _SystemNotificationsScreenState extends State<SystemNotificationsScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                           decoration: BoxDecoration(
-                            border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.3)),
+                            border: Border.all(color: context.textSecondary.withValues(alpha: 0.3)),
                             borderRadius: BorderRadius.circular(AppRadius.md),
                           ),
                           child: Row(

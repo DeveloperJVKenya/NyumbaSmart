@@ -98,6 +98,89 @@ class AppBreakpoints {
 class AppTheme {
   AppTheme._();
 
+  static ThemeData get dark {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      brightness: Brightness.dark,
+      primary: AppColors.primaryLight,
+      secondary: AppColors.accentLight,
+      surface: const Color(0xFF1E293B),
+      // surfaceContainer* slots are used by Material 3 menus and dropdowns.
+      // Without explicit values they are auto-generated from the seed and may
+      // be unintentionally light, making dropdown text invisible in dark mode.
+      surfaceContainer: const Color(0xFF1E293B),
+      surfaceContainerLow: const Color(0xFF162032),
+      surfaceContainerHigh: const Color(0xFF263548),
+      surfaceContainerHighest: const Color(0xFF2E3F54),
+      onSurface: const Color(0xFFF1F5F9),
+      onSurfaceVariant: const Color(0xFF94A3B8),
+      error: AppColors.error,
+    );
+
+    final textTheme = GoogleFonts.poppinsTextTheme().apply(
+      bodyColor: const Color(0xFFF1F5F9),
+      displayColor: const Color(0xFFF1F5F9),
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: const Color(0xFF0F172A),
+      visualDensity: VisualDensity.adaptivePlatformDensity,
+      textTheme: textTheme,
+      appBarTheme: AppBarTheme(
+        backgroundColor: const Color(0xFF1E293B),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoogleFonts.poppins(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: const Color(0xFF1E293B),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        margin: EdgeInsets.zero,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF1E293B),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        prefixIconColor: AppColors.primaryLight,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15), width: 1.2),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15), width: 1.2),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: AppColors.primaryLight, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: AppColors.error, width: 1.5),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: AppColors.error, width: 2),
+        ),
+        labelStyle: GoogleFonts.poppins(color: const Color(0xFF94A3B8)),
+      ),
+      dividerColor: const Color(0xFF334155),
+      drawerTheme: const DrawerThemeData(
+        backgroundColor: Color(0xFF1E293B),
+      ),
+    );
+  }
+
   static ThemeData get light {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: AppColors.primary,
@@ -105,6 +188,8 @@ class AppTheme {
       primary: AppColors.primary,
       secondary: AppColors.accent,
       surface: AppColors.surface,
+      onSurface: AppColors.textPrimary,
+      onSurfaceVariant: AppColors.textSecondary,
       error: AppColors.error,
     );
 
@@ -185,18 +270,44 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.white,
-          side: const BorderSide(color: Colors.white, width: 1.5),
-          minimumSize: const Size(double.infinity, 54),
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.primary, width: 1.5),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.pill),
           ),
           textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
+      dividerColor: const Color(0xFFE5E7EB),
       drawerTheme: const DrawerThemeData(
         backgroundColor: AppColors.card,
       ),
     );
   }
+}
+
+/// Adaptive color helpers — use these instead of hardcoded AppColors constants
+/// so elements stay correct in both light and dark themes.
+extension ThemeAdaptive on BuildContext {
+  Color get textPrimary => Theme.of(this).colorScheme.onSurface;
+  Color get textSecondary => Theme.of(this).colorScheme.onSurfaceVariant;
+  bool get isDark => Theme.of(this).brightness == Brightness.dark;
+
+  /// Page / scaffold background — slate-50 light, near-black dark.
+  Color get surfaceColor => Theme.of(this).colorScheme.surface;
+
+  /// Alternate tinted surface — indigo-50 light, dark card dark.
+  Color get surfaceAltColor =>
+      isDark ? const Color(0xFF1E293B) : AppColors.surfaceAlt;
+
+  /// Card / sheet surface — white light, dark card dark.
+  Color get cardColor =>
+      Theme.of(this).cardTheme.color ?? AppColors.card;
+
+  /// Sidebar / drawer panel background.
+  Color get panelColor =>
+      Theme.of(this).drawerTheme.backgroundColor ?? AppColors.card;
+
+  /// Subtle separator line.
+  Color get dividerColor => Theme.of(this).dividerColor;
 }

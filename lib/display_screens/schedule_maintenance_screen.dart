@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cmms/utils/app_date_format.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:open_file/open_file.dart';
@@ -142,11 +143,11 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                           icon: Icon(
                             _showManualUpload ? Icons.visibility_off_outlined : Icons.upload_file_outlined,
                             size: 16,
-                            color: AppColors.textSecondary,
+                            color: context.textSecondary,
                           ),
                           label: Text(
                             _showManualUpload ? 'Hide legacy upload' : 'Show legacy upload',
-                            style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary),
+                            style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary),
                           ),
                         ),
                         if (_showManualUpload) ...[
@@ -173,7 +174,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: [
           BoxShadow(
@@ -202,7 +203,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                       fontSize: 15, fontWeight: FontWeight.w700)),
               Text('Sourced from BIM model AI analysis',
                   style: GoogleFonts.poppins(
-                      fontSize: 11.5, color: AppColors.textSecondary)),
+                      fontSize: 11.5, color: context.textSecondary)),
             ]),
           ),
           if (isPublished)
@@ -210,7 +211,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: AppColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text('Published',
                   style: GoogleFonts.poppins(
@@ -223,7 +224,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: AppColors.accent.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const SizedBox(
@@ -247,7 +248,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
             child: Text(
               'No published AI analysis yet. Import a BIM model and run the AI analysis to generate the Scope of Work.',
               style: GoogleFonts.poppins(
-                  fontSize: 13, color: AppColors.textSecondary),
+                  fontSize: 13, color: context.textSecondary),
             ),
           ),
 
@@ -257,7 +258,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
             const SizedBox(width: 8),
             if (meta.completedAt != null)
               _statChip(Icons.access_time_rounded,
-                  DateFormat('d MMM yyyy').format(meta.completedAt!)),
+                  AppDateFormat.format(meta.completedAt!)),
           ]),
           const SizedBox(height: 14),
           Wrap(spacing: 8, runSpacing: 8, children: [
@@ -302,15 +303,15 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
+        color: context.surfaceAltColor,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 13, color: AppColors.textSecondary),
+        Icon(icon, size: 13, color: context.textSecondary),
         const SizedBox(width: 4),
         Text(label,
             style: GoogleFonts.poppins(
-                fontSize: 11.5, color: AppColors.textSecondary)),
+                fontSize: 11.5, color: context.textSecondary)),
       ]),
     );
   }
@@ -381,12 +382,12 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Column(children: [
           Icon(Icons.folder_open_rounded,
-              size: 48, color: AppColors.textSecondary.withValues(alpha: 0.4)),
+              size: 48, color: context.textSecondary.withValues(alpha: 0.4)),
           const SizedBox(height: 12),
           Text('No legacy document uploaded',
               style: GoogleFonts.poppins(
                   fontSize: 14,
-                  color: AppColors.textSecondary,
+                  color: context.textSecondary,
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 16),
           AppGradientButton(
@@ -419,9 +420,9 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Scope of Work', style: GoogleFonts.poppins(fontSize: isMobile ? 18 : 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              Text('Scope of Work', style: GoogleFonts.poppins(fontSize: isMobile ? 18 : 22, fontWeight: FontWeight.bold, color: context.textPrimary)),
               const SizedBox(height: 2),
-              Text('One document covering every maintenance category for this facility', style: GoogleFonts.poppins(fontSize: isMobile ? 12.5 : 13.5, color: AppColors.textSecondary)),
+              Text('One document covering every maintenance category for this facility', style: GoogleFonts.poppins(fontSize: isMobile ? 12.5 : 13.5, color: context.textSecondary)),
             ],
           ),
         ),
@@ -435,7 +436,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 24, offset: const Offset(0, 12))],
       ),
@@ -458,12 +459,12 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(sow.title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    Text(sow.title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700, color: context.textPrimary)),
                     const SizedBox(height: 6),
-                    Text('Uploaded ${DateFormat('MMM dd, yyyy').format(sow.uploadedAt)}', style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary)),
+                    Text('Uploaded ${AppDateFormat.format(sow.uploadedAt)}', style: GoogleFonts.poppins(fontSize: 12.5, color: context.textSecondary)),
                     if (sow.startDate != null) ...[
                       const SizedBox(height: 4),
-                      Text('Maintenance starts ${DateFormat('MMM dd, yyyy').format(sow.startDate!)}', style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary)),
+                      Text('Maintenance starts ${AppDateFormat.format(sow.startDate!)}', style: GoogleFonts.poppins(fontSize: 12.5, color: context.textSecondary)),
                     ],
                   ],
                 ),
@@ -585,9 +586,9 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
 
       final message = StringBuffer();
       if (tasksCreated != null) {
-        message.write('$tasksCreated task${tasksCreated == 1 ? '' : 's'} scheduled from ${DateFormat('MMM dd, yyyy').format(startDate)}');
+        message.write('$tasksCreated task${tasksCreated == 1 ? '' : 's'} scheduled from ${AppDateFormat.format(startDate)}');
       } else if (isReplace) {
-        message.write('Document replaced — $updatedCount task${updatedCount == 1 ? '' : 's'} rescheduled from ${DateFormat('MMM dd, yyyy').format(startDate)}');
+        message.write('Document replaced — $updatedCount task${updatedCount == 1 ? '' : 's'} rescheduled from ${AppDateFormat.format(startDate)}');
       } else {
         message.write('Document uploaded successfully');
       }
@@ -631,7 +632,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                     'When did (or will) maintenance activities in this document actually begin? '
                     'Defaults to Jan 1 of this year, but change it if activities start mid-month or mid-year — '
                     'every task\'s schedule is planned from this date.',
-                    style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+                    style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
                   ),
                   const SizedBox(height: 16),
                   InkWell(
@@ -647,7 +648,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.3)),
+                        border: Border.all(color: context.textSecondary.withValues(alpha: 0.3)),
                         borderRadius: BorderRadius.circular(AppRadius.md),
                       ),
                       child: Row(
@@ -694,10 +695,10 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
               Text(
                 '${rows.length} maintenance task${rows.length == 1 ? '' : 's'} detected across '
                 '${categories.length} categor${categories.length == 1 ? 'y' : 'ies'}.',
-                style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: context.textPrimary),
               ),
               const SizedBox(height: 12),
-              Text('Sample:', style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary)),
+              Text('Sample:', style: GoogleFonts.poppins(fontSize: 12.5, color: context.textSecondary)),
               const SizedBox(height: 6),
               ...sample.map(
                 (row) => Padding(
@@ -705,15 +706,15 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceAlt,
+                      color: context.surfaceAltColor,
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${row.category} — ${row.component}', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                        Text('${row.category} — ${row.component}', style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: context.textPrimary)),
                         const SizedBox(height: 2),
-                        Text(row.intervention, style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
+                        Text(row.intervention, style: GoogleFonts.poppins(fontSize: 11.5, color: context.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 4),
                         Text('Every ${row.frequencyMonths} month${row.frequencyMonths == 1 ? '' : 's'}', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
                       ],
@@ -722,7 +723,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                 ),
               ),
               if (rows.length > sample.length)
-                Text('...and ${rows.length - sample.length} more', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic)),
+                Text('...and ${rows.length - sample.length} more', style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary, fontStyle: FontStyle.italic)),
             ],
           ),
         ),
@@ -847,7 +848,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
         title: Text('Delete scope of work document?', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-        content: Text('This cannot be undone. Existing scheduled tasks are not affected.', style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+        content: Text('This cannot be undone. Existing scheduled tasks are not affected.', style: GoogleFonts.poppins(color: context.textSecondary)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text('Cancel', style: GoogleFonts.poppins())),
           TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text('Delete', style: GoogleFonts.poppins(color: AppColors.error, fontWeight: FontWeight.w600))),
@@ -884,8 +885,8 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
               return Container(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                 constraints: BoxConstraints(maxHeight: MediaQuery.of(sheetContext).size.height * 0.85),
-                decoration: const BoxDecoration(
-                  color: AppColors.card,
+                decoration: BoxDecoration(
+                  color: context.cardColor,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
                 ),
                 child: SingleChildScrollView(
@@ -901,19 +902,19 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                             height: 4,
                             margin: const EdgeInsets.only(bottom: 20),
                             decoration: BoxDecoration(
-                              color: AppColors.textSecondary.withValues(alpha: 0.25),
+                              color: context.textSecondary.withValues(alpha: 0.25),
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
                         ),
                         Text(
                           'Schedule New Activity',
-                          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: context.textPrimary),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'For work not already covered by the uploaded scope of work document',
-                          style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary),
+                          style: GoogleFonts.poppins(fontSize: 12.5, color: context.textSecondary),
                         ),
                         const SizedBox(height: 20),
                         AppTextField(
@@ -939,7 +940,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                         TextFormField(
                           controller: componentController,
                           maxLines: 2,
-                          style: GoogleFonts.poppins(color: AppColors.textPrimary),
+                          style: GoogleFonts.poppins(color: context.textPrimary),
                           decoration: const InputDecoration(labelText: 'Component', prefixIcon: Icon(Icons.precision_manufacturing_rounded, color: AppColors.primary)),
                           validator: (value) => (value == null || value.trim().isEmpty) ? 'Component is required' : null,
                         ),
@@ -947,7 +948,7 @@ class _ScheduleMaintenanceScreenState extends ConsumerState<ScheduleMaintenanceS
                         TextFormField(
                           controller: interventionController,
                           maxLines: 3,
-                          style: GoogleFonts.poppins(color: AppColors.textPrimary),
+                          style: GoogleFonts.poppins(color: context.textPrimary),
                           decoration: const InputDecoration(labelText: 'Intervention', prefixIcon: Icon(Icons.build_rounded, color: AppColors.primary)),
                           validator: (value) => (value == null || value.trim().isEmpty) ? 'Intervention is required' : null,
                         ),

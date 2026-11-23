@@ -200,7 +200,7 @@ class _PreventiveMaintenanceScreenState
               style: GoogleFonts.poppins(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary)),
+                  color: context.textPrimary)),
           const SizedBox(height: 16),
           Expanded(
             child: ListView(
@@ -234,7 +234,7 @@ class _PreventiveMaintenanceScreenState
                             : AppColors.primary.withValues(alpha: 0.12),
                       ),
                     ),
-                    color: AppColors.card,
+                    color: context.cardColor,
                     child: InkWell(
                       onTap: () => setState(() => _selectedCategory = category),
                       borderRadius: BorderRadius.circular(AppRadius.md),
@@ -282,7 +282,7 @@ class _PreventiveMaintenanceScreenState
                                       width: 36,
                                       height: 36,
                                       decoration: BoxDecoration(
-                                        color: AppColors.surfaceAlt,
+                                        color: context.surfaceAltColor,
                                         borderRadius:
                                             BorderRadius.circular(AppRadius.sm),
                                       ),
@@ -299,18 +299,18 @@ class _PreventiveMaintenanceScreenState
                                               style: GoogleFonts.poppins(
                                                   fontSize: 15,
                                                   fontWeight: FontWeight.w700,
-                                                  color: AppColors.textPrimary)),
+                                                  color: context.textPrimary)),
                                           Text(
                                             '${ct.length} task${ct.length == 1 ? '' : 's'}',
                                             style: GoogleFonts.poppins(
                                                 fontSize: 11,
-                                                color: AppColors.textSecondary),
+                                                color: context.textSecondary),
                                           ),
                                         ],
                                       ),
                                     ),
                                     Icon(Icons.chevron_right_rounded,
-                                        color: AppColors.textSecondary, size: 20),
+                                        color: context.textSecondary, size: 20),
                                   ],
                                 ),
                                 const SizedBox(height: 12),
@@ -324,7 +324,7 @@ class _PreventiveMaintenanceScreenState
                                             AppColors.primary, compact),
                                         const SizedBox(width: 6),
                                         _statTile('Pending', pendingCount,
-                                            AppColors.textSecondary, compact),
+                                            context.textSecondary, compact),
                                         const SizedBox(width: 6),
                                         _statTile(
                                             'In Progress',
@@ -400,7 +400,7 @@ class _PreventiveMaintenanceScreenState
       return Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
-          color: AppColors.surfaceAlt,
+          color: context.surfaceAltColor,
           borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
         ),
@@ -424,9 +424,9 @@ class _PreventiveMaintenanceScreenState
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('AI Equipment Analysis',
                     style: GoogleFonts.poppins(fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary, fontSize: 13.5)),
+                        color: context.textPrimary, fontSize: 13.5)),
                 Text('Loading analysis status…',
-                    style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary)),
+                    style: GoogleFonts.poppins(fontSize: 11.5, color: context.textSecondary)),
               ]),
             ),
           ]),
@@ -521,11 +521,11 @@ class _PreventiveMaintenanceScreenState
                     Text('AI Equipment Analysis',
                         style: GoogleFonts.poppins(
                             fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                            color: context.textPrimary,
                             fontSize: 13.5)),
                     Text(subtitle,
                         style: GoogleFonts.poppins(
-                            fontSize: 11.5, color: AppColors.textSecondary)),
+                            fontSize: 11.5, color: context.textSecondary)),
                   ]),
                 ),
                 Icon(Icons.chevron_right_rounded, color: accentColor, size: 18),
@@ -579,9 +579,9 @@ class _PreventiveMaintenanceScreenState
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(_selectedCategory ?? '',
                     style: GoogleFonts.poppins(
-                        fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                        fontSize: 16, fontWeight: FontWeight.w700, color: context.textPrimary)),
                 Text('${tasks.length} task${tasks.length == 1 ? '' : 's'}',
-                    style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary)),
+                    style: GoogleFonts.poppins(fontSize: 11.5, color: context.textSecondary)),
               ]),
             ),
           ]),
@@ -610,7 +610,7 @@ class _PreventiveMaintenanceScreenState
     final catColor = _categoryColor(task.category);
 
     // Traffic-light due date color.
-    Color dueDateColor = AppColors.textSecondary;
+    Color dueDateColor = context.textSecondary;
     String dueDateLabel = '';
     if (task.dueDate != null) {
       final now = DateTime.now();
@@ -628,7 +628,7 @@ class _PreventiveMaintenanceScreenState
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(
           color: overdue
@@ -675,7 +675,7 @@ class _PreventiveMaintenanceScreenState
                   Expanded(
                     child: Text(task.component,
                         style: GoogleFonts.poppins(
-                            fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                            fontSize: 14.5, fontWeight: FontWeight.w700, color: context.textPrimary)),
                   ),
                   if (_canGenerate) ...[
                     const SizedBox(width: 8),
@@ -684,14 +684,14 @@ class _PreventiveMaintenanceScreenState
                       borderRadius: BorderRadius.circular(6),
                       child: Padding(
                         padding: const EdgeInsets.all(4),
-                        child: Icon(Icons.edit_outlined, size: 16, color: AppColors.textSecondary),
+                        child: Icon(Icons.edit_outlined, size: 16, color: context.textSecondary),
                       ),
                     ),
                   ],
                 ]),
                 const SizedBox(height: 6),
                 Text(task.intervention,
-                    style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary)),
+                    style: GoogleFonts.poppins(fontSize: 12.5, color: context.textSecondary)),
                 const SizedBox(height: 10),
 
                 // ── Meta chips row ──────────────────────────────────────
@@ -705,7 +705,7 @@ class _PreventiveMaintenanceScreenState
                       task.equipmentName!.isNotEmpty &&
                       task.equipmentName != task.component)
                     _metaChip(Icons.link_rounded, task.equipmentName!,
-                        AppColors.textSecondary),
+                        context.textSecondary),
                 ]),
 
                 if (task.notes != null && task.notes!.isNotEmpty) ...[
@@ -713,16 +713,16 @@ class _PreventiveMaintenanceScreenState
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceAlt,
+                      color: context.surfaceAltColor,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(children: [
-                      Icon(Icons.notes_rounded, size: 13, color: AppColors.textSecondary),
+                      Icon(Icons.notes_rounded, size: 13, color: context.textSecondary),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(task.notes!,
                             style: GoogleFonts.poppins(
-                                fontSize: 11.5, color: AppColors.textSecondary)),
+                                fontSize: 11.5, color: context.textSecondary)),
                       ),
                     ]),
                   ),
@@ -817,8 +817,8 @@ class _PreventiveMaintenanceScreenState
         padding:
             EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: Container(
-          decoration: const BoxDecoration(
-              color: Colors.white,
+          decoration: BoxDecoration(
+              color: context.cardColor,
               borderRadius:
                   BorderRadius.vertical(top: Radius.circular(20))),
           padding: const EdgeInsets.all(20),
@@ -1226,7 +1226,7 @@ class _PreventiveMaintenanceScreenState
   Color _statusColor(PmTaskStatus status) {
     switch (status) {
       case PmTaskStatus.pending:
-        return AppColors.textSecondary;
+        return context.textSecondary;
       case PmTaskStatus.due:
         return AppColors.warning;
       case PmTaskStatus.inProgress:

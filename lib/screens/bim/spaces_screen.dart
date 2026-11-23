@@ -1,4 +1,4 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -143,7 +143,7 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
                           }),
                         ),
                   filled: true,
-                  fillColor: AppColors.surface,
+                  fillColor: context.surfaceColor,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md), borderSide: BorderSide.none),
                 ),
               ),
@@ -185,14 +185,14 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
           const Icon(Icons.apartment_rounded, size: 56, color: AppColors.primaryLight),
           const SizedBox(height: 12),
           Text('No floors or rooms yet',
-              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: context.textPrimary)),
           const SizedBox(height: 6),
           Text(
             canManage
                 ? 'Import a COBie or IFC file to create them automatically, or add them by hand.'
                 : 'An administrator can import them from a COBie or IFC file.',
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+            style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
           ),
           if (canManage) ...[
             const SizedBox(height: AppSpacing.md),
@@ -261,7 +261,7 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Material(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.md),
         clipBehavior: Clip.antiAlias,
         child: Theme(
@@ -270,13 +270,13 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
             key: PageStorageKey('storey_${space?.id ?? title}_$initiallyExpanded'),
             initiallyExpanded: initiallyExpanded,
             leading: CircleAvatar(
-              backgroundColor: AppColors.surfaceAlt,
+              backgroundColor: context.surfaceAltColor,
               child: Icon(icon, color: AppColors.primary, size: 20),
             ),
             title: Row(children: [
               Flexible(
                 child: Text(title,
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary),
                     overflow: TextOverflow.ellipsis),
               ),
               if (space?.bimGlobalId != null) ...[
@@ -286,13 +286,13 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
             ]),
             subtitle: subtitle == null
                 ? null
-                : Text(subtitle, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                : Text(subtitle, style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
             trailing: (canManage && space != null) ? _spaceMenu(space, allSpaces, equipmentBySpace) : null,
             children: [
               if (floorEquipment.isNotEmpty)
                 ListTile(
                   dense: true,
-                  leading: const Icon(Icons.precision_manufacturing_outlined, color: AppColors.textSecondary),
+                  leading: Icon(Icons.precision_manufacturing_outlined, color: context.textSecondary),
                   title: Text('On this floor (no room)', style: GoogleFonts.poppins(fontSize: 13)),
                   trailing: _countBadge(floorEquipment.length),
                   onTap: () => _showEquipment(title, floorEquipment),
@@ -301,17 +301,17 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   child: Text('No rooms on this floor yet.',
-                      style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                      style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
                 ),
               for (final r in rooms)
                 ListTile(
                   dense: true,
                   contentPadding: const EdgeInsets.only(left: 72, right: 8),
-                  leading: const Icon(Icons.meeting_room_outlined, size: 20, color: AppColors.textSecondary),
+                  leading: Icon(Icons.meeting_room_outlined, size: 20, color: context.textSecondary),
                   title: Text(r.name, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500)),
                   subtitle: r.description == null
                       ? null
-                      : Text(r.description!, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                      : Text(r.description!, style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                     _countBadge(equipmentBySpace[r.id]?.length ?? 0),
                     if (canManage) _spaceMenu(r, allSpaces, equipmentBySpace),
@@ -367,7 +367,7 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
             ),
             Expanded(
               child: items.isEmpty
-                  ? Center(child: Text('No equipment in this space.', style: GoogleFonts.poppins(color: AppColors.textSecondary)))
+                  ? Center(child: Text('No equipment in this space.', style: GoogleFonts.poppins(color: context.textSecondary)))
                   : ListView.separated(
                       controller: controller,
                       itemCount: items.length,
@@ -380,9 +380,9 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
                           subtitle: Text(
                             [e.type, if (e.manufacturer != null) e.manufacturer!, if (e.modelNumber != null) e.modelNumber!]
                                 .join('  •  '),
-                            style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary),
+                            style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary),
                           ),
-                          trailing: Text(e.status, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                          trailing: Text(e.status, style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
                         );
                       },
                     ),
@@ -448,7 +448,17 @@ class _SpacesScreenState extends ConsumerState<SpacesScreen> {
                   else
                     DropdownButtonFormField<String?>(
                       initialValue: parentId,
-                      decoration: const InputDecoration(labelText: 'Floor'),
+                      dropdownColor: context.cardColor,
+                      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
+                      decoration: InputDecoration(
+                        labelText: 'Floor',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+                        filled: true,
+                        fillColor: context.surfaceColor,
+                        isDense: true,
+                      ),
                       items: [
                         const DropdownMenuItem<String?>(value: null, child: Text('Not on a floor')),
                         for (final s in storeys) DropdownMenuItem<String?>(value: s.id, child: Text(s.name)),

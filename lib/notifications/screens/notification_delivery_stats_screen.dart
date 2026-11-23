@@ -71,8 +71,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         title: Text('Notification Analytics', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
       ),
@@ -101,11 +100,11 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
   Widget _tabChip(String label, _StatsTab value) {
     final selected = _tab == value;
     return ChoiceChip(
-      label: Text(label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : AppColors.textPrimary)),
+      label: Text(label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : context.textPrimary)),
       selected: selected,
       onSelected: (_) => setState(() => _tab = value),
       selectedColor: AppColors.primary,
-      backgroundColor: AppColors.surfaceAlt,
+      backgroundColor: context.surfaceAltColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
       side: BorderSide.none,
     );
@@ -135,7 +134,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Center(
-                  child: Text('No sends yet for this filter.', style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+                  child: Text('No sends yet for this filter.', style: GoogleFonts.poppins(color: context.textSecondary)),
                 ),
               )
             else
@@ -159,7 +158,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
               child: Text(
                 'No engagement data yet — the daily aggregation runs each night and will populate here after its first run.',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(color: AppColors.textSecondary),
+                style: GoogleFonts.poppins(color: context.textSecondary),
               ),
             ),
           );
@@ -169,7 +168,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
           children: [
             Text(
               'Last ${stats.windowDays} days${stats.computedAt != null ? ' · updated ${DateFormat('MMM dd, h:mm a').format(stats.computedAt!)}' : ''}',
-              style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary),
+              style: GoogleFonts.poppins(fontSize: 11.5, color: context.textSecondary),
             ),
             const SizedBox(height: AppSpacing.sm),
             Row(
@@ -189,11 +188,11 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
-            Text('Read rate by type', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            Text('Read rate by type', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: context.textPrimary)),
             const SizedBox(height: AppSpacing.sm),
             _readRateBarChart(stats.kindBreakdown),
             const SizedBox(height: AppSpacing.lg),
-            Text('Volume by type', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            Text('Volume by type', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: context.textPrimary)),
             const SizedBox(height: AppSpacing.sm),
             ...stats.kindBreakdown.map(_engagementKindCard),
           ],
@@ -207,16 +206,16 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
     if (breakdown.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Center(child: Text('No data yet.', style: GoogleFonts.poppins(color: AppColors.textSecondary))),
+        child: Center(child: Text('No data yet.', style: GoogleFonts.poppins(color: context.textSecondary))),
       );
     }
-    const barColors = [AppColors.primary, AppColors.success, AppColors.accent, AppColors.error, AppColors.textSecondary];
+    final barColors = [AppColors.primary, AppColors.success, AppColors.accent, AppColors.error, context.textSecondary];
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.12)),
+        border: Border.all(color: context.textSecondary.withValues(alpha: 0.12)),
       ),
       child: Column(
         children: List.generate(breakdown.length, (i) {
@@ -231,7 +230,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
                   width: 70,
                   child: Text(
                     _kindLabel(stat.kind),
-                    style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                    style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w600, color: context.textPrimary),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -286,18 +285,18 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.12)),
+        border: Border.all(color: context.textSecondary.withValues(alpha: 0.12)),
       ),
       child: Row(
         children: [
           Expanded(
-            child: Text(_kindLabel(stat.kind), style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            child: Text(_kindLabel(stat.kind), style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: context.textPrimary)),
           ),
           Text(
             '${stat.read}/${stat.total} read (${(stat.readRate * 100).toStringAsFixed(0)}%)',
-            style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary),
+            style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary),
           ),
           if (stat.avgMinutesToRead != null) ...[
             const SizedBox(width: 10),
@@ -335,7 +334,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
@@ -343,8 +342,8 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
         children: [
           Icon(icon, color: color, size: 20),
           const SizedBox(height: 6),
-          Text(value, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-          Text(label, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+          Text(value, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: context.textPrimary)),
+          Text(label, style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary)),
         ],
       ),
     );
@@ -367,11 +366,11 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
   Widget _filterChip(String label, _KindFilter value) {
     final selected = _filter == value;
     return ChoiceChip(
-      label: Text(label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : AppColors.textPrimary)),
+      label: Text(label, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : context.textPrimary)),
       selected: selected,
       onSelected: (_) => setState(() => _filter = value),
       selectedColor: AppColors.primary,
-      backgroundColor: AppColors.surfaceAlt,
+      backgroundColor: context.surfaceAltColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
       side: BorderSide.none,
     );
@@ -384,11 +383,15 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
-          color: AppColors.card,
+          color: context.cardColor,
           borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: (hasFailures ? AppColors.error : AppColors.textSecondary).withValues(alpha: 0.15)),
+          border: Border.all(color: (hasFailures ? AppColors.error : context.textSecondary).withValues(alpha: 0.15)),
         ),
-        child: ExpansionTile(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: Material(
+            color: Colors.transparent,
+            child: ExpansionTile(
           leading: CircleAvatar(
             radius: 14,
             backgroundColor: (hasFailures ? AppColors.error : AppColors.success).withValues(alpha: 0.12),
@@ -397,16 +400,18 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
               style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.bold, color: hasFailures ? AppColors.error : AppColors.success),
             ),
           ),
-          title: Text(log.title, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          title: Text(log.title, style: GoogleFonts.poppins(fontSize: 13.5, fontWeight: FontWeight.w600, color: context.textPrimary)),
           subtitle: Text(
             '${_kindLabel(log.kind)} · ${DateFormat('MMM dd, h:mm a').format(log.createdAt)} · '
             '${log.sentCount}/${log.totalTargets} delivered'
             '${hasFailures ? ' · ${log.failedCount} failed' : ''}',
-            style: GoogleFonts.poppins(fontSize: 11.5, color: hasFailures ? AppColors.error : AppColors.textSecondary),
+            style: GoogleFonts.poppins(fontSize: 11.5, color: hasFailures ? AppColors.error : context.textSecondary),
           ),
           children: log.recipients.isEmpty
-              ? [Padding(padding: const EdgeInsets.all(12), child: Text('No recipients recorded.', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)))]
+              ? [Padding(padding: const EdgeInsets.all(12), child: Text('No recipients recorded.', style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)))]
               : log.recipients.map((r) => _recipientTile(r, log.runId)).toList(),
+            ),
+          ),
         ),
       ),
     );
@@ -417,7 +422,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
+        color: context.surfaceAltColor,
         borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(color: (r.success ? AppColors.success : AppColors.error).withValues(alpha: 0.25)),
       ),
@@ -429,7 +434,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(r.userName, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                Text(r.userName, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: context.textPrimary)),
                 if (!r.success && r.error != null)
                   Text(r.error!, style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.error)),
                 if (r.success && runId.isNotEmpty) _receiptBadge(runId, r.userId),
@@ -437,7 +442,7 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
             ),
           ),
           if (r.platform != null)
-            Text(r.platform!, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+            Text(r.platform!, style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary)),
         ],
       ),
     );
@@ -452,13 +457,13 @@ class _NotificationDeliveryStatsScreenState extends ConsumerState<NotificationDe
       future: ref.read(notificationServiceProvider).fetchDeliveryReceipt(runId: runId, userId: userId),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return Text('Checking device receipt…', style: GoogleFonts.poppins(fontSize: 10.5, color: AppColors.textSecondary));
+          return Text('Checking device receipt…', style: GoogleFonts.poppins(fontSize: 10.5, color: context.textSecondary));
         }
         final deliveredAt = snapshot.data;
         if (deliveredAt == null) {
           return Text(
             'Sent — not yet confirmed on device',
-            style: GoogleFonts.poppins(fontSize: 10.5, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+            style: GoogleFonts.poppins(fontSize: 10.5, color: context.textSecondary, fontStyle: FontStyle.italic),
           );
         }
         return Text(

@@ -66,13 +66,13 @@ class _BimSystemsScreenState extends ConsumerState<BimSystemsScreen> {
               if (filtered.isEmpty) {
                 return Center(
                     child: Text('No systems match "$_filter"',
-                        style: GoogleFonts.poppins(color: AppColors.textSecondary)));
+                        style: GoogleFonts.poppins(color: context.textSecondary)));
               }
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('${filtered.length} system${filtered.length == 1 ? '' : 's'}',
-                      style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary)),
+                      style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary)),
                   const SizedBox(height: AppSpacing.sm),
                   for (final sys in filtered) _buildSystemCard(sys),
                 ],
@@ -92,7 +92,7 @@ class _BimSystemsScreenState extends ConsumerState<BimSystemsScreen> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         filled: true,
-        fillColor: AppColors.surfaceAlt,
+        fillColor: context.surfaceAltColor,
       ),
       style: GoogleFonts.poppins(fontSize: 14),
       onChanged: (v) => setState(() => _filter = v.trim().toLowerCase()),
@@ -105,12 +105,12 @@ class _BimSystemsScreenState extends ConsumerState<BimSystemsScreen> {
         const Icon(Icons.account_tree_outlined, size: 48, color: AppColors.primaryLight),
         const SizedBox(height: 12),
         Text('No MEP systems found',
-            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: context.textPrimary)),
         const SizedBox(height: 6),
         Text(
           'Systems are imported from IFC IfcSystem/IfcDistributionSystem entities or from the COBie System sheet.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+          style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
         ),
       ]),
     );
@@ -131,14 +131,14 @@ class _BimSystemsScreenState extends ConsumerState<BimSystemsScreen> {
               child: const Icon(Icons.account_tree_rounded, color: AppColors.primary, size: 20),
             ),
             title: Text(sys.name,
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary)),
             subtitle: Row(children: [
               if (sys.category != null) ...[
                 BimPill(label: sys.category!, color: AppColors.primary),
                 const SizedBox(width: 8),
               ],
               Text('${sys.equipmentIds.length} equipment',
-                  style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                  style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
             ]),
             onExpansionChanged: (expanded) {
               if (expanded && !_expandedNames.containsKey(sys.id)) {
@@ -150,7 +150,7 @@ class _BimSystemsScreenState extends ConsumerState<BimSystemsScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text('No equipment assigned.',
-                      style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                      style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
                 )
               else if (_expandedNames.containsKey(sys.id))
                 Padding(

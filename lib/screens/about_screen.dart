@@ -8,18 +8,17 @@ class AboutScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          color: AppColors.textPrimary,
+          color: context.textPrimary,
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('About NyumbaSmart',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                fontSize: 18, fontWeight: FontWeight.w700, color: context.textPrimary)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
@@ -89,7 +88,7 @@ class AboutScreen extends StatelessWidget {
                   'maintenance programs, manage billing, and visualize facilities in 3D through BIM integration. '
                   'Developed by JV Almacis Consultancy & Integrated Services.',
                   style: GoogleFonts.poppins(
-                      fontSize: 13.5, color: AppColors.textSecondary, height: 1.65),
+                      fontSize: 13.5, color: context.textSecondary, height: 1.65),
                 ),
               ),
             ),
@@ -163,7 +162,7 @@ class AboutScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     Text('© 2026 JV Almacis. All rights reserved.',
                         style: GoogleFonts.poppins(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                            fontSize: 12, color: context.textSecondary)),
                   ],
                 ),
               ),
@@ -180,81 +179,87 @@ class AboutScreen extends StatelessWidget {
     required String title,
     required Widget child,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(9),
+    return Builder(builder: (context) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardTheme.color,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Icon(icon, color: color, size: 17),
                   ),
-                  child: Icon(icon, color: color, size: 17),
-                ),
-                const SizedBox(width: 10),
-                Text(title,
-                    style: GoogleFonts.plusJakartaSans(
-                        fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-              ],
+                  const SizedBox(width: 10),
+                  Text(title,
+                      style: GoogleFonts.plusJakartaSans(
+                          fontSize: 15, fontWeight: FontWeight.w700, color: context.textPrimary)),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1, color: Color(0xFFE5E7EB)),
-          child,
-        ],
-      ),
-    );
+            Divider(height: 1, color: Theme.of(context).dividerColor.withValues(alpha: 0.5)),
+            child,
+          ],
+        ),
+      );
+    });
   }
 
   static Widget _techRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 88,
-            child: Text(label,
-                style: GoogleFonts.poppins(
-                    fontSize: 12.5, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
-          ),
-          Expanded(
-            child: Text(value,
-                style: GoogleFonts.poppins(
-                    fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
-    );
+    return Builder(builder: (context) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 88,
+              child: Text(label,
+                  style: GoogleFonts.poppins(
+                      fontSize: 12.5, color: context.textSecondary, fontWeight: FontWeight.w500)),
+            ),
+            Expanded(
+              child: Text(value,
+                  style: GoogleFonts.poppins(
+                      fontSize: 13, color: context.textPrimary, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   static Widget _techDiv() =>
-      const Divider(height: 1, indent: 16, endIndent: 0, color: Color(0xFFF3F4F6));
+      const Divider(height: 1, indent: 16, endIndent: 0);
 
   static Widget _devRow(IconData icon, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: AppColors.textSecondary),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(value,
-              style: GoogleFonts.poppins(
-                  fontSize: 13.5, color: AppColors.textPrimary, height: 1.5)),
-        ),
-      ],
-    );
+    return Builder(builder: (context) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: context.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(value,
+                style: GoogleFonts.poppins(
+                    fontSize: 13.5, color: context.textPrimary, height: 1.5)),
+          ),
+        ],
+      );
+    });
   }
 }
 
@@ -297,11 +302,11 @@ class _FeatureTile extends StatelessWidget {
                     Text(title,
                         style: GoogleFonts.poppins(
                             fontSize: 13.5, fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary)),
+                            color: context.textPrimary)),
                     const SizedBox(height: 2),
                     Text(subtitle,
                         style: GoogleFonts.poppins(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                            fontSize: 12, color: context.textSecondary)),
                   ],
                 ),
               ),

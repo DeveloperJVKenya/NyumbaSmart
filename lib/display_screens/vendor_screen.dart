@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:cmms/models/vendor.dart';
+import 'package:cmms/theme/app_theme.dart';
 
 class VendorScreen extends StatefulWidget {
   final String facilityId;
@@ -253,11 +254,12 @@ class _VendorScreenState extends State<VendorScreen> {
       facilityId: widget.facilityId,
       currentRole: 'Engineer',
       organization: '-',
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => setState(() => _showForm = !_showForm),
-        backgroundColor: Colors.blueGrey[900],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        child: Icon(_showForm ? Icons.close : Icons.add, color: Colors.white),
+        backgroundColor: AppColors.primary,
+        icon: Icon(_showForm ? Icons.close_rounded : Icons.add_rounded, color: Colors.white),
+        label: Text(_showForm ? 'Cancel' : 'New Vendor', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
       ),
       child: Stack(
         children: [
@@ -290,64 +292,41 @@ class _VendorScreenState extends State<VendorScreen> {
   }
 
   Widget _buildFilterSection({required double padding, required double fontSizeTitle, required double fontSize, required bool isMobile}) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Vendor Filters',
-                  style: GoogleFonts.poppins(
-                    fontSize: fontSizeTitle,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey[900],
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: _clearFilters,
-                  icon: const Icon(Icons.clear, size: 16, color: Colors.blueGrey),
-                  label: Text('Clear Filters', style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey)),
-                  style: TextButton.styleFrom(foregroundColor: Colors.blueGrey[700]),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            isMobile
-                ? Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      _buildFilterDropdown('Category', _categoryFilter, ['All', 'General', 'Electrical', 'Plumbing', 'HVAC', 'Cleaning', 'Security', 'IT Support'], (value) {
-                        setState(() => _categoryFilter = value!);
-                      }, fontSize),
-                      _buildFilterDropdown('Status', _statusFilter, ['All', 'Active', 'Inactive', 'Suspended'], (value) {
-                        setState(() => _statusFilter = value!);
-                      }, fontSize),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(
-                        child: _buildFilterDropdown('Category', _categoryFilter, ['All', 'General', 'Electrical', 'Plumbing', 'HVAC', 'Cleaning', 'Security', 'IT Support'], (value) {
-                          setState(() => _categoryFilter = value!);
-                        }, fontSize),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildFilterDropdown('Status', _statusFilter, ['All', 'Active', 'Inactive', 'Suspended'], (value) {
-                          setState(() => _statusFilter = value!);
-                        }, fontSize),
-                      ),
-                    ],
-                  ),
-          ],
-        ),
+    return Container(
+      margin: EdgeInsets.all(padding),
+      padding: EdgeInsets.all(padding),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Filters', style: GoogleFonts.poppins(fontSize: fontSizeTitle, fontWeight: FontWeight.w700, color: context.textPrimary)),
+              TextButton.icon(
+                onPressed: _clearFilters,
+                icon: Icon(Icons.clear_rounded, size: 15, color: context.textSecondary),
+                label: Text('Clear', style: GoogleFonts.poppins(fontSize: fontSize, color: context.textSecondary)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          isMobile
+              ? Wrap(spacing: 12, runSpacing: 12, children: [
+                  _buildFilterDropdown('Category', _categoryFilter, ['All', 'General', 'Electrical', 'Plumbing', 'HVAC', 'Cleaning', 'Security', 'IT Support'], (v) => setState(() => _categoryFilter = v!), fontSize),
+                  _buildFilterDropdown('Status', _statusFilter, ['All', 'Active', 'Inactive', 'Suspended'], (v) => setState(() => _statusFilter = v!), fontSize),
+                ])
+              : Row(children: [
+                  Expanded(child: _buildFilterDropdown('Category', _categoryFilter, ['All', 'General', 'Electrical', 'Plumbing', 'HVAC', 'Cleaning', 'Security', 'IT Support'], (v) => setState(() => _categoryFilter = v!), fontSize)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildFilterDropdown('Status', _statusFilter, ['All', 'Active', 'Inactive', 'Suspended'], (v) => setState(() => _statusFilter = v!), fontSize)),
+                ]),
+        ],
       ),
     );
   }
@@ -355,23 +334,20 @@ class _VendorScreenState extends State<VendorScreen> {
   Widget _buildFilterDropdown(String label, String value, List<String> items, ValueChanged<String?> onChanged, double fontSize) {
     return DropdownButtonFormField<String>(
       initialValue: value,
-      items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize)))).toList(),
+      items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary)))).toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
-        filled: true,
-        fillColor: Colors.grey[50],
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+        filled: true, fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: context.textSecondary),
       ),
-      style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey[900], fontWeight: FontWeight.w500),
-      dropdownColor: Colors.white,
-      icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+      style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary, fontWeight: FontWeight.w500),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
@@ -426,75 +402,76 @@ class _VendorScreenState extends State<VendorScreen> {
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final vendor = Vendor.fromSnapshot(docs[index]);
-            return Card(
-              elevation: 4.0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: ExpansionTile(
-                leading: CircleAvatar(
-                  backgroundColor: _getStatusColor(vendor.status),
-                  radius: 16,
-                  child: Icon(
-                    _getStatusIcon(vendor.status),
-                    color: Colors.white,
-                    size: fontSize + 2,
-                  ),
-                ),
-                title: Text(
-                  vendor.name,
-                  style: GoogleFonts.poppins(
-                    fontSize: fontSize + 2,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.blueGrey[900],
-                  ),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Category: ${vendor.category} | Status: ${vendor.status}',
-                      style: GoogleFonts.poppins(
-                        fontSize: fontSize - 2,
-                        color: Colors.grey[600],
-                      ),
+            final statusColor = _getStatusColor(vendor.status);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: context.cardColor,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(color: context.surfaceAltColor),
+                boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                child: Material(
+                  color: Colors.transparent,
+                  child: Theme(
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    leading: Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.sm)),
+                      child: Icon(_getStatusIcon(vendor.status), color: statusColor, size: 20),
                     ),
-                    Row(
+                    title: Row(
                       children: [
-                        ...List.generate(5, (index) => Icon(
-                              index < vendor.rating ? Icons.star : Icons.star_border,
-                              color: Colors.amber,
-                              size: fontSize,
-                            )),
-                        const SizedBox(width: 4),
-                        Text(
-                          '(${vendor.rating.toStringAsFixed(1)})',
-                          style: GoogleFonts.poppins(
-                            fontSize: fontSize - 2,
-                            color: Colors.grey[600],
+                        Expanded(child: Text(vendor.name, style: GoogleFonts.poppins(fontSize: fontSize + 1, fontWeight: FontWeight.w600, color: context.textPrimary))),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                            border: Border.all(color: statusColor.withValues(alpha: 0.4)),
                           ),
+                          child: Text(vendor.status, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
                         ),
                       ],
                     ),
-                  ],
-                ),
-                children: [
-                  Padding(
-                    padding: EdgeInsets.all(padding),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildDetailRow('Contact', vendor.contact, fontSize: fontSize),
-                        if (vendor.email.isNotEmpty) _buildDetailRow('Email', vendor.email, fontSize: fontSize),
-                        if (vendor.phone.isNotEmpty) _buildDetailRow('Phone', vendor.phone, fontSize: fontSize),
-                        _buildDetailRow('Services', vendor.services, fontSize: fontSize),
-                        if (vendor.contractDetails.isNotEmpty) _buildDetailRow('Contract', vendor.contractDetails, fontSize: fontSize),
-                        _buildDetailRow('Created', vendor.createdAt != null ? DateFormat.yMMMd().format(vendor.createdAt!) : 'Unknown date', fontSize: fontSize),
-                        if (vendor.serviceHistory.isNotEmpty) _buildHistorySection(vendor.serviceHistory, fontSize: fontSize, padding: padding),
-                        const SizedBox(height: 12),
-                        _buildActionButtons(vendor, fontSize: fontSize),
-                      ],
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Wrap(spacing: 10, children: [
+                        _vendorChip(Icons.category_rounded, vendor.category, context.textSecondary, fontSize),
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          ...List.generate(5, (i) => Icon(i < vendor.rating ? Icons.star_rounded : Icons.star_border_rounded, color: const Color(0xFFF59E0B), size: 13)),
+                          const SizedBox(width: 3),
+                          Text(vendor.rating.toStringAsFixed(1), style: GoogleFonts.poppins(fontSize: 11.5, color: context.textSecondary, fontWeight: FontWeight.w500)),
+                        ]),
+                      ]),
+                    ),
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(14, 0, 14, 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Divider(color: context.surfaceAltColor, height: 16),
+                            _buildDetailRow('Contact', vendor.contact, fontSize: fontSize),
+                            if (vendor.email.isNotEmpty) _buildDetailRow('Email', vendor.email, fontSize: fontSize),
+                            if (vendor.phone.isNotEmpty) _buildDetailRow('Phone', vendor.phone, fontSize: fontSize),
+                            _buildDetailRow('Services', vendor.services, fontSize: fontSize),
+                            if (vendor.contractDetails.isNotEmpty) _buildDetailRow('Contract', vendor.contractDetails, fontSize: fontSize),
+                            _buildDetailRow('Added', vendor.createdAt != null ? DateFormat.yMMMd().format(vendor.createdAt!) : 'Unknown', fontSize: fontSize),
+                            if (vendor.serviceHistory.isNotEmpty) _buildHistorySection(vendor.serviceHistory, fontSize: fontSize, padding: padding),
+                            const SizedBox(height: 10),
+                            _buildActionButtons(vendor, fontSize: fontSize),
+                          ],
+                        ),
+                      ),
+                    ],
                     ),
                   ),
-                ],
+                ),
               ),
             );
           },
@@ -518,28 +495,26 @@ class _VendorScreenState extends State<VendorScreen> {
     return query.orderBy('createdAt', descending: true).snapshots();
   }
 
+  Widget _vendorChip(IconData icon, String label, Color color, double fontSize) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: color),
+      const SizedBox(width: 3),
+      Text(label, style: GoogleFonts.poppins(fontSize: 11.5, color: color, fontWeight: FontWeight.w500)),
+    ]);
+  }
+
   Widget _buildDetailRow(String label, String value, {required double fontSize}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: const EdgeInsets.only(bottom: 6.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 80,
-            child: Text(
-              '$label:',
-              style: GoogleFonts.poppins(
-                fontSize: fontSize,
-                fontWeight: FontWeight.w500,
-                color: Colors.blueGrey[700],
-              ),
-            ),
+            child: Text('$label:', style: GoogleFonts.poppins(fontSize: fontSize - 1, fontWeight: FontWeight.w500, color: context.textSecondary)),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[800]),
-            ),
+            child: Text(value, style: GoogleFonts.poppins(fontSize: fontSize - 1, color: context.textPrimary)),
           ),
         ],
       ),
@@ -557,7 +532,7 @@ class _VendorScreenState extends State<VendorScreen> {
             style: GoogleFonts.poppins(
               fontSize: fontSize,
               fontWeight: FontWeight.w500,
-              color: Colors.blueGrey[700],
+              color: context.textSecondary,
             ),
           ),
           const SizedBox(height: 4),
@@ -606,101 +581,74 @@ class _VendorScreenState extends State<VendorScreen> {
   }
 
   Widget _buildActionButtons(Vendor vendor, {required double fontSize}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        TextButton.icon(
-          onPressed: () => _showLogServiceDialog(vendor),
-          icon: Icon(Icons.add_task, size: fontSize, color: Colors.blueGrey[700]),
-          label: Text('Log Service', style: GoogleFonts.poppins(fontSize: fontSize)),
-          style: TextButton.styleFrom(foregroundColor: Colors.blueGrey[700]),
+    return Wrap(spacing: 8, runSpacing: 6, children: [
+      OutlinedButton.icon(
+        onPressed: () => _showLogServiceDialog(vendor),
+        icon: Icon(Icons.add_task_rounded, size: 14, color: AppColors.primary),
+        label: Text('Log Service', style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.primary, fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
         ),
-        const SizedBox(width: 8),
-        TextButton.icon(
-          onPressed: () => _showRatingDialog(vendor),
-          icon: Icon(Icons.star, size: fontSize, color: Colors.amber[700]),
-          label: Text('Rate', style: GoogleFonts.poppins(fontSize: fontSize)),
-          style: TextButton.styleFrom(foregroundColor: Colors.amber[700]),
+      ),
+      OutlinedButton.icon(
+        onPressed: () => _showRatingDialog(vendor),
+        icon: const Icon(Icons.star_rounded, size: 14, color: Color(0xFFF59E0B)),
+        label: Text('Rate', style: GoogleFonts.poppins(fontSize: 12.5, color: Color(0xFFF59E0B), fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Color(0x80F59E0B)),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
         ),
-        const SizedBox(width: 8),
-        TextButton.icon(
-          onPressed: () => _showStatusDialog(vendor),
-          icon: Icon(Icons.edit, size: fontSize, color: Colors.blueGrey[700]),
-          label: Text('Status', style: GoogleFonts.poppins(fontSize: fontSize)),
-          style: TextButton.styleFrom(foregroundColor: Colors.blueGrey[700]),
+      ),
+      OutlinedButton.icon(
+        onPressed: () => _showStatusDialog(vendor),
+        icon: Icon(Icons.edit_rounded, size: 14, color: context.textSecondary),
+        label: Text('Status', style: GoogleFonts.poppins(fontSize: 12.5, color: context.textSecondary, fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: context.textSecondary.withValues(alpha: 0.4)),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
         ),
-      ],
-    );
+      ),
+    ]);
   }
 
   void _showLogServiceDialog(Vendor vendor) {
     final serviceController = TextEditingController();
     final notesController = TextEditingController();
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Text('Log Service', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey[900])),
-        content: Card(
-          elevation: 0,
-          color: Colors.grey[50],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: serviceController,
-                  decoration: InputDecoration(
-                    labelText: 'Service Performed',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                    ),
-                    labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
-                  ),
-                  style: GoogleFonts.poppins(),
-                  validator: (value) => value!.isEmpty ? 'Enter service performed' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: notesController,
-                  decoration: InputDecoration(
-                    labelText: 'Notes (optional)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                    ),
-                    labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
-                  ),
-                  style: GoogleFonts.poppins(),
-                  maxLines: 2,
-                ),
-              ],
-            ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+        title: Row(children: [
+          Icon(Icons.add_task_rounded, color: AppColors.primary, size: 20),
+          const SizedBox(width: 8),
+          Text('Log Service', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: context.textPrimary)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextFormField(
+            controller: serviceController,
+            decoration: _fieldDeco('Service Performed', 14),
+            style: GoogleFonts.poppins(color: context.textPrimary),
           ),
-        ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: notesController,
+            decoration: _fieldDeco('Notes (optional)', 14),
+            style: GoogleFonts.poppins(color: context.textPrimary),
+            maxLines: 2,
+          ),
+        ]),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.blueGrey[700])),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: GoogleFonts.poppins(color: context.textSecondary))),
           ElevatedButton(
             onPressed: () {
-              if (serviceController.text.isNotEmpty && mounted) {
-                _addServiceHistory(vendor.id, serviceController.text, notesController.text);
-                Navigator.pop(context);
-              }
+              if (serviceController.text.isNotEmpty && mounted) { _addServiceHistory(vendor.id, serviceController.text, notesController.text); Navigator.pop(context); }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blueGrey[900],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: Text('Log Service', style: GoogleFonts.poppins(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm))),
+            child: Text('Log Service', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -709,58 +657,32 @@ class _VendorScreenState extends State<VendorScreen> {
 
   void _showRatingDialog(Vendor vendor) {
     double newRating = vendor.rating;
-
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: Text('Rate Vendor', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey[900])),
-          content: Card(
-            elevation: 0,
-            color: Colors.grey[50],
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Current Rating: ${vendor.rating.toStringAsFixed(1)}', style: GoogleFonts.poppins()),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (index) => GestureDetector(
-                          onTap: () => setState(() => newRating = index + 1.0),
-                          child: Icon(
-                            index < newRating ? Icons.star : Icons.star_border,
-                            color: Colors.amber,
-                            size: 24,
-                          ),
-                        )),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('New Rating: ${newRating.toStringAsFixed(1)}', style: GoogleFonts.poppins()),
-                ],
-              ),
-            ),
-          ),
+        builder: (context, setDState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+          title: Row(children: [
+            const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 20),
+            const SizedBox(width: 8),
+            Text('Rate Vendor', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: context.textPrimary)),
+          ]),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Current: ${vendor.rating.toStringAsFixed(1)} stars', style: GoogleFonts.poppins(color: context.textSecondary)),
+            const SizedBox(height: 14),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(5, (i) => GestureDetector(
+              onTap: () => setDState(() => newRating = i + 1.0),
+              child: Icon(i < newRating ? Icons.star_rounded : Icons.star_border_rounded, color: const Color(0xFFF59E0B), size: 32),
+            ))),
+            const SizedBox(height: 8),
+            Text('New: ${newRating.toStringAsFixed(1)} stars', style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w600)),
+          ]),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.blueGrey[700])),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: GoogleFonts.poppins(color: context.textSecondary))),
             ElevatedButton(
-              onPressed: () {
-                if (mounted) {
-                  _updateVendorRating(vendor.id, newRating);
-                  Navigator.pop(context);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber[600],
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: Text('Update Rating', style: GoogleFonts.poppins(color: Colors.white)),
+              onPressed: () { if (mounted) { _updateVendorRating(vendor.id, newRating); Navigator.pop(context); } },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF59E0B), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm))),
+              child: Text('Update Rating', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
             ),
           ],
         ),
@@ -770,57 +692,31 @@ class _VendorScreenState extends State<VendorScreen> {
 
   void _showStatusDialog(Vendor vendor) {
     String selectedStatus = vendor.status;
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Text('Update Status', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey[900])),
-        content: Card(
-          elevation: 0,
-          color: Colors.grey[50],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: DropdownButtonFormField<String>(
-              initialValue: selectedStatus,
-              items: ['Active', 'Inactive', 'Suspended']
-                  .map((status) => DropdownMenuItem(
-                        value: status,
-                        child: Text(status, style: GoogleFonts.poppins()),
-                      ))
-                  .toList(),
-              onChanged: (value) => selectedStatus = value!,
-              decoration: InputDecoration(
-                labelText: 'Status',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                ),
-                labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
-              ),
-              style: GoogleFonts.poppins(color: Colors.blueGrey[900], fontWeight: FontWeight.w500),
-            ),
-          ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+        title: Row(children: [
+          Icon(Icons.edit_rounded, color: AppColors.primary, size: 20),
+          const SizedBox(width: 8),
+          Text('Update Status', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: context.textPrimary)),
+        ]),
+        content: DropdownButtonFormField<String>(
+          initialValue: selectedStatus,
+          items: ['Active', 'Inactive', 'Suspended']
+              .map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(color: context.textPrimary)))).toList(),
+          onChanged: (v) => selectedStatus = v!,
+          decoration: _fieldDeco('Status', 14),
+          style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w500),
+          dropdownColor: context.cardColor,
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.blueGrey[700])),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: GoogleFonts.poppins(color: context.textSecondary))),
           ElevatedButton(
-            onPressed: () {
-              if (mounted) {
-                _updateVendorStatus(vendor.id, selectedStatus);
-                Navigator.pop(context);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blueGrey[900],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: Text('Update', style: GoogleFonts.poppins(color: Colors.white)),
+            onPressed: () { if (mounted) { _updateVendorStatus(vendor.id, selectedStatus); Navigator.pop(context); } },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm))),
+            child: Text('Update', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -840,21 +736,33 @@ class _VendorScreenState extends State<VendorScreen> {
         color: Colors.black54,
         child: Center(
           child: GestureDetector(
-            onTap: () {}, // Prevent closing when tapping inside form
-            child: Card(
-              elevation: 8,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Container(
-                width: isMobile ? screenWidth * 0.9 : isTablet ? screenWidth * 0.7 : 600,
-                padding: EdgeInsets.all(padding * 2),
-                child: _buildVendorForm(padding: padding, fontSize: fontSize),
+            onTap: () {},
+            child: Container(
+              width: isMobile ? screenWidth * 0.95 : isTablet ? screenWidth * 0.75 : 620,
+              decoration: BoxDecoration(
+                color: context.cardColor,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, 8))],
               ),
+              child: _buildVendorForm(padding: padding, fontSize: fontSize),
             ),
           ),
         ),
       ),
     );
   }
+
+  InputDecoration _fieldDeco(String label, double fontSize, {IconData? icon}) => InputDecoration(
+    labelText: label,
+    prefixIcon: icon != null ? Icon(icon, size: 18, color: context.textSecondary) : null,
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.error)),
+    filled: true, fillColor: context.surfaceColor,
+    contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+    labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
+  );
 
   Widget _buildVendorForm({required double padding, required double fontSize}) {
     return Form(
@@ -863,244 +771,128 @@ class _VendorScreenState extends State<VendorScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Add New Vendor',
-                  style: GoogleFonts.poppins(
-                    fontSize: fontSize + 4,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey[900],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.blueGrey),
-                  onPressed: () => setState(() => _showForm = false),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Vendor Name',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
+            // Form header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: BoxDecoration(
+                color: context.surfaceColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+                border: Border(bottom: BorderSide(color: context.surfaceAltColor)),
               ),
-              style: GoogleFonts.poppins(fontSize: fontSize),
-              validator: (value) => value!.isEmpty ? 'Enter vendor name' : null,
+              child: Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: context.surfaceAltColor, borderRadius: BorderRadius.circular(AppRadius.sm)),
+                  child: Icon(Icons.business_rounded, color: AppColors.primary, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Add New Vendor', style: GoogleFonts.poppins(fontSize: fontSize + 2, fontWeight: FontWeight.w700, color: context.textPrimary))),
+                IconButton(icon: Icon(Icons.close_rounded, color: context.textSecondary), onPressed: () => setState(() => _showForm = false)),
+              ]),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
+            Padding(
+              padding: EdgeInsets.all(padding * 1.5),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: _fieldDeco('Vendor Name', fontSize, icon: Icons.business_rounded),
+                  style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
+                  validator: (v) => v!.isEmpty ? 'Enter vendor name' : null,
+                ),
+                const SizedBox(height: 14),
+                Row(children: [
+                  Expanded(child: TextFormField(
                     controller: _emailController,
-                    decoration: InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[50],
-                      labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
-                    ),
-                    style: GoogleFonts.poppins(fontSize: fontSize),
+                    decoration: _fieldDeco('Email', fontSize, icon: Icons.email_rounded),
+                    style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
                     keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      if (value!.isNotEmpty && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                        return 'Enter a valid email';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextFormField(
+                    validator: (v) { if (v!.isNotEmpty && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v)) return 'Invalid email'; return null; },
+                  )),
+                  const SizedBox(width: 14),
+                  Expanded(child: TextFormField(
                     controller: _phoneController,
-                    decoration: InputDecoration(
-                      labelText: 'Phone',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[50],
-                      labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
-                    ),
-                    style: GoogleFonts.poppins(fontSize: fontSize),
+                    decoration: _fieldDeco('Phone', fontSize, icon: Icons.phone_rounded),
+                    style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
                     keyboardType: TextInputType.phone,
-                    validator: (value) {
-                      if (value!.isNotEmpty && !RegExp(r'^\+?[\d\s-]{7,15}$').hasMatch(value)) {
-                        return 'Enter a valid phone number';
-                      }
-                      return null;
-                    },
-                  ),
+                    validator: (v) { if (v!.isNotEmpty && !RegExp(r'^\+?[\d\s-]{7,15}$').hasMatch(v)) return 'Invalid phone'; return null; },
+                  )),
+                ]),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _contactController,
+                  decoration: _fieldDeco('Primary Contact', fontSize, icon: Icons.person_rounded),
+                  style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
+                  validator: (v) => v!.isEmpty ? 'Enter contact info' : null,
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _contactController,
-              decoration: InputDecoration(
-                labelText: 'Primary Contact Info',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: _category,
+                  items: ['General', 'Electrical', 'Plumbing', 'HVAC', 'Cleaning', 'Security', 'IT Support']
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c, style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary)))).toList(),
+                  onChanged: (v) { if (mounted) setState(() => _category = v!); },
+                  decoration: _fieldDeco('Category', fontSize),
+                  style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary, fontWeight: FontWeight.w500),
+                  dropdownColor: context.cardColor,
+                  icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
                 ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
-              ),
-              style: GoogleFonts.poppins(fontSize: fontSize),
-              validator: (value) => value!.isEmpty ? 'Enter contact info' : null,
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: _category,
-              items: ['General', 'Electrical', 'Plumbing', 'HVAC', 'Cleaning', 'Security', 'IT Support']
-                  .map((category) => DropdownMenuItem(
-                        value: category,
-                        child: Text(category, style: GoogleFonts.poppins(fontSize: fontSize)),
-                      ))
-                  .toList(),
-              onChanged: (value) {
-                if (mounted) setState(() => _category = value!);
-              },
-              decoration: InputDecoration(
-                labelText: 'Category',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _serviceController,
+                  decoration: _fieldDeco('Services Offered', fontSize, icon: Icons.build_rounded),
+                  style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
+                  maxLines: 2,
                 ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
-              ),
-              style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey[900], fontWeight: FontWeight.w500),
-              dropdownColor: Colors.white,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _serviceController,
-              decoration: InputDecoration(
-                labelText: 'Services Offered',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _contractController,
+                  decoration: _fieldDeco('Contract Details (optional)', fontSize, icon: Icons.description_rounded),
+                  style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
+                  maxLines: 2,
                 ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
-              ),
-              style: GoogleFonts.poppins(fontSize: fontSize),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _contractController,
-              decoration: InputDecoration(
-                labelText: 'Contract Details (optional)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
-              ),
-              style: GoogleFonts.poppins(fontSize: fontSize),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
+                const SizedBox(height: 14),
+                Row(children: [
+                  Expanded(child: DropdownButtonFormField<String>(
                     initialValue: _status,
                     items: ['Active', 'Inactive', 'Suspended']
-                        .map((status) => DropdownMenuItem(
-                              value: status,
-                              child: Text(status, style: GoogleFonts.poppins(fontSize: fontSize)),
-                            ))
-                        .toList(),
-                    onChanged: (value) {
-                      if (mounted) setState(() => _status = value!);
-                    },
-                    decoration: InputDecoration(
-                      labelText: 'Status',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[50],
-                      labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary)))).toList(),
+                    onChanged: (v) { if (mounted) setState(() => _status = v!); },
+                    decoration: _fieldDeco('Status', fontSize),
+                    style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary, fontWeight: FontWeight.w500),
+                    dropdownColor: context.cardColor,
+                    icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
+                  )),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Initial Rating', style: GoogleFonts.poppins(fontSize: fontSize - 1, color: context.textSecondary, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 6),
+                    Row(children: List.generate(5, (i) => GestureDetector(
+                      onTap: () { if (mounted) setState(() => _rating = i + 1.0); },
+                      child: Icon(i < _rating ? Icons.star_rounded : Icons.star_border_rounded, color: const Color(0xFFF59E0B), size: fontSize + 6),
+                    ))),
+                  ])),
+                ]),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                      boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 3))],
                     ),
-                    style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey[900], fontWeight: FontWeight.w500),
-                    dropdownColor: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Initial Rating', style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey[700])),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: List.generate(5, (index) => GestureDetector(
-                              onTap: () {
-                                if (mounted) setState(() => _rating = index + 1.0);
-                              },
-                              child: Icon(
-                                index < _rating ? Icons.star : Icons.star_border,
-                                color: Colors.amber,
-                                size: fontSize + 4,
-                              ),
-                            )),
+                    child: ElevatedButton.icon(
+                      onPressed: _addVendor,
+                      icon: const Icon(Icons.business_center_rounded, color: Colors.white, size: 18),
+                      label: Text('Add Vendor', style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.white, fontWeight: FontWeight.w600)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _addVendor,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueGrey[900],
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: Text(
-                  'Add Vendor',
-                  style: GoogleFonts.poppins(
-                    fontSize: fontSize,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              ]),
             ),
           ],
         ),

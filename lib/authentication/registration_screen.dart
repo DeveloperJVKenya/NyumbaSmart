@@ -167,13 +167,16 @@ class RegistrationScreenState extends State<RegistrationScreen> {
                           'Create Account',
                           style: GoogleFonts.plusJakartaSans(
                               fontSize: 26, fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary, letterSpacing: -0.5),
+                              color: Theme.of(context).colorScheme.onSurface,
+                              letterSpacing: -0.5),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 5),
                         Text(
                           'Join NyumbaSmart facility management',
-                          style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textSecondary),
+                          style: GoogleFonts.poppins(
+                              fontSize: 13.5,
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 30),
@@ -219,7 +222,7 @@ class RegistrationScreenState extends State<RegistrationScreen> {
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                              color: AppColors.textSecondary,
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                             ),
                             onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                           ),
@@ -247,7 +250,8 @@ class RegistrationScreenState extends State<RegistrationScreen> {
                           children: [
                             Text('Already have an account?',
                                 style: GoogleFonts.poppins(
-                                    fontSize: 13, color: AppColors.textSecondary)),
+                                    fontSize: 13,
+                                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6))),
                             TextButton(
                               onPressed: () => Navigator.push(context,
                                   MaterialPageRoute(builder: (_) => const LoginScreen())),

@@ -123,7 +123,7 @@ class OrganizationSelectionScreenState extends ConsumerState<OrganizationSelecti
           ? FloatingActionButton.extended(
               onPressed: () => setState(() => _isAddingOrganization = true),
               backgroundColor: AppColors.accent,
-              foregroundColor: AppColors.textPrimary,
+              foregroundColor: context.textPrimary,
               icon: const Icon(Icons.add_rounded),
               label: Text('Add Organization', style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),

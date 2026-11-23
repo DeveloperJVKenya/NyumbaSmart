@@ -92,13 +92,12 @@ class _PmScheduleResponseScreenState extends State<PmScheduleResponseScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         title: Text('Maintenance Notification',
             style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15)),
-        backgroundColor: AppColors.card,
+        backgroundColor: context.cardColor,
         elevation: 0,
-        foregroundColor: AppColors.textPrimary,
+        foregroundColor: context.textPrimary,
       ),
       body: SafeArea(
         child: Padding(
@@ -117,7 +116,7 @@ class _PmScheduleResponseScreenState extends State<PmScheduleResponseScreen> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.card,
+            color: context.cardColor,
             borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: [
               BoxShadow(color: AppColors.primary.withValues(alpha: 0.08),
@@ -138,7 +137,7 @@ class _PmScheduleResponseScreenState extends State<PmScheduleResponseScreen> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Scheduled Maintenance',
-                      style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary)),
+                      style: GoogleFonts.poppins(fontSize: 11.5, color: context.textSecondary)),
                   Text(widget.equipmentName,
                       style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700)),
                 ]),
@@ -150,16 +149,16 @@ class _PmScheduleResponseScreenState extends State<PmScheduleResponseScreen> {
             Row(children: [
               Icon(Icons.calendar_today_rounded, size: 16, color: AppColors.primary),
               const SizedBox(width: 8),
-              Text('Planned date', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+              Text('Planned date', style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
             ]),
             const SizedBox(height: 4),
             Text(dateStr,
-                style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: context.textPrimary)),
             const SizedBox(height: 20),
             Text(
               'Our maintenance team is scheduled to service this equipment on the date above. '
               'Please let us know if this date works for you, or propose a new date.',
-              style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
+              style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary, height: 1.5),
             ),
           ]),
         ),
@@ -229,7 +228,7 @@ class _PmScheduleResponseScreenState extends State<PmScheduleResponseScreen> {
               ? 'You have confirmed the maintenance date. We will be in touch before the visit.'
               : 'Your preferred date has been sent to the maintenance team. They will confirm shortly.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
+          style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary, height: 1.5),
         ),
         const SizedBox(height: 32),
         OutlinedButton(

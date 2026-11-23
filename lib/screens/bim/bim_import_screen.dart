@@ -68,6 +68,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
   double _importFraction = 0.0;
 
   Future<void> _pickFile() async {
+    _logger.i('BIM pick: user tapped "Choose file"');
     setState(() {
       _error = null;
       _result = null;
@@ -84,13 +85,20 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       // Mobile pickers filter by MIME/UTI and have none registered for .ifc, so a custom filter there
       // would grey the file out. Let the user pick any file and validate the extension below.
       final mobile = !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+      _logger.i('BIM pick: calling FilePicker.pickFile (platform=${defaultTargetPlatform.name}, web=$kIsWeb, mobile=$mobile)');
       final file = await FilePicker.pickFile(
         type: mobile ? FileType.any : FileType.custom,
         allowedExtensions: mobile ? null : const ['xlsx', 'ifc'],
       );
       if (!mounted) return;
       setState(() => _picking = false);
-      if (file == null) return;
+
+      if (file == null) {
+        _logger.w('BIM pick: FilePicker returned null — user cancelled or platform did not deliver the file');
+        return;
+      }
+
+      _logger.i('BIM pick: file received — name="${file.name}" ext="${file.extension}"');
 
       final ext = (file.extension ?? '').toLowerCase();
       if (ext != 'xlsx' && ext != 'ifc') {
@@ -100,6 +108,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       }
       final isIfc = ext == 'ifc';
       final size = await file.length();
+      _logger.i('BIM pick: file size=${formatBytes(size)}, isIfc=$isIfc');
       if (size > (isIfc ? _maxIfcBytes : _maxXlsxBytes)) {
         throw FormatException(
             'This file is ${formatBytes(size)}. The limit for in-app import is ${formatBytes(isIfc ? _maxIfcBytes : _maxXlsxBytes)}. '
@@ -107,7 +116,9 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       }
 
       setState(() { _parsing = true; _parseStage = 'Reading file bytes…'; });
+      _logger.i('BIM pick: reading bytes from "${file.name}"');
       final bytes = await file.readAsBytes();
+      _logger.i('BIM pick: ${bytes.length} bytes read; starting parse');
 
       CobiePreview preview;
       String? schema;
@@ -115,14 +126,18 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
       String? site;
       if (isIfc) {
         setState(() => _parseStage = 'Parsing IFC model structure…');
+        _logger.i('BIM pick: dispatching IFC parse via compute()');
         final result = await compute(parseIfcBytes, bytes);
         preview = result.preview;
         schema = result.schemaVersion;
         building = result.buildingName;
         site = result.siteName;
+        _logger.i('BIM pick: IFC compute() complete — schema=$schema building=$building site=$site');
       } else {
         setState(() => _parseStage = 'Reading COBie workbook…');
+        _logger.i('BIM pick: dispatching COBie parse via compute()');
         preview = await compute(_parseCobieBytes, bytes);
+        _logger.i('BIM pick: COBie compute() complete');
       }
       _logger.i('BIM parsed ($ext): ${preview.spaces.length} spaces, ${preview.equipment.length} equipment, '
           '${preview.jobs.length} jobs, ${preview.systems.length} systems, '
@@ -131,19 +146,26 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
 
       if (!mounted) return;
       final italianDetected = _detectsItalian(preview);
-      setState(() {
-        _fileName = file.name;
-        _bytes = bytes;
-        _sourceType = isIfc ? BimSourceType.ifc : BimSourceType.cobie;
-        _schemaVersion = schema;
-        _buildingName = building;
-        _siteName = site;
-        _preview = preview;
-        _parsing = false;
-        _parseStage = '';
-        // Auto-enable translation if Italian content is detected so equipment
-        // names are stored in English and category matching works correctly.
-        if (italianDetected) _translateEnabled = true;
+      _logger.i('BIM pick: italianDetected=$italianDetected; scheduling post-frame setState');
+      // On Flutter Web, compute() runs inline (no real isolate) and can fire
+      // during an active frame, triggering "EngineFlutterView disposed" if setState
+      // is called immediately.  Deferring to addPostFrameCallback ensures the
+      // setState runs between frames rather than within one.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _fileName = file.name;
+          _bytes = bytes;
+          _sourceType = isIfc ? BimSourceType.ifc : BimSourceType.cobie;
+          _schemaVersion = schema;
+          _buildingName = building;
+          _siteName = site;
+          _preview = preview;
+          _parsing = false;
+          _parseStage = '';
+          if (italianDetected) _translateEnabled = true;
+        });
+        _logger.i('BIM pick: done — preview is set, UI should show summary card');
       });
     } catch (e, st) {
       _logger.e('BIM parse failed', error: e, stackTrace: st);
@@ -286,7 +308,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
           AppErrorBanner(message: _error!),
           if (_importStage.isNotEmpty && !_importing) ...[
             const SizedBox(height: 6),
-            Text('Last step reached: $_importStage', style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+            Text('Last step reached: $_importStage', style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
           ],
           const SizedBox(height: AppSpacing.md),
         ],
@@ -309,7 +331,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             const Icon(Icons.view_in_ar_rounded, color: AppColors.primary),
             const SizedBox(width: 10),
             Text('Bring in building data',
-                style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w600, color: context.textPrimary)),
           ]),
           const SizedBox(height: 10),
           Text(
@@ -318,7 +340,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             'Re-importing a revised file updates the same records: it never deletes anything, and it leaves your own edits '
             '(status, notes, price, history, a room you assigned) alone. COBie and IFC files of the same building that share '
             'IFC GlobalIds update one record rather than creating two.',
-            style: GoogleFonts.poppins(fontSize: 13, height: 1.5, color: AppColors.textSecondary),
+            style: GoogleFonts.poppins(fontSize: 13, height: 1.5, color: context.textSecondary),
           ),
           const SizedBox(height: AppSpacing.md),
           Wrap(spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -332,7 +354,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               ),
             ),
             Text('IFC up to ${formatBytes(_maxIfcBytes)} · COBie up to ${formatBytes(_maxXlsxBytes)}',
-                style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
           ]),
         ],
       ),
@@ -359,7 +381,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(_fileName ?? 'File',
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16, color: AppColors.textPrimary),
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 16, color: context.textPrimary),
                     overflow: TextOverflow.ellipsis),
               ),
               BimPill(label: isIfc ? (_schemaVersion ?? 'IFC') : 'COBie', color: AppColors.primary),
@@ -372,10 +394,10 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
                 if (_siteName != null) 'Site: $_siteName',
                 if (_buildingName != null) 'Building: $_buildingName',
               ].join('   '),
-              style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+              style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
             ),
           ],
-          Text(formatBytes(_bytes?.length), style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+          Text(formatBytes(_bytes?.length), style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
           const SizedBox(height: AppSpacing.md),
           Wrap(spacing: 12, runSpacing: 12, children: [
             BimStat(icon: Icons.layers_rounded, label: 'Floors', value: '${p.storeyCount}'),
@@ -394,8 +416,8 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               for (final s in storeys.take(30))
                 Chip(
                   label: Text(s.elevation == null ? s.name : '${s.name}  (${s.elevation!.toStringAsFixed(2)} m)',
-                      style: GoogleFonts.poppins(fontSize: 12)),
-                  backgroundColor: AppColors.surfaceAlt,
+                      style: GoogleFonts.poppins(fontSize: 12, color: context.textPrimary)),
+                  backgroundColor: context.surfaceAltColor,
                   side: BorderSide.none,
                 ),
               if (storeys.length > 30) Text('+${storeys.length - 30} more', style: _hintStyle),
@@ -409,13 +431,16 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (final t in types.take(60))
                 FilterChip(
-                  label: Text('$t (${typeCounts[t]})', style: GoogleFonts.poppins(fontSize: 12)),
+                  label: Text('$t (${typeCounts[t]})',
+                      style: GoogleFonts.poppins(fontSize: 12, color: context.textPrimary)),
                   selected: !_excludedTypes.contains(t),
                   onSelected: _importing
                       ? null
                       : (on) => setState(() => on ? _excludedTypes.remove(t) : _excludedTypes.add(t)),
-                  selectedColor: AppColors.surfaceAlt,
+                  selectedColor: context.surfaceAltColor,
                   checkmarkColor: AppColors.primary,
+                  backgroundColor: context.surfaceColor,
+                  side: BorderSide(color: context.dividerColor),
                 ),
             ]),
           ],
@@ -454,7 +479,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
                 child: ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.precision_manufacturing_outlined, size: 20, color: AppColors.textSecondary),
+                  leading: Icon(Icons.precision_manufacturing_outlined, size: 20, color: context.textSecondary),
                   title: Text(e.name, style: GoogleFonts.poppins(fontSize: 13)),
                   subtitle: Text(
                     [
@@ -466,7 +491,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
                       if (e.warrantyEnd != null) 'Warranty to ${DateFormat('dd MMM yyyy').format(e.warrantyEnd!)}',
                       if (e.expectedLifeYears != null) '${e.expectedLifeYears} yr life',
                     ].join('  •  '),
-                    style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary),
+                    style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary),
                   ),
                 ),
               ),
@@ -487,7 +512,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
                       child: ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.person_outline, size: 18, color: AppColors.textSecondary),
+                        leading: Icon(Icons.person_outline, size: 18, color: context.textSecondary),
                         title: Text(c.name, style: GoogleFonts.poppins(fontSize: 12)),
                         subtitle: Text(
                           [
@@ -495,7 +520,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
                             if (c.category != null) c.category!,
                             if (c.email != null) c.email!,
                           ].join('  •  '),
-                          style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary),
+                          style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary),
                         ),
                       ),
                     ),
@@ -523,7 +548,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
                       child: ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.build_circle_outlined, size: 18, color: AppColors.textSecondary),
+                        leading: Icon(Icons.build_circle_outlined, size: 18, color: context.textSecondary),
                         title: Text(s.name, style: GoogleFonts.poppins(fontSize: 12)),
                         subtitle: Text(
                           [
@@ -531,7 +556,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
                             if (s.partNumber != null) 'P/N ${s.partNumber!}',
                             if (s.supplier != null) s.supplier!,
                           ].join('  •  '),
-                          style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary),
+                          style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary),
                         ),
                       ),
                     ),
@@ -553,7 +578,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               const SizedBox(width: 8),
               Text('Translate names to English',
                   style: GoogleFonts.poppins(
-                      fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      fontSize: 13, fontWeight: FontWeight.w600, color: context.textPrimary)),
               const Spacer(),
               Switch(
                 value: _translateEnabled,
@@ -566,8 +591,16 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             const SizedBox(height: 6),
             Text(
               'Equipment names, room names, descriptions and system names will be translated '
-              'from Italian to English using the built-in BIM terminology glossary. '
-              'No internet connection or API key is required.',
+              'from Italian to English when you tap Import — using the built-in BIM terminology '
+              'glossary with no internet connection or API key required. '
+              'The preview above shows the original names; translated names are what gets saved.',
+              style: _hintStyle,
+            ),
+          ] else ...[
+            const SizedBox(height: 6),
+            Text(
+              'Enable this if your file contains Italian names. Translation runs at import time '
+              'using a built-in glossary — no internet or API key needed.',
               style: _hintStyle,
             ),
           ],
@@ -577,8 +610,15 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
             contentPadding: EdgeInsets.zero,
             value: _keepOriginal,
             onChanged: _importing ? null : (v) => setState(() => _keepOriginal = v ?? true),
-            title: Text('Keep a copy of the original file with this import', style: GoogleFonts.poppins(fontSize: 13)),
-            subtitle: Text('Stored privately for this facility; downloadable from BIM Models.', style: _hintStyle),
+            title: Text('Keep a copy of the original source file', style: GoogleFonts.poppins(fontSize: 13)),
+            subtitle: Text(
+              _keepOriginal
+                  ? 'The .xlsx / .ifc file will be stored privately and downloadable from BIM Models. '
+                    'The building data (floors, rooms, equipment) is always imported regardless of this setting.'
+                  : 'Only the building data will be saved — the original file will not be stored. '
+                    'You can re-import from the file again later if needed.',
+              style: _hintStyle,
+            ),
             controlAffinity: ListTileControlAffinity.leading,
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -589,19 +629,24 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
                   : 'No Floor, Space, Component or Job rows were found. Check that this is a COBie workbook.',
             )
           else
-            AppGradientButton(
-              label: _importing ? 'Importing…' : 'Import into this facility',
-              icon: Icons.check_rounded,
-              isLoading: _importing,
-              onPressed: _importing ? null : _confirmImport,
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IntrinsicWidth(
+                child: AppGradientButton(
+                  label: _importing ? 'Importing…' : 'Import into this facility',
+                  icon: Icons.check_rounded,
+                  isLoading: _importing,
+                  onPressed: _importing ? null : _confirmImport,
+                ),
+              ),
             ),
         ],
       ),
     );
   }
 
-  TextStyle get _labelStyle => GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary);
-  TextStyle get _hintStyle => GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary);
+  TextStyle get _labelStyle => GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: context.textPrimary);
+  TextStyle get _hintStyle => GoogleFonts.poppins(fontSize: 12, color: context.textSecondary);
 
   Widget _buildPickingIndicator() {
     return AppCard(
@@ -618,10 +663,10 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Opening file browser…',
-                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: context.textPrimary)),
                 const SizedBox(height: 2),
                 Text('Select a .xlsx or .ifc file from your device.',
-                    style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                    style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
               ],
             ),
           ),
@@ -645,7 +690,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text('Analysing file…',
-                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                    style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: context.textPrimary)),
               ),
             ],
           ),
@@ -658,12 +703,12 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
           const SizedBox(height: 8),
           Text(
             _parseStage.isNotEmpty ? _parseStage : 'Processing…',
-            style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+            style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
           ),
           const SizedBox(height: 4),
           Text(
             'Large IFC models can take up to a minute. A preview will appear when it\'s ready.',
-            style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary),
+            style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary),
           ),
         ],
       ),
@@ -686,7 +731,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
               Expanded(
                 child: Text(
                   'Importing…',
-                  style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                  style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: context.textPrimary),
                 ),
               ),
               Text(
@@ -708,7 +753,7 @@ class _BimImportScreenState extends ConsumerState<BimImportScreen> {
           const SizedBox(height: 10),
           Text(
             _importStage,
-            style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+            style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
           ),
         ],
       ),

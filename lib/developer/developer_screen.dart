@@ -167,8 +167,7 @@ class _DeveloperScreenState extends ConsumerState<DeveloperScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         title: Text('Developer Dashboard', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
         actions: const [NotificationBellAction()],
@@ -264,7 +263,7 @@ class _DeveloperScreenState extends ConsumerState<DeveloperScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
@@ -278,9 +277,9 @@ class _DeveloperScreenState extends ConsumerState<DeveloperScreen> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2, color: color),
                 )
-              : Text('$value', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              : Text('$value', style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: context.textPrimary)),
           const SizedBox(height: 4),
-          Text(label, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary), textAlign: TextAlign.center),
+          Text(label, style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary), textAlign: TextAlign.center),
         ],
       ),
     );
@@ -290,9 +289,9 @@ class _DeveloperScreenState extends ConsumerState<DeveloperScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.1)),
+        border: Border.all(color: context.textSecondary.withValues(alpha: 0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,7 +302,7 @@ class _DeveloperScreenState extends ConsumerState<DeveloperScreen> {
               children: [
                 Icon(group.icon, color: AppColors.primary, size: 18),
                 const SizedBox(width: 8),
-                Text(group.title, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                Text(group.title, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: context.textPrimary)),
               ],
             ),
           ),
@@ -318,14 +317,14 @@ class _DeveloperScreenState extends ConsumerState<DeveloperScreen> {
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: AppColors.surfaceAlt, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: context.surfaceAltColor, shape: BoxShape.circle),
         child: Icon(item.icon, color: AppColors.primary, size: 20),
       ),
-      title: Text(item.title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+      title: Text(item.title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: context.textPrimary)),
       subtitle: item.subtitle == null
           ? null
-          : Text(item.subtitle!, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
-      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+          : Text(item.subtitle!, style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
+      trailing: Icon(Icons.chevron_right_rounded, color: context.textSecondary),
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: item.builder)),
     );
   }

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -666,10 +666,10 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
               LinearProgressIndicator(value: _progress == 0 ? null : _progress),
               Container(
                 width: double.infinity,
-                color: AppColors.surfaceAlt.withValues(alpha: 0.9),
+                color: context.surfaceAltColor.withValues(alpha: 0.9),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: Text('$_stage…  ${_model?.fileName ?? ''}',
-                    style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                    style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
               ),
             ]),
           ),
@@ -741,7 +741,7 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Container(width: 12, height: 12, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3))),
             const SizedBox(width: 6),
-            Text(label, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textPrimary)),
+            Text(label, style: GoogleFonts.poppins(fontSize: 11, color: context.textPrimary)),
           ]),
         );
     return Container(
@@ -753,7 +753,7 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Text('${_equipmentByGid.length} linked equipment',
-            style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: context.textPrimary)),
         const SizedBox(height: 4),
         row(_Overlay.openWork, 'Open work'),
         row(_Overlay.underRepair, 'Under repair'),
@@ -778,9 +778,9 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               SizedBox(
                 width: 96,
-                child: Text(label, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                child: Text(label, style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
               ),
-              Expanded(child: Text(value, style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textPrimary))),
+              Expanded(child: Text(value, style: GoogleFonts.poppins(fontSize: 12.5, color: context.textPrimary))),
             ]),
           );
 
@@ -800,7 +800,7 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(equipment?.name ?? (sel['name'] as String?) ?? ifcType,
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15, color: AppColors.textPrimary)),
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15, color: context.textPrimary)),
                 ),
                 if (_editingEquipment)
                   IconButton(
@@ -824,7 +824,7 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
                 detail('IFC type', ifcType),
                 const SizedBox(height: 6),
                 Text('This element is not in the equipment register. Only maintainable equipment is imported.',
-                    style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                    style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
               ] else if (_editingEquipment) ...[
                 _buildEquipmentEditForm(equipment),
               ] else ...[
@@ -900,18 +900,24 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text('Edit Equipment', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary)),
+            color: context.textPrimary)),
         const SizedBox(height: 10),
         // Status
         DropdownButtonFormField<String>(
           initialValue: _editStatus,
+          dropdownColor: context.cardColor,
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
           decoration: InputDecoration(
             labelText: 'Status',
             labelStyle: GoogleFonts.poppins(fontSize: 12),
-            border: const OutlineInputBorder(),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+            filled: true,
+            fillColor: context.surfaceColor,
             isDense: true,
           ),
-          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textPrimary),
+          style: GoogleFonts.poppins(fontSize: 13, color: context.textPrimary),
           items: [
             for (final s in statuses)
               DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: 13))),
@@ -922,18 +928,24 @@ class _BimViewerScreenState extends ConsumerState<BimViewerScreen> {
         // Room reassignment
         DropdownButtonFormField<String?>(
           initialValue: rooms.any((r) => r.id == _editSpaceId) ? _editSpaceId : null,
+          dropdownColor: context.cardColor,
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
           decoration: InputDecoration(
             labelText: 'Room / Space',
             labelStyle: GoogleFonts.poppins(fontSize: 12),
-            border: const OutlineInputBorder(),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+            filled: true,
+            fillColor: context.surfaceColor,
             isDense: true,
           ),
-          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textPrimary),
+          style: GoogleFonts.poppins(fontSize: 13, color: context.textPrimary),
           items: [
             DropdownMenuItem<String?>(
               value: null,
               child: Text('— Unassigned —', style: GoogleFonts.poppins(fontSize: 13,
-                  color: AppColors.textSecondary)),
+                  color: context.textSecondary)),
             ),
             for (final r in rooms)
               DropdownMenuItem<String?>(
@@ -1077,7 +1089,7 @@ class _LayersPanelSheetState extends State<_LayersPanelSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.yellowAccent.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                     border: Border.all(color: Colors.yellowAccent.withValues(alpha: 0.6)),
                   ),
                   child: Text('Active', style: GoogleFonts.poppins(

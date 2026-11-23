@@ -1,8 +1,10 @@
 ﻿import 'dart:async';
 import 'package:cmms/authentication/splashscreen.dart';
 import 'package:cmms/notifications/services/notification_service.dart';
+import 'package:cmms/providers/app_preferences_provider.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cmms/notifications/services/system_tray_notification_service.dart';
@@ -99,14 +101,14 @@ Future<void> _initializeNotificationServices() async {
   }
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  ConsumerState<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   final Logger _logger = Logger();
 
   @override
@@ -135,6 +137,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final prefs = await SharedPreferences.getInstance();
         final enabled = prefs.getBool('notifications_enabled') ?? true;
         if (!enabled) return;
+
+        final pushEnabled = prefs.getBool('ns_pref_push_notifications') ?? true;
+        if (!pushEnabled) return;
+
+        final woAlertsEnabled = prefs.getBool('ns_pref_wo_alerts') ?? true;
+        if (!woAlertsEnabled && message.data['category'] == 'work_order') return;
 
         final notification = message.notification;
         if (kIsWeb || notification == null) {
@@ -198,10 +206,31 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeModeProvider).maybeWhen(
+          data: (v) => v,
+          orElse: () => ThemeMode.system,
+        );
+    final locale = ref.watch(localeProvider).maybeWhen(
+          data: (v) => v,
+          orElse: () => const Locale('en'),
+        );
+    // Seed the static DateFormat cache on every build so screens pick up the
+    // current pref even if they don't watch the provider directly.
+    ref.watch(dateFormatPrefProvider);
+
     return MaterialApp(
       title: 'NyumbaSmart',
       navigatorKey: navigatorKey,
       theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: themeMode,
+      locale: locale,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('en'), Locale('sw')],
       home: const SplashScreen(),
       builder: (context, child) {
         return Stack(

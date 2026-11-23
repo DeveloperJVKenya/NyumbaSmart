@@ -11,8 +11,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
+import 'package:cmms/utils/app_date_format.dart';
 import 'package:logger/logger.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
@@ -116,8 +117,8 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueGrey[800],
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
               ),
               child: Text('Upload', style: GoogleFonts.poppins(color: Colors.white)),
             ),
@@ -414,7 +415,7 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red[700],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
             ),
             child: Text('Delete', style: GoogleFonts.poppins(color: Colors.white)),
           ),
@@ -497,13 +498,13 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
       organization: _organization,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => setState(() => _showForm = !_showForm),
-        backgroundColor: Colors.blueGrey[800],
+        backgroundColor: AppColors.primary,
         icon: Icon(_showForm ? Icons.close : Icons.upload_file, color: Colors.white),
         label: Text(
           _showForm ? 'Cancel' : 'Upload Price List',
           style: GoogleFonts.poppins(color: Colors.white),
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
       ),
       child: _buildBody(),
     );
@@ -726,7 +727,7 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
                     ),
                   ),
                   Text(
-                    'Uploaded: ${priceList.uploadedAt != null ? DateFormat('MMM dd, yyyy').format(priceList.uploadedAt!) : 'Unknown date'}',
+                    'Uploaded: ${priceList.uploadedAt != null ? AppDateFormat.format(priceList.uploadedAt!) : 'Unknown date'}',
                     style: GoogleFonts.poppins(
                       fontSize: isMobile ? 12 : 14,
                       color: Colors.grey[600],
@@ -791,18 +792,22 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
       decoration: InputDecoration(
         labelText: 'Price List Title (Optional)',
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[400] ?? Colors.grey),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: context.surfaceAltColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: context.surfaceAltColor),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: Colors.grey[100],
+        fillColor: context.surfaceColor,
         contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
-        hintStyle: GoogleFonts.poppins(color: Colors.grey[400]),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary),
+        hintStyle: GoogleFonts.poppins(color: context.textSecondary),
       ),
       style: GoogleFonts.poppins(fontSize: fontSize),
     );
@@ -817,9 +822,9 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
         style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSize),
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.blueGrey[800],
+        backgroundColor: AppColors.primary,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
         elevation: 4,
       ),
     );

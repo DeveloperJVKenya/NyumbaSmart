@@ -44,11 +44,11 @@ class AppTextField extends StatelessWidget {
       focusNode: focusNode,
       textInputAction: textInputAction,
       onFieldSubmitted: onFieldSubmitted,
-      style: GoogleFonts.poppins(color: AppColors.textPrimary),
+      style: GoogleFonts.poppins(color: context.textPrimary),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: AppColors.primary),
+        prefixIcon: Icon(icon, color: Theme.of(context).colorScheme.primary),
         suffixIcon: suffixIcon,
       ),
     );
@@ -165,7 +165,7 @@ class AppCard extends StatelessWidget {
         ],
       ),
       child: Material(
-        color: AppColors.card,
+        color: Theme.of(context).cardTheme.color ?? AppColors.card,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         clipBehavior: Clip.antiAlias,
         child: Padding(

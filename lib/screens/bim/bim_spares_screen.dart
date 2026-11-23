@@ -67,7 +67,7 @@ class _BimSparesScreenState extends ConsumerState<BimSparesScreen> {
               if (filtered.isEmpty) {
                 return Center(
                     child: Text('No spare parts match "$_filter"',
-                        style: GoogleFonts.poppins(color: AppColors.textSecondary)));
+                        style: GoogleFonts.poppins(color: context.textSecondary)));
               }
 
               // Group by typeName (the equipment type this spare belongs to).
@@ -82,7 +82,7 @@ class _BimSparesScreenState extends ConsumerState<BimSparesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('${filtered.length} spare part${filtered.length == 1 ? '' : 's'}',
-                      style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary)),
+                      style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary)),
                   const SizedBox(height: AppSpacing.sm),
                   for (final typeName in types) ...[
                     Padding(
@@ -93,10 +93,10 @@ class _BimSparesScreenState extends ConsumerState<BimSparesScreen> {
                         Expanded(
                           child: Text(typeName,
                               style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary)),
+                                  fontWeight: FontWeight.w600, fontSize: 14, color: context.textPrimary)),
                         ),
                         Text('${grouped[typeName]!.length} part${grouped[typeName]!.length == 1 ? '' : 's'}',
-                            style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                            style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
                       ]),
                     ),
                     for (final s in grouped[typeName]!) _buildSpareCard(s),
@@ -118,7 +118,7 @@ class _BimSparesScreenState extends ConsumerState<BimSparesScreen> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         filled: true,
-        fillColor: AppColors.surfaceAlt,
+        fillColor: context.surfaceAltColor,
       ),
       style: GoogleFonts.poppins(fontSize: 14),
       onChanged: (v) => setState(() => _filter = v.trim().toLowerCase()),
@@ -131,12 +131,12 @@ class _BimSparesScreenState extends ConsumerState<BimSparesScreen> {
         const Icon(Icons.inventory_2_outlined, size: 48, color: AppColors.primaryLight),
         const SizedBox(height: 12),
         Text('No spare parts found',
-            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: context.textPrimary)),
         const SizedBox(height: 6),
         Text(
           'Spare parts are imported from the COBie Spare or Resource sheet and linked to equipment types.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+          style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
         ),
       ]),
     );
@@ -151,7 +151,7 @@ class _BimSparesScreenState extends ConsumerState<BimSparesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
-              backgroundColor: AppColors.surfaceAlt,
+              backgroundColor: context.surfaceAltColor,
               child: const Icon(Icons.build_circle_outlined, color: AppColors.primary, size: 20),
             ),
             const SizedBox(width: 12),
@@ -160,11 +160,11 @@ class _BimSparesScreenState extends ConsumerState<BimSparesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(s.name,
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary)),
                   const SizedBox(height: 2),
                   if (s.description != null)
                     Text(s.description!,
-                        style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                        style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
                   const SizedBox(height: 6),
                   Wrap(spacing: 8, runSpacing: 4, children: [
                     if (s.partNumber != null) _pill('P/N  ${s.partNumber!}', copyable: s.partNumber),
@@ -195,14 +195,14 @@ class _BimSparesScreenState extends ConsumerState<BimSparesScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: AppColors.surfaceAlt,
+          color: context.surfaceAltColor,
           borderRadius: BorderRadius.circular(AppRadius.sm),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textPrimary)),
+          Text(label, style: GoogleFonts.poppins(fontSize: 11, color: context.textPrimary)),
           if (copyable != null) ...[
             const SizedBox(width: 4),
-            const Icon(Icons.copy_outlined, size: 12, color: AppColors.textSecondary),
+            Icon(Icons.copy_outlined, size: 12, color: context.textSecondary),
           ],
         ]),
       ),

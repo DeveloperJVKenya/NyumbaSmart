@@ -104,8 +104,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         title: Text('Notification Settings', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
       ),
@@ -119,9 +118,9 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Notification Preferences', style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                      Text('Notification Preferences', style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold, color: context.textPrimary)),
                       const SizedBox(height: 6),
-                      Text('Configure how you receive maintenance notifications and alerts', style: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: 13.5)),
+                      Text('Configure how you receive maintenance notifications and alerts', style: GoogleFonts.poppins(color: context.textSecondary, fontSize: 13.5)),
                       const SizedBox(height: AppSpacing.lg),
                       _sectionCard(
                         icon: Icons.notifications_rounded,
@@ -169,7 +168,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                       const SizedBox(height: AppSpacing.lg),
                       Container(
                         padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(AppRadius.md)),
+                        decoration: BoxDecoration(color: context.surfaceAltColor, borderRadius: BorderRadius.circular(AppRadius.md)),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -182,7 +181,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                                 're-sent after 4 hours. Due/alert notifications go to JV Almacis (the '
                                 'maintenance contractor); custom notifications are facility-scoped and deliver '
                                 'immediately. Delivery works whether the app is open, backgrounded, or closed.',
-                                style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textPrimary),
+                                style: GoogleFonts.poppins(fontSize: 12.5, color: context.textPrimary),
                               ),
                             ),
                           ],
@@ -200,7 +199,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.06), blurRadius: 16, offset: const Offset(0, 8))],
       ),
@@ -211,7 +210,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
             children: [
               Icon(icon, color: AppColors.primary, size: 22),
               const SizedBox(width: 10),
-              Text(title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              Text(title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: context.textPrimary)),
             ],
           ),
           const SizedBox(height: 8),
@@ -235,8 +234,8 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppRadius.sm)),
         child: Icon(icon, color: AppColors.primary),
       ),
-      title: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: onChanged != null ? AppColors.textPrimary : AppColors.textSecondary)),
-      subtitle: Text(subtitle, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+      title: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: onChanged != null ? context.textPrimary : context.textSecondary)),
+      subtitle: Text(subtitle, style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
       trailing: Switch(value: value, onChanged: onChanged, activeThumbColor: AppColors.primary),
     );
   }

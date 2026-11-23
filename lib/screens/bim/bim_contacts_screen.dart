@@ -67,7 +67,7 @@ class _BimContactsScreenState extends ConsumerState<BimContactsScreen> {
               if (filtered.isEmpty) {
                 return Center(
                     child: Text('No contacts match "$_filter"',
-                        style: GoogleFonts.poppins(color: AppColors.textSecondary)));
+                        style: GoogleFonts.poppins(color: context.textSecondary)));
               }
 
               // Group by category.
@@ -82,7 +82,7 @@ class _BimContactsScreenState extends ConsumerState<BimContactsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('${filtered.length} contact${filtered.length == 1 ? '' : 's'}',
-                      style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary)),
+                      style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary)),
                   const SizedBox(height: AppSpacing.sm),
                   for (final cat in categories) ...[
                     Padding(
@@ -92,7 +92,7 @@ class _BimContactsScreenState extends ConsumerState<BimContactsScreen> {
                         const SizedBox(width: 6),
                         Text(cat,
                             style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary)),
+                                fontWeight: FontWeight.w600, fontSize: 14, color: context.textPrimary)),
                       ]),
                     ),
                     for (final c in grouped[cat]!) _buildContactCard(c),
@@ -114,7 +114,7 @@ class _BimContactsScreenState extends ConsumerState<BimContactsScreen> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         filled: true,
-        fillColor: AppColors.surfaceAlt,
+        fillColor: context.surfaceAltColor,
       ),
       style: GoogleFonts.poppins(fontSize: 14),
       onChanged: (v) => setState(() => _filter = v.trim().toLowerCase()),
@@ -127,12 +127,12 @@ class _BimContactsScreenState extends ConsumerState<BimContactsScreen> {
         const Icon(Icons.contacts_outlined, size: 48, color: AppColors.primaryLight),
         const SizedBox(height: 12),
         Text('No contacts found',
-            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: context.textPrimary)),
         const SizedBox(height: 6),
         Text(
           'Contacts are imported from the COBie Contact sheet (manufacturers, installers, contractors).',
           textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+          style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
         ),
       ]),
     );
@@ -159,15 +159,15 @@ class _BimContactsScreenState extends ConsumerState<BimContactsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(c.name,
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary)),
                   if (c.company != null)
                     Text(c.company!,
-                        style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary)),
+                        style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary)),
                   if (c.description != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(c.description!,
-                          style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+                          style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
                     ),
                   const SizedBox(height: 6),
                   Wrap(spacing: 8, runSpacing: 4, children: [

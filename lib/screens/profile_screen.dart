@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -106,18 +106,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U';
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          color: AppColors.textPrimary,
+          color: context.textPrimary,
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('My Profile',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                fontSize: 18, fontWeight: FontWeight.w700, color: context.textPrimary)),
         actions: [
           if (!_isLoading)
             TextButton.icon(
@@ -141,7 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _loadUserProfile();
               },
               child: Text('Cancel',
-                  style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textSecondary)),
+                  style: GoogleFonts.poppins(fontSize: 13.5, color: context.textSecondary)),
             ),
           const SizedBox(width: 8),
         ],
@@ -309,9 +308,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: context.dividerColor),
         boxShadow: [
           BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
         ],
@@ -334,11 +333,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 10),
                 Text(title,
                     style: GoogleFonts.plusJakartaSans(
-                        fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                        fontSize: 15, fontWeight: FontWeight.w700, color: context.textPrimary)),
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFE5E7EB)),
+          Divider(height: 1, color: context.dividerColor),
           ...children,
         ],
       ),
@@ -373,10 +372,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     controller: controller,
                     keyboardType: keyboardType,
                     validator: validator,
-                    style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textPrimary),
+                    style: GoogleFonts.poppins(fontSize: 14, color: context.textPrimary),
                     decoration: InputDecoration(
                       labelText: label,
-                      labelStyle: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary),
+                      labelStyle: GoogleFonts.poppins(fontSize: 12.5, color: context.textSecondary),
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       border: const UnderlineInputBorder(),
@@ -388,15 +387,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(label,
-                          style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary)),
+                          style: GoogleFonts.poppins(fontSize: 11.5, color: context.textSecondary)),
                       const SizedBox(height: 3),
                       Text(
                         controller.text.isEmpty ? 'Not set' : controller.text,
                         style: GoogleFonts.poppins(
                             fontSize: 14,
                             color: controller.text.isEmpty
-                                ? AppColors.textSecondary
-                                : AppColors.textPrimary,
+                                ? context.textSecondary
+                                : context.textPrimary,
                             fontWeight: FontWeight.w500),
                       ),
                     ],
@@ -431,11 +430,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.textSecondary)),
+                    style: GoogleFonts.poppins(fontSize: 11.5, color: context.textSecondary)),
                 const SizedBox(height: 3),
                 Text(value,
                     style: GoogleFonts.poppins(
-                        fontSize: 14, color: AppColors.textPrimary, fontWeight: FontWeight.w500)),
+                        fontSize: 14, color: context.textPrimary, fontWeight: FontWeight.w500)),
               ],
             ),
           ),
@@ -446,7 +445,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
             child: Text('Read-only',
-                style: GoogleFonts.poppins(fontSize: 10.5, color: AppColors.textSecondary)),
+                style: GoogleFonts.poppins(fontSize: 10.5, color: context.textSecondary)),
           ),
         ],
       ),
@@ -475,11 +474,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: Text(label,
                 style: GoogleFonts.poppins(
-                    fontSize: 13.5, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+                    fontSize: 13.5, fontWeight: FontWeight.w500, color: context.textPrimary)),
           ),
           Text(value,
               style: GoogleFonts.poppins(
-                  fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                  fontSize: 13, color: context.textSecondary, fontWeight: FontWeight.w500)),
         ],
       ),
     );

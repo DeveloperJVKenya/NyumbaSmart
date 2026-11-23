@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -11,7 +11,9 @@ import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/request.dart';
+import 'package:cmms/notifications/providers/notification_providers.dart';
 import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/widgets/equipment_picker_field.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -390,6 +392,21 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
             notes: _descriptionController.text,
             userId: user.uid,
           );
+        }
+
+        // Notify Admin / JV Almacis immediately — fire-and-forget, never fails the submit
+        try {
+          final submittedTitle = _titleController.text.trim();
+          final submittedPriority = _priority;
+          await ref.read(notificationServiceProvider).createCustomNotification(
+            facilityId: widget.facilityId,
+            title: 'New Work Request: $submittedTitle',
+            body: 'Submitted by ${_createdByUsername ?? _createdByEmail ?? 'a user'}. '
+                'Priority: $submittedPriority.',
+            priority: submittedPriority == 'High' ? 'urgent' : 'normal',
+          );
+        } catch (e) {
+          _logger.w('Notification after request submit failed (non-fatal): $e');
         }
 
         if (mounted) {
@@ -854,13 +871,13 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
       floatingActionButton: _isClient
           ? FloatingActionButton.extended(
               onPressed: () => setState(() => _showForm = !_showForm),
-              backgroundColor: Colors.blueGrey[800],
-              icon: Icon(_showForm ? Icons.close : Icons.add, color: Colors.white),
+              backgroundColor: AppColors.primary,
+              icon: Icon(_showForm ? Icons.close : Icons.add_rounded, color: Colors.white),
               label: Text(
                 _showForm ? 'Cancel' : 'New Request',
-                style: GoogleFonts.poppins(color: Colors.white),
+                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
               ),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
             )
           : null,
       child: _buildBody(),
@@ -880,66 +897,62 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Filter tabs with toggle switch
+          // Filter header card
           Container(
-            padding: EdgeInsets.all(padding),
+            padding: EdgeInsets.symmetric(horizontal: padding, vertical: 14),
             decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
+              color: context.cardColor,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: context.surfaceAltColor, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      _isStatusFilterMode ? 'Filter by Status:' : 'Filter by Priority:',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w500,
-                        color: Colors.blueGrey[800],
-                        fontSize: fontSizeSubtitle,
+                    Expanded(
+                      child: Text(
+                        _isStatusFilterMode ? 'Filter by Status' : 'Filter by Priority',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          color: context.textPrimary,
+                          fontSize: fontSizeSubtitle,
+                        ),
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () {
+                    TextButton.icon(
+                      onPressed: () {
                         setState(() {
                           _isStatusFilterMode = !_isStatusFilterMode;
-                          // Reset filters when switching modes
                           _statusFilter = 'All';
                           _priorityFilter = 'All';
                         });
                       },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.blueGrey[600],
-                          borderRadius: BorderRadius.circular(20),
+                      icon: Icon(Icons.tune_rounded, size: 15, color: AppColors.primary),
+                      label: Text(
+                        _isStatusFilterMode ? 'By Priority' : 'By Status',
+                        style: GoogleFonts.poppins(
+                          color: AppColors.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _isStatusFilterMode ? Icons.swap_horiz : Icons.swap_horiz,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _isStatusFilterMode ? 'Switch to Priority' : 'Switch to Status',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        backgroundColor: context.surfaceAltColor,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _buildResponsiveTabBar(isMobile, isTablet),
               ],
             ),
@@ -1017,10 +1030,10 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
   }
 
   Widget _buildTabButton(String label, int count, Color color, int index, bool isStatusMode) {
-    final isSelected = isStatusMode 
+    final isSelected = isStatusMode
         ? _statusFilter == (index == 0 ? 'All' : ['Open', 'In Progress', 'Closed'][index - 1])
         : _priorityFilter == (index == 0 ? 'All' : ['High', 'Medium', 'Low'][index - 1]);
-        
+
     return GestureDetector(
       onTap: () {
         setState(() {
@@ -1031,22 +1044,16 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
           }
         });
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: isSelected ? color : Colors.white,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          color: isSelected ? color : Colors.transparent,
           border: Border.all(
-            color: color.withValues(alpha: 0.5),
-            width: isSelected ? 2 : 1,
+            color: isSelected ? color : color.withValues(alpha: 0.35),
+            width: 1.5,
           ),
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ] : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1054,23 +1061,23 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
                 color: isSelected ? Colors.white : color,
-                fontSize: 14,
+                fontSize: 13,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
-                color: isSelected ? Colors.white.withValues(alpha: 0.2) : color,
-                borderRadius: BorderRadius.circular(12),
+                color: isSelected ? Colors.white.withValues(alpha: 0.25) : color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text(
                 count.toString(),
                 style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 12,
+                  color: isSelected ? Colors.white : color,
+                  fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1211,140 +1218,177 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
   }
 
   Widget _buildRequestCard(Request request, double fontSize, bool isMobile) {
-    return Card(
-      elevation: 4,
+    final statusColor = _getStatusColor(request.status);
+    final priorityColor = _getPriorityColor(request.priority);
+
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: _getStatusColor(request.status),
-                  child: Icon(
-                    _getStatusIcon(request.status),
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.07),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Priority color band
+              Container(width: 5, color: priorityColor),
+              // Card content
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        request.title,
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blueGrey[900],
-                          fontSize: fontSize,
-                        ),
+                      // Header row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              request.title,
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                                color: context.textPrimary,
+                                fontSize: fontSize,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // Status badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(AppRadius.pill),
+                              border: Border.all(color: statusColor.withValues(alpha: 0.4), width: 1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(_getStatusIcon(request.status), size: 11, color: statusColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  request.status,
+                                  style: GoogleFonts.poppins(
+                                    color: statusColor,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        'Priority: ${request.priority} | Created: ${request.createdAt != null ? DateFormat.yMMMd().format(request.createdAt!) : 'Unknown'}',
-                        style: GoogleFonts.poppins(
-                          fontSize: isMobile ? 12 : 14,
-                          color: Colors.grey[600],
+                      const SizedBox(height: 6),
+                      // Description
+                      if (request.description.isNotEmpty)
+                        Text(
+                          request.description,
+                          style: GoogleFonts.poppins(
+                            fontSize: isMobile ? 12.5 : 13,
+                            color: context.textSecondary,
+                            height: 1.45,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
+                      const SizedBox(height: 10),
+                      // Meta row: priority chip + equipment chip + date
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _metaChip(
+                            icon: Icons.flag_rounded,
+                            label: request.priority,
+                            color: priorityColor,
+                          ),
+                          if (request.equipmentName != null)
+                            _metaChip(
+                              icon: Icons.precision_manufacturing_rounded,
+                              label: request.equipmentName!,
+                              color: AppColors.primary,
+                            ),
+                          if (request.createdAt != null)
+                            _metaChip(
+                              icon: Icons.calendar_today_rounded,
+                              label: DateFormat.yMMMd().format(request.createdAt!),
+                              color: context.textSecondary,
+                            ),
+                          FutureBuilder<String>(
+                            future: _getUsernameFromCollection(request.createdBy),
+                            builder: (context, snapshot) {
+                              final name = snapshot.data;
+                              if (name == null) return const SizedBox.shrink();
+                              return _metaChip(
+                                icon: Icons.person_outline_rounded,
+                                label: name,
+                                color: context.textSecondary,
+                              );
+                            },
+                          ),
+                        ],
                       ),
+                      if (request.workOrderIds.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _buildWorkOrdersSection(request.workOrderIds, fontSize),
+                      ],
+                      if (request.attachments.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _buildAttachmentsSection(request.attachments, fontSize),
+                      ],
+                      if (request.comments.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _buildCommentsSection(request.comments, fontSize),
+                      ],
                     ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(request.status),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    request.status,
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _buildDetailRow('Description', request.description, fontSize, isMobile),
-            if (request.equipmentName != null)
-              _buildDetailRow('Equipment', request.equipmentName!, fontSize, isMobile),
-            // Use FutureBuilder to fetch username from Users collection
-            FutureBuilder<String>(
-              future: _getUsernameFromCollection(request.createdBy),
-              builder: (context, snapshot) {
-                final displayName = snapshot.data ?? (request.createdByEmail ?? 'Loading...');
-                return _buildDetailRow('Created By', displayName, fontSize, isMobile);
-              },
-            ),
-            if (request.attachments.isNotEmpty)
-              _buildAttachmentsSection(request.attachments, fontSize),
-            _buildCommentsSection(request.comments, fontSize),
-            if (request.workOrderIds.isNotEmpty)
-              _buildWorkOrdersSection(request.workOrderIds, fontSize),
-            const SizedBox(height: 12),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value, double fontSize, bool isMobile) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: isMobile 
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$label:',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w500,
-                  color: Colors.blueGrey[700],
-                  fontSize: fontSize,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: GoogleFonts.poppins(
-                  color: Colors.grey[800],
-                   fontSize: fontSize,
-                ),
-              ),
-            ],
-          )
-        : Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 120,
-                child: Text(
-                  '$label:',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w500,
-                    color: Colors.blueGrey[700],
-                    fontSize: fontSize,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  value,
-                  style: GoogleFonts.poppins(
-                    color: Colors.grey[800],
-                     fontSize: fontSize,
                   ),
                 ),
               ),
             ],
           ),
+        ),
+      ),
     );
+  }
+
+  Widget _metaChip({required IconData icon, required String label, required Color color}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(
+          label,
+          style: GoogleFonts.poppins(fontSize: 11.5, color: color, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return AppColors.error;
+      case 'medium':
+        return AppColors.warning;
+      case 'low':
+        return AppColors.success;
+      default:
+        return context.textSecondary;
+    }
   }
 
   Widget _buildAttachmentsSection(List<Map<String, String>> attachments, double fontSize) {
@@ -1354,11 +1398,11 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Attachments:',
+            'Attachments',
             style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w500,
-              color: Colors.blueGrey[700],
-              fontSize: fontSize,
+              fontWeight: FontWeight.w600,
+              color: context.textPrimary,
+              fontSize: fontSize - 1,
             ),
           ),
           const SizedBox(height: 4),
@@ -1424,20 +1468,21 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Comments:',
+            'Comments',
             style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w500,
-              color: Colors.blueGrey[700],
-              fontSize: fontSize,
+              fontWeight: FontWeight.w600,
+              color: context.textPrimary,
+              fontSize: fontSize - 1,
             ),
           ),
           const SizedBox(height: 4),
           ...comments.map((entry) => Container(
                 margin: const EdgeInsets.only(bottom: 4),
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
+                  color: context.surfaceColor,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  border: Border.all(color: context.surfaceAltColor),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1485,7 +1530,7 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
             'Related Work Orders:',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.w500,
-              color: Colors.blueGrey[700],
+              color: context.textSecondary,
               fontSize: fontSize,
             ),
           ),
@@ -1519,10 +1564,20 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
   Widget _buildRequestForm(double padding, double fontSizeTitle, double fontSizeSubtitle) {
     final isMobile = MediaQuery.of(context).size.width <= 600;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.all(padding),
+    return Container(
+      margin: EdgeInsets.only(bottom: padding),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: context.surfaceAltColor, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
         padding: EdgeInsets.all(padding),
         child: Form(
@@ -1531,18 +1586,29 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Create Request',
-                    style: GoogleFonts.poppins(
-                      fontSize: fontSizeTitle,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[900],
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: context.surfaceAltColor,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: const Icon(Icons.add_task_rounded, color: AppColors.primary, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'New Work Request',
+                      style: GoogleFonts.poppins(
+                        fontSize: fontSizeTitle,
+                        fontWeight: FontWeight.w700,
+                        color: context.textPrimary,
+                      ),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.blueGrey),
+                    icon: Icon(Icons.close_rounded, color: context.textSecondary),
                     onPressed: () => setState(() => _showForm = false),
                   ),
                 ],
@@ -1584,33 +1650,33 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
                       ],
                     ),
               const SizedBox(height: 16),
-              // Separate buttons for image and document attachments
+              // Attachment buttons
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton.icon(
+                    child: OutlinedButton.icon(
                       onPressed: _uploadImageAttachment,
-                      icon: const Icon(Icons.image, color: Colors.white),
-                      label: Text('Add Image', style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSizeSubtitle)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[600],
+                      icon: const Icon(Icons.image_rounded, size: 17),
+                      label: Text('Add Image', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.success,
+                        side: BorderSide(color: AppColors.success.withValues(alpha: 0.5)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 4,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: ElevatedButton.icon(
+                    child: OutlinedButton.icon(
                       onPressed: _uploadDocumentAttachment,
-                      icon: const Icon(Icons.attach_file, color: Colors.white),
-                      label: Text('Add Document', style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSizeSubtitle)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey[600],
+                      icon: const Icon(Icons.attach_file_rounded, size: 17),
+                      label: Text('Add Document', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 4,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                       ),
                     ),
                   ),
@@ -1644,36 +1710,47 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
                   Expanded(
                     child: TextButton(
                       onPressed: () => setState(() => _showForm = false),
-                      child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontSize: fontSizeSubtitle)),
+                      child: Text('Cancel', style: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSizeSubtitle)),
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _addRequest,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey[800],
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 4,
+                    flex: 2,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: _isSubmitting ? null : AppColors.primaryGradient,
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      child: ElevatedButton(
+                        onPressed: _isSubmitting ? null : _addRequest,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                        ),
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.send_rounded, size: 16, color: Colors.white),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Submit Request',
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.white,
+                                      fontSize: fontSizeSubtitle,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            )
-                          : Text(
-                              'Submit Request',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: fontSizeSubtitle,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                      ),
                     ),
                   ),
                 ],
@@ -1697,19 +1774,23 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
       decoration: InputDecoration(
         labelText: labelText,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[400]!),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: context.surfaceAltColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: context.surfaceAltColor),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
       ),
-      style: GoogleFonts.poppins(fontSize: fontSize),
+      style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
       maxLines: maxLines,
       validator: validator,
     );
@@ -1727,28 +1808,32 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
       items: items
           .map((item) => DropdownMenuItem(
                 value: item,
-                child: Text(item, style: GoogleFonts.poppins(color: Colors.blueGrey[900])),
+                child: Text(item, style: GoogleFonts.poppins(color: context.textPrimary)),
               ))
           .toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: labelText,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[400]!),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: context.surfaceAltColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: context.surfaceAltColor),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary),
       ),
-      style: GoogleFonts.poppins(color: Colors.blueGrey[900], fontSize: fontSize),
-      dropdownColor: Colors.white,
-      icon: Icon(Icons.arrow_drop_down, color: Colors.blueGrey[800]),
+      style: GoogleFonts.poppins(color: context.textPrimary, fontSize: fontSize),
+      dropdownColor: context.cardColor,
+      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary),
     );
   }
 
@@ -1793,26 +1878,26 @@ class _RequestScreenState extends ConsumerState<RequestScreen> with TickerProvid
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'open':
-        return Colors.blue;
+        return const Color(0xFF2563EB); // blue-600
       case 'in progress':
-        return Colors.orange;
+        return AppColors.warning;
       case 'closed':
-        return Colors.green;
+        return AppColors.success;
       default:
-        return Colors.grey;
+        return context.textSecondary;
     }
   }
 
   IconData _getStatusIcon(String status) {
     switch (status.toLowerCase()) {
       case 'open':
-        return Icons.radio_button_unchecked;
+        return Icons.radio_button_unchecked_rounded;
       case 'in progress':
-        return Icons.hourglass_empty;
+        return Icons.pending_rounded;
       case 'closed':
-        return Icons.check_circle;
+        return Icons.check_circle_rounded;
       default:
-        return Icons.help;
+        return Icons.help_outline_rounded;
     }
   }
 }
@@ -1833,7 +1918,7 @@ class ImageViewerScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(fileName, style: GoogleFonts.poppins(color: Colors.white)),
-        backgroundColor: Colors.blueGrey[800],
+        backgroundColor: AppColors.primaryDark,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Center(

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cmms/models/billing_data.dart';
 import 'package:cmms/models/user_model.dart';
 import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,7 +14,7 @@ import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
+import 'package:cmms/utils/app_date_format.dart';
 import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -284,7 +285,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
               onPressed: () => Navigator.pop(context, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green[800],
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
               ),
               child: Text('Upload', style: GoogleFonts.poppins(color: Colors.white)),
             ),
@@ -701,7 +702,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red[700],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
             ),
             child: Text('Delete', style: GoogleFonts.poppins(color: Colors.white)),
           ),
@@ -815,13 +816,13 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
       floatingActionButton: _canUpload
           ? FloatingActionButton.extended(
               onPressed: () => setState(() => _showForm = !_showForm),
-              backgroundColor: Colors.green[800],
-              icon: Icon(_showForm ? Icons.close : Icons.upload_file, color: Colors.white),
+              backgroundColor: AppColors.primary,
+              icon: Icon(_showForm ? Icons.close_rounded : Icons.upload_file_rounded, color: Colors.white),
               label: Text(
                 _showForm ? 'Cancel' : 'Upload Billing Document',
-                style: GoogleFonts.poppins(color: Colors.white),
+                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
               ),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
             )
           : null,
       child: _buildBody(),
@@ -851,7 +852,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.bold,
                   fontSize: fontSizeTitle,
-                  color: Colors.blueGrey[900],
+                  color: context.textPrimary,
                 ),
               ),
               if (kIsWeb) ...[
@@ -859,15 +860,15 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.blue[100],
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                   child: Text(
                     'WEB',
                     style: GoogleFonts.poppins(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue[800],
+                      color: AppColors.primary,
                     ),
                   ),
                 ),
@@ -896,38 +897,38 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
               final docs = snapshot.data?.docs ?? [];
               if (docs.isEmpty) {
                 logger.w('No billing documents found for facilityId: ${widget.facilityId}');
-                return Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.receipt,
-                          size: 64,
-                          color: Colors.grey[400],
+                return Container(
+                  decoration: BoxDecoration(
+                    color: context.surfaceColor,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(color: context.surfaceAltColor),
+                    boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+                  ),
+                  padding: const EdgeInsets.all(40.0),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
-                        const SizedBox(height: 16),
+                        child: Icon(Icons.receipt_long_rounded, size: 48, color: AppColors.primary.withValues(alpha: 0.6)),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No billing documents uploaded yet',
+                        style: GoogleFonts.poppins(fontSize: fontSizeSubtitle, color: context.textSecondary, fontWeight: FontWeight.w500),
+                      ),
+                      if (_canUpload) ...[
+                        const SizedBox(height: 6),
                         Text(
-                          'No billing documents uploaded yet',
-                          style: GoogleFonts.poppins(
-                            fontSize: fontSizeSubtitle,
-                            color: Colors.grey[600],
-                          ),
+                          'Tap the upload button to add your first billing document',
+                          style: GoogleFonts.poppins(fontSize: fontSizeSubtitle - 2, color: context.textSecondary.withValues(alpha: 0.7)),
+                          textAlign: TextAlign.center,
                         ),
-                        if (_canUpload) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Tap the upload button to add your first billing document',
-                            style: GoogleFonts.poppins(
-                              fontSize: fontSizeSubtitle - 2,
-                              color: Colors.grey[500],
-                            ),
-                          ),
-                        ],
                       ],
-                    ),
+                    ],
                   ),
                 );
               }
@@ -961,21 +962,22 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
 
         return Column(
           children: [
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              color: Colors.blue[50],
-              child: Padding(
-                padding: EdgeInsets.all(padding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (hasAdminDoc)
-                      _buildExistingAdminDocument(docs.first, fontSizeSubtitle)
-                    else if (_isAdmin && _organization == 'JV Almacis')
-                      _buildUploadAdminDocumentButton(),
-                  ],
-                ),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+                boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+              ),
+              padding: EdgeInsets.all(padding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasAdminDoc)
+                    _buildExistingAdminDocument(docs.first, fontSizeSubtitle)
+                  else if (_isAdmin && _organization == 'JV Almacis')
+                    _buildUploadAdminDocumentButton(),
+                ],
               ),
             ),
             const SizedBox(height: 24),
@@ -1012,15 +1014,15 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.w600,
                   fontSize: fontSizeSubtitle,
-                  color: Colors.blueGrey[900],
+                  color: context.textPrimary,
                 ),
               ),
               if (billing.uploadedAt != null)
                 Text(
-                  'Uploaded: ${DateFormat('MMM dd, yyyy').format(billing.uploadedAt!)}',
+                  'Uploaded: ${AppDateFormat.format(billing.uploadedAt!)}',
                   style: GoogleFonts.poppins(
                     fontSize: fontSizeSubtitle - 2,
-                    color: Colors.blueGrey[600],
+                    color: context.textSecondary,
                   ),
                 ),
             ],
@@ -1097,27 +1099,33 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     return Center(
       child: Column(
         children: [
-          Icon(
-            Icons.cloud_upload,
-            size: 48,
-            color: Colors.blueGrey[400],
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Icon(Icons.cloud_upload_rounded, size: 40, color: AppColors.primary.withValues(alpha: 0.7)),
           ),
           const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _uploadAdminDocument,
-            icon: const Icon(Icons.upload_file, color: Colors.white),
-            label: Text(
-              'Upload Admin Billing Doc',
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[800],
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
+            child: ElevatedButton.icon(
+              onPressed: _uploadAdminDocument,
+              icon: const Icon(Icons.upload_file_rounded, color: Colors.white),
+              label: Text(
+                'Upload Admin Billing Doc',
+                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+              ),
             ),
           ),
         ],
@@ -1128,10 +1136,14 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   Widget _buildUploadForm(double padding, double fontSizeTitle, double fontSizeSubtitle) {
     final isMobile = MediaQuery.of(context).size.width <= 600;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.all(padding),
+    return Container(
+      margin: EdgeInsets.only(bottom: padding),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
       child: Padding(
         padding: EdgeInsets.all(padding),
         child: Form(
@@ -1140,40 +1152,50 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Upload Billing Document',
-                        style: GoogleFonts.poppins(
-                          fontSize: fontSizeTitle,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blueGrey[900],
-                        ),
-                      ),
-                      if (kIsWeb) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[100],
-                            borderRadius: BorderRadius.circular(12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: const Icon(Icons.upload_file_rounded, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Text(
+                          'Upload Billing Document',
+                          style: GoogleFonts.poppins(
+                            fontSize: fontSizeTitle,
+                            fontWeight: FontWeight.bold,
+                            color: context.textPrimary,
                           ),
-                          child: Text(
-                            'WEB',
-                            style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[800],
+                        ),
+                        if (kIsWeb) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(AppRadius.pill),
+                            ),
+                            child: Text(
+                              'WEB',
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.blueGrey),
+                    icon: Icon(Icons.close_rounded, color: context.textSecondary),
                     onPressed: () => setState(() => _showForm = false),
                   ),
                 ],
@@ -1218,10 +1240,15 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
       itemCount: billingDocs.length,
       itemBuilder: (context, index) {
         final billing = billingDocs[index];
-        return Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        final fileIconColor = _getFileIconColor(billing.fileName);
+        return Container(
           margin: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: context.surfaceColor,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: context.surfaceAltColor),
+            boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+          ),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -1229,10 +1256,13 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      Icons.picture_as_pdf,
-                      color: Colors.red[600],
-                      size: 32,
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: fileIconColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                      ),
+                      child: Icon(_getFileIcon(billing.fileName), color: fileIconColor, size: 26),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1241,31 +1271,24 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                         children: [
                           Text(
                             billing.title,
-                            style: GoogleFonts.poppins(
-                              color: Colors.blueGrey[900],
-                              fontWeight: FontWeight.w600,
-                              fontSize: fontSize,
-                            ),
+                            style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w600, fontSize: fontSize),
                           ),
                           Text(
-                            'Uploaded: ${billing.uploadedAt != null ? DateFormat('MMM dd, yyyy').format(billing.uploadedAt!) : 'Unknown date'}',
-                            style: GoogleFonts.poppins(
-                              fontSize: fontSize - 2,
-                              color: Colors.grey[600],
-                            ),
+                            'Uploaded: ${billing.uploadedAt != null ? AppDateFormat.format(billing.uploadedAt!) : 'Unknown date'}',
+                            style: GoogleFonts.poppins(fontSize: fontSize - 2, color: context.textSecondary),
                           ),
                         ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[200]!),
+                    color: context.surfaceAltColor.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    border: Border.all(color: context.surfaceAltColor),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1273,14 +1296,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Approval Status',
-                            style: GoogleFonts.poppins(
-                              fontSize: fontSize - 2,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.blueGrey[700],
-                            ),
-                          ),
+                          Text('Approval Status', style: GoogleFonts.poppins(fontSize: fontSize - 2, fontWeight: FontWeight.w500, color: context.textSecondary)),
                           _buildStatusChip(
                             _getNormalizedApprovalStatus(billing),
                             _getApprovalStatusColor(_getNormalizedApprovalStatus(billing)),
@@ -1288,68 +1304,37 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Payment Status',
-                            style: GoogleFonts.poppins(
-                              fontSize: fontSize - 2,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.blueGrey[700],
-                            ),
-                          ),
-                          _buildStatusChip(
-                            billing.status,
-                            _getPaymentStatusColor(billing.status),
-                            fontSize,
-                          ),
+                          Text('Payment Status', style: GoogleFonts.poppins(fontSize: fontSize - 2, fontWeight: FontWeight.w500, color: context.textSecondary)),
+                          _buildStatusChip(billing.status, _getPaymentStatusColor(billing.status), fontSize),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Actions',
-                            style: GoogleFonts.poppins(
-                              fontSize: fontSize - 2,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.blueGrey[700],
-                            ),
-                          ),
+                          Text('Actions', style: GoogleFonts.poppins(fontSize: fontSize - 2, fontWeight: FontWeight.w500, color: context.textSecondary)),
                           _buildActionButtons(billing),
                         ],
                       ),
                       if (billing.approvalNotes != null && billing.approvalNotes!.isNotEmpty) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.blue[50],
-                            borderRadius: BorderRadius.circular(6),
+                            color: AppColors.primary.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Approval Notes:',
-                                style: GoogleFonts.poppins(
-                                  fontSize: fontSize - 3,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.blueGrey[700],
-                                ),
-                              ),
+                              Text('Approval Notes:', style: GoogleFonts.poppins(fontSize: fontSize - 3, fontWeight: FontWeight.w600, color: context.textPrimary)),
                               const SizedBox(height: 2),
-                              Text(
-                                billing.approvalNotes!,
-                                style: GoogleFonts.poppins(
-                                  fontSize: fontSize - 3,
-                                  color: Colors.blueGrey[600],
-                                ),
-                              ),
+                              Text(billing.approvalNotes!, style: GoogleFonts.poppins(fontSize: fontSize - 3, color: context.textSecondary)),
                             ],
                           ),
                         ),
@@ -1366,163 +1351,96 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   }
 
   Widget _buildDesktopBillingTable(List<BillingData> billingDocs, double fontSize) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.blueGrey[50],
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(8),
-                  topRight: Radius.circular(8),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: Text(
-                      'Document',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: fontSize,
-                        color: Colors.blueGrey[800],
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'Approval Status',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: fontSize,
-                        color: Colors.blueGrey[800],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'Payment Status',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: fontSize,
-                        color: Colors.blueGrey[800],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  Expanded(
-                    flex: 1,
-                    child: Text(
-                      'Actions',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: fontSize,
-                        color: Colors.blueGrey[800],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
+    return Container(
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.06),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(AppRadius.md),
+                topRight: Radius.circular(AppRadius.md),
               ),
             ),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: billingDocs.length,
-              itemBuilder: (context, index) {
-                final billing = billingDocs[index];
-                final isEven = index % 2 == 0;
+            child: Row(
+              children: [
+                Expanded(flex: 4, child: Text('Document', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: fontSize, color: context.textPrimary))),
+                Expanded(flex: 2, child: Text('Approval Status', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: fontSize, color: context.textPrimary), textAlign: TextAlign.center)),
+                Expanded(flex: 2, child: Text('Payment Status', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: fontSize, color: context.textPrimary), textAlign: TextAlign.center)),
+                Expanded(flex: 1, child: Text('Actions', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: fontSize, color: context.textPrimary), textAlign: TextAlign.center)),
+              ],
+            ),
+          ),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: billingDocs.length,
+            itemBuilder: (context, index) {
+              final billing = billingDocs[index];
+              final isEven = index % 2 == 0;
+              final fileIconColor = _getFileIconColor(billing.fileName);
 
-                return Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: isEven ? Colors.white : Colors.grey[50],
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.grey[200]!,
-                        width: 1,
+              return Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: isEven ? AppColors.surface : AppColors.surfaceAlt.withValues(alpha: 0.3),
+                  border: Border(bottom: BorderSide(color: context.surfaceAltColor, width: 1)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: fileIconColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
+                            ),
+                            child: Icon(_getFileIcon(billing.fileName), color: fileIconColor, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(billing.title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: fontSize - 1, color: context.textPrimary)),
+                                Text(
+                                  'Uploaded: ${billing.uploadedAt != null ? AppDateFormat.format(billing.uploadedAt!) : 'Unknown'}',
+                                  style: GoogleFonts.poppins(fontSize: fontSize - 3, color: context.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 4,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.picture_as_pdf,
-                              color: Colors.red[600],
-                              size: 24,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    billing.title,
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: fontSize - 1,
-                                      color: Colors.blueGrey[900],
-                                    ),
-                                  ),
-                                  Text(
-                                    'Uploaded: ${billing.uploadedAt != null ? DateFormat('MMM dd, yyyy').format(billing.uploadedAt!) : 'Unknown'}',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: fontSize - 3,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Center(
-                          child: _buildStatusChip(
-                            _getNormalizedApprovalStatus(billing),
-                            _getApprovalStatusColor(_getNormalizedApprovalStatus(billing)),
-                            fontSize,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Center(
-                          child: _buildStatusChip(
-                            billing.status,
-                            _getPaymentStatusColor(billing.status),
-                            fontSize,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 1,
-                        child: Center(
-                          child: _buildActionButtons(billing),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
+                    Expanded(
+                      flex: 2,
+                      child: Center(child: _buildStatusChip(_getNormalizedApprovalStatus(billing), _getApprovalStatusColor(_getNormalizedApprovalStatus(billing)), fontSize)),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Center(child: _buildStatusChip(billing.status, _getPaymentStatusColor(billing.status), fontSize)),
+                    ),
+                    Expanded(
+                      flex: 1,
+                      child: Center(child: _buildActionButtons(billing)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1532,37 +1450,38 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
       controller: _titleController,
       decoration: InputDecoration(
         labelText: 'Document Title (Optional)',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[400] ?? Colors.grey),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.green[600]!, width: 2),
-        ),
+        prefixIcon: Icon(Icons.title_rounded, size: 18, color: context.textSecondary),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
         filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
-        hintStyle: GoogleFonts.poppins(color: Colors.grey[400]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
       ),
       style: GoogleFonts.poppins(fontSize: fontSize),
     );
   }
 
   Widget _buildUploadButton(double fontSize) {
-    return ElevatedButton.icon(
-      onPressed: _uploadDocument,
-      icon: const Icon(Icons.upload_file, color: Colors.white),
-      label: Text(
-        'Upload PDF',
-        style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSize),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: AppColors.primaryGradient,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.green[800],
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        elevation: 4,
+      child: ElevatedButton.icon(
+        onPressed: _uploadDocument,
+        icon: const Icon(Icons.upload_file_rounded, color: Colors.white),
+        label: Text(
+          'Upload PDF',
+          style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.w600),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+        ),
       ),
     );
   }
@@ -1772,25 +1691,40 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Review Document', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.sm)),
+              child: Icon(Icons.rate_review_rounded, color: AppColors.warning, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Text('Review Document', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: context.textPrimary)),
+          ],
+        ),
         content: TextFormField(
           controller: notesController,
           decoration: InputDecoration(
             labelText: 'Review notes (optional)',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.green[600]!, width: 2),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+            filled: true,
+            fillColor: context.surfaceColor,
+            labelStyle: GoogleFonts.poppins(color: context.textSecondary),
           ),
           style: GoogleFonts.poppins(),
           maxLines: 3,
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: GoogleFonts.poppins()),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: context.surfaceAltColor),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+            ),
+            child: Text('Cancel', style: GoogleFonts.poppins(color: context.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1798,10 +1732,10 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
               if (mounted) Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange[700],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              backgroundColor: AppColors.warning,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
             ),
-            child: Text('Review', style: GoogleFonts.poppins(color: Colors.white)),
+            child: Text('Review', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
       ),

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -12,7 +12,9 @@ import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/user_model.dart';
 import 'package:cmms/models/work_order.dart';
+import 'package:cmms/notifications/providers/notification_providers.dart';
 import 'package:cmms/providers/auth_providers.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:cmms/widgets/equipment_picker_field.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -254,6 +256,30 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
             'workOrderIds': FieldValue.arrayUnion([workOrderId]),
             'status': 'In Progress',
           });
+        }
+
+        // Notify assigned technician (in-app) and JV Almacis team (custom notification)
+        final capturedTitle = _titleController.text.trim();
+        final capturedPriority = _priority;
+        final capturedTechId = _selectedTechnicianId;
+        final notifService = ref.read(notificationServiceProvider);
+        try {
+          if (capturedTechId != null && capturedTechId.isNotEmpty) {
+            await notifService.sendInAppNotification(
+              targetUserId: capturedTechId,
+              title: 'Work Order Assigned: $capturedTitle',
+              body: 'You have been assigned a new work order. Priority: $capturedPriority.',
+              priority: capturedPriority == 'High' ? 'urgent' : 'normal',
+            );
+          }
+          await notifService.createCustomNotification(
+            facilityId: widget.facilityId,
+            title: 'Work Order Created: $capturedTitle',
+            body: 'A new work order has been created. Priority: $capturedPriority.',
+            priority: capturedPriority == 'High' ? 'urgent' : 'normal',
+          );
+        } catch (e) {
+          _logger.w('Notification after WO creation failed (non-fatal): $e');
         }
 
         if (mounted) {
@@ -629,7 +655,28 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
         'clientActionDate': Timestamp.now(),
         'history': FieldValue.arrayUnion([historyEntry]),
       });
-        
+
+      // Notify the original requester of the approval/decline decision
+      if (currentDoc.exists && (newStatus == 'Approved' || newStatus == 'Declined')) {
+        final data = currentDoc.data() as Map<String, dynamic>;
+        final requesterId = data['createdBy'] as String?;
+        final title = data['title'] as String? ?? 'Work Order';
+        if (requesterId != null && requesterId.isNotEmpty) {
+          try {
+            await ref.read(notificationServiceProvider).sendInAppNotification(
+              targetUserId: requesterId,
+              title: 'Work Order $newStatus: $title',
+              body: notes.isNotEmpty
+                  ? 'Your work order was $newStatus. Note: $notes'
+                  : 'Your work order has been $newStatus.',
+              priority: newStatus == 'Declined' ? 'urgent' : 'normal',
+            );
+          } catch (e) {
+            _logger.w('Notification to requester failed (non-fatal): $e');
+          }
+        }
+      }
+
       if (mounted) {
         _showSnackBar(
           newStatus == 'To be Reviewed'
@@ -666,17 +713,34 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
       });
 
       // Record progress on the linked equipment so its history shows the work done on it.
+      final snap = await workOrderRef.get();
+      final woData = snap.data();
       if (newStatus == 'Completed' || newStatus == 'In Progress') {
-        final data = (await workOrderRef.get()).data();
-        final equipmentId = data?['equipmentId'] as String?;
+        final equipmentId = woData?['equipmentId'] as String?;
         if (equipmentId != null) {
           await appendEquipmentHistory(
             facilityId: widget.facilityId,
             equipmentId: equipmentId,
-            action: 'Work order ${newStatus == 'Completed' ? 'completed' : 'started'}: ${data?['title'] ?? ''}',
+            action: 'Work order ${newStatus == 'Completed' ? 'completed' : 'started'}: ${woData?['title'] ?? ''}',
             notes: notes,
             userId: user.uid,
           );
+        }
+      }
+
+      // Notify the original requester of the status change
+      final requesterId = woData?['createdBy'] as String?;
+      final woTitle = woData?['title'] as String? ?? 'Work Order';
+      if (requesterId != null && requesterId.isNotEmpty && requesterId != user.uid) {
+        try {
+          await ref.read(notificationServiceProvider).sendInAppNotification(
+            targetUserId: requesterId,
+            title: 'Work Order Update: $woTitle',
+            body: 'Status changed to $newStatus.${notes.isNotEmpty ? ' Note: $notes' : ''}',
+            priority: newStatus == 'Completed' ? 'normal' : 'normal',
+          );
+        } catch (e) {
+          _logger.w('Status-change notification failed (non-fatal): $e');
         }
       }
 
@@ -877,13 +941,13 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
       floatingActionButton: _isJVAlmacisUser
           ? FloatingActionButton.extended(
               onPressed: () => setState(() => _showForm = !_showForm),
-              backgroundColor: Colors.blueGrey[800],
-              icon: Icon(_showForm ? Icons.close : Icons.add, color: Colors.white),
+              backgroundColor: AppColors.primary,
+              icon: Icon(_showForm ? Icons.close_rounded : Icons.add_rounded, color: Colors.white),
               label: Text(
                 _showForm ? 'Cancel' : 'New Work Order',
-                style: GoogleFonts.poppins(color: Colors.white),
+                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
               ),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
             )
           : null,
       child: _buildBody(),
@@ -903,93 +967,85 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Enhanced filter tabs with back navigation
+          // Filter header card
           Container(
-            padding: EdgeInsets.all(padding),
+            padding: EdgeInsets.symmetric(horizontal: padding, vertical: 14),
             decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
+              color: context.cardColor,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: context.surfaceAltColor, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Back button for approved sub-view
                 if (_isInApprovedSubView) ...[
                   Row(
                     children: [
-                      IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _isInApprovedSubView = false;
-                            _workOrderStatusFilter = 'All';
-                          });
-                        },
-                        icon: const Icon(Icons.arrow_back, color: Colors.blueGrey),
-                      ),
-                      Text(
-                        'Approved Work Orders by Status',
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w500,
-                          color: Colors.blueGrey[800],
-                          fontSize: fontSizeSubtitle,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _buildWorkOrderStatusTabBar(isMobile, isTablet),
-                ] else ...[
-                  // Main filter mode controls
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _isClientStatusFilterMode ? 'Filter by Client Status:' : 'Filter by Priority:',
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w500,
-                          color: Colors.blueGrey[800],
-                          fontSize: fontSizeSubtitle,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _isClientStatusFilterMode = !_isClientStatusFilterMode;
-                            // Reset filters when switching modes
-                            _statusFilter = 'All';
-                            _priorityFilter = 'All';
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.blueGrey[600],
-                            borderRadius: BorderRadius.circular(20),
-                          ),
+                      InkWell(
+                        onTap: () => setState(() {
+                          _isInApprovedSubView = false;
+                          _workOrderStatusFilter = 'All';
+                        }),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
-                                Icons.swap_horiz,
-                                color: Colors.white,
-                                size: 16,
-                              ),
+                              const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: AppColors.primary),
                               const SizedBox(width: 4),
-                              Text(
-                                _isClientStatusFilterMode ? 'Switch to Priority' : 'Switch to Status',
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
+                              Text('Back', style: GoogleFonts.poppins(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w600)),
                             ],
                           ),
                         ),
                       ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Approved Work Orders',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary, fontSize: fontSizeSubtitle),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
+                  _buildWorkOrderStatusTabBar(isMobile, isTablet),
+                ] else ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _isClientStatusFilterMode ? 'Filter by Client Status' : 'Filter by Priority',
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary, fontSize: fontSizeSubtitle),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _isClientStatusFilterMode = !_isClientStatusFilterMode;
+                            _statusFilter = 'All';
+                            _priorityFilter = 'All';
+                          });
+                        },
+                        icon: const Icon(Icons.tune_rounded, size: 15, color: AppColors.primary),
+                        label: Text(
+                          _isClientStatusFilterMode ? 'By Priority' : 'By Status',
+                          style: GoogleFonts.poppins(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          backgroundColor: context.surfaceAltColor,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   _buildResponsiveTabBar(isMobile, isTablet),
                 ],
               ],
@@ -1095,18 +1151,16 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
   }
 
   Widget _buildTabButton(String label, int count, Color color, int index, bool isStatusMode) {
-    final isSelected = isStatusMode 
+    final isSelected = isStatusMode
         ? _statusFilter == (index == 0 ? 'All' : ['Approved', 'To be Reviewed'][index - 1])
         : _priorityFilter == (index == 0 ? 'All' : ['High', 'Medium', 'Low'][index - 1]);
-        
+
     return GestureDetector(
       onTap: () {
         setState(() {
           if (isStatusMode) {
             final newFilter = index == 0 ? 'All' : ['Approved', 'To be Reviewed'][index - 1];
             _statusFilter = newFilter;
-                      
-            // Enter approved sub-view if Approved is selected
             if (newFilter == 'Approved') {
               _isInApprovedSubView = true;
               _workOrderStatusFilter = 'All';
@@ -1116,112 +1170,59 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
           }
         });
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: isSelected ? color : Colors.white,
-          border: Border.all(
-            color: color.withValues(alpha: 0.5),
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ] : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w500,
-                color: isSelected ? Colors.white : color,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white.withValues(alpha: 0.2) : color,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                count.toString(),
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: _filterChip(label: label, count: count, color: color, isSelected: isSelected),
     );
   }
 
   Widget _buildWorkOrderStatusTabButton(String label, int count, Color color, int index) {
     final statuses = ['All', 'Open', 'In Progress', 'Completed'];
     final isSelected = _workOrderStatusFilter == statuses[index];
-      
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _workOrderStatusFilter = statuses[index];
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: isSelected ? color : Colors.white,
-          border: Border.all(
-            color: color.withValues(alpha: 0.5),
-            width: isSelected ? 2 : 1,
+      onTap: () => setState(() => _workOrderStatusFilter = statuses[index]),
+      child: _filterChip(label: label, count: count, color: color, isSelected: isSelected),
+    );
+  }
+
+  Widget _filterChip({required String label, required int count, required Color color, required bool isSelected}) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        color: isSelected ? color : Colors.transparent,
+        border: Border.all(
+          color: isSelected ? color : color.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w600,
+              color: isSelected ? Colors.white : color,
+              fontSize: 13,
+            ),
           ),
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.white.withValues(alpha: 0.25) : color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
-          ] : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
+            child: Text(
+              count.toString(),
               style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w500,
                 color: isSelected ? Colors.white : color,
-                fontSize: 14,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white.withValues(alpha: 0.2) : color,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                count.toString(),
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1374,114 +1375,195 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
   }
 
   Widget _buildWorkOrderCard(WorkOrder workOrder, double fontSize, bool isMobile) {
-    return Card(
-      elevation: 4,
+    final priorityColor = _getPriorityColor(workOrder.priority);
+    final clientStatusColor = _getClientStatusColor(workOrder.clientStatus);
+    final woStatusColor = _getWorkOrderStatusColor(workOrder.status);
+
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: _getClientStatusColor(workOrder.clientStatus),
-                  child: Icon(
-                    _getClientStatusIcon(workOrder.clientStatus),
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.07),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Priority color band
+              Container(width: 5, color: priorityColor),
+              // Card body
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Header row: title + status badges
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              workOrder.title,
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                                color: context.textPrimary,
+                                fontSize: fontSize,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              // Client status badge
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: clientStatusColor.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                                  border: Border.all(color: clientStatusColor.withValues(alpha: 0.4)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(_getClientStatusIcon(workOrder.clientStatus), size: 11, color: clientStatusColor),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      workOrder.clientStatus,
+                                      style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: clientStatusColor),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_isInApprovedSubView) ...[
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: woStatusColor.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                                    border: Border.all(color: woStatusColor.withValues(alpha: 0.4)),
+                                  ),
+                                  child: Text(
+                                    workOrder.status,
+                                    style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: woStatusColor),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // Description
                       Text(
-                        workOrder.title,
+                        workOrder.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blueGrey[900],
-                          fontSize: fontSize,
+                          fontSize: fontSize - 1.5,
+                          color: context.textSecondary,
                         ),
                       ),
-                      Text(
-                        'Priority: ${workOrder.priority} | Status: ${workOrder.status} | Created: ${workOrder.createdAt != null ? DateFormat.yMMMd().format(workOrder.createdAt!) : 'Unknown'}',
-                        style: GoogleFonts.poppins(
-                          fontSize: isMobile ? 12 : 14,
-                          color: Colors.grey[600],
-                        ),
+                      const SizedBox(height: 10),
+                      // Meta chips row
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 4,
+                        children: [
+                          _woMetaChip(
+                            icon: Icons.flag_rounded,
+                            label: workOrder.priority,
+                            color: priorityColor,
+                          ),
+                          if (workOrder.equipmentName != null && workOrder.equipmentName!.isNotEmpty)
+                            _woMetaChip(
+                              icon: Icons.build_rounded,
+                              label: workOrder.equipmentName!,
+                              color: context.textSecondary,
+                            ),
+                          _woMetaChip(
+                            icon: Icons.calendar_today_rounded,
+                            label: workOrder.createdAt != null ? DateFormat.yMMMd().format(workOrder.createdAt!) : 'Unknown',
+                            color: context.textSecondary,
+                          ),
+                          if (_isJVAlmacisUser && workOrder.assignedTo.isNotEmpty)
+                            FutureBuilder<String>(
+                              future: _getUsernameFromCollection(workOrder.assignedTo),
+                              builder: (context, snap) => _woMetaChip(
+                                icon: Icons.person_rounded,
+                                label: snap.data ?? (workOrder.assignedToEmail.isNotEmpty ? workOrder.assignedToEmail : '…'),
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          if (_isJVAlmacisUser && workOrder.assignedTo.isEmpty)
+                            _woMetaChip(icon: Icons.person_off_rounded, label: 'Unassigned', color: context.textSecondary),
+                        ],
                       ),
+                      // Extra details (created by, related request, client notes)
+                      if (_isJVAlmacisUser) ...[
+                        const SizedBox(height: 8),
+                        FutureBuilder<String>(
+                          future: _getUsernameFromCollection(workOrder.createdBy),
+                          builder: (context, snap) {
+                            final name = snap.data ?? (workOrder.createdByEmail.isNotEmpty ? workOrder.createdByEmail : '…');
+                            return _buildDetailRow('Created By', name, fontSize, isMobile);
+                          },
+                        ),
+                      ],
+                      if (workOrder.requestId != null)
+                        FutureBuilder<String>(
+                          future: _getRequestTitleFromId(workOrder.requestId!),
+                          builder: (context, snap) => _buildDetailRow('Related Request', snap.data ?? '…', fontSize, isMobile),
+                        ),
+                      if (workOrder.clientNotes.isNotEmpty)
+                        _buildDetailRow('Client Notes', workOrder.clientNotes, fontSize, isMobile),
+                      if (workOrder.attachments.isNotEmpty)
+                        _buildAttachmentsSection(workOrder.attachments, fontSize),
+                      if (workOrder.history.isNotEmpty)
+                        _buildHistorySection(workOrder.history, fontSize),
+                      const SizedBox(height: 10),
+                      _buildActionButtons(workOrder, fontSize),
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getClientStatusColor(workOrder.clientStatus),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    workOrder.clientStatus,
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _buildDetailRow('Description', workOrder.description, fontSize, isMobile),
-            if (workOrder.equipmentName != null)
-              _buildDetailRow('Equipment', workOrder.equipmentName!, fontSize, isMobile),
-
-            // Show "Assigned To" and "Created By" only to JV Almacis users
-            if (_isJVAlmacisUser) ...[
-              // Use FutureBuilder to fetch username for Assigned To
-              if (workOrder.assignedTo.isNotEmpty)
-                FutureBuilder<String>(
-                  future: _getUsernameFromCollection(workOrder.assignedTo),
-                  builder: (context, snapshot) {
-                    final displayName = snapshot.data ?? (workOrder.assignedToEmail.isNotEmpty ? workOrder.assignedToEmail : 'Loading...');
-                    return _buildDetailRow('Assigned To', displayName, fontSize, isMobile);
-                  },
-                ),
-              if (workOrder.assignedTo.isEmpty)
-                _buildDetailRow('Assigned To', 'Unassigned', fontSize, isMobile),
-              // Use FutureBuilder to fetch username for Created By
-              FutureBuilder<String>(
-                future: _getUsernameFromCollection(workOrder.createdBy),
-                builder: (context, snapshot) {
-                  final displayName = snapshot.data ?? (workOrder.createdByEmail.isNotEmpty ? workOrder.createdByEmail : 'Loading...');
-                  return _buildDetailRow('Created By', displayName, fontSize, isMobile);
-                },
               ),
             ],
-                      
-            // Use FutureBuilder to fetch request title for Related Request (without ID)
-            if (workOrder.requestId != null)
-              FutureBuilder<String>(
-                future: _getRequestTitleFromId(workOrder.requestId!),
-                builder: (context, snapshot) {
-                  final displayTitle = snapshot.data ?? 'Loading request...';
-                  return _buildDetailRow('Related Request', displayTitle, fontSize, isMobile);
-                },
-              ),
-            if (workOrder.clientNotes.isNotEmpty)
-              _buildDetailRow('Client Notes', workOrder.clientNotes, fontSize, isMobile),
-            if (workOrder.attachments.isNotEmpty)
-              _buildAttachmentsSection(workOrder.attachments, fontSize),
-            if (workOrder.history.isNotEmpty)
-              _buildHistorySection(workOrder.history, fontSize),
-            const SizedBox(height: 12),
-            _buildActionButtons(workOrder, fontSize),
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  Widget _woMetaChip({required IconData icon, required String label, required Color color}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(label, style: GoogleFonts.poppins(fontSize: 11.5, color: color, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high': return AppColors.error;
+      case 'medium': return AppColors.warning;
+      case 'low': return AppColors.success;
+      default: return context.textSecondary;
+    }
   }
 
   Widget _buildDetailRow(String label, String value, double fontSize, bool isMobile) {
@@ -1495,7 +1577,7 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
                 '$label:',
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.w500,
-                  color: Colors.blueGrey[700],
+                  color: context.textSecondary,
                   fontSize: fontSize,
                 ),
               ),
@@ -1518,7 +1600,7 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
                   '$label:',
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w500,
-                    color: Colors.blueGrey[700],
+                    color: context.textSecondary,
                     fontSize: fontSize,
                   ),
                 ),
@@ -1547,7 +1629,7 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
             'Attachments:',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.w500,
-              color: Colors.blueGrey[700],
+              color: context.textSecondary,
               fontSize: fontSize,
             ),
           ),
@@ -1617,7 +1699,7 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
             'History:',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.w500,
-              color: Colors.blueGrey[700],
+              color: context.textSecondary,
               fontSize: fontSize,
             ),
           ),
@@ -1679,192 +1761,103 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
 
   Widget _buildActionButtons(WorkOrder workOrder, double fontSize) {
     if (_isAdminClient) {
-      // Admin client gets only approve and review buttons (removed decline)
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey[50],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      return _actionArea(
+        label: 'Client Actions',
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            Text(
-              'Client Actions:',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-                color: Colors.blueGrey[800],
-                fontSize: fontSize,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Current Status: ${workOrder.clientStatus}',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w500,
-                color: _getClientStatusColor(workOrder.clientStatus),
-                fontSize: fontSize - 1,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                // REORDERED: Review button first, then Approve button
-                _buildActionButton(
-                  workOrder,
-                   'To be Reviewed',
-                   Icons.rate_review,
-                   Colors.orange[700]!,
-                   fontSize,
-                  isCurrentStatus: workOrder.clientStatus == 'To be Reviewed',
-                ),
-                _buildActionButton(
-                  workOrder,
-                   'Approved',
-                   Icons.check_circle,
-                   Colors.green[700]!,
-                   fontSize,
-                  isCurrentStatus: workOrder.clientStatus == 'Approved',
-                ),
-              ],
-            ),
+            _buildActionButton(workOrder, 'To be Reviewed', Icons.rate_review_rounded, AppColors.warning, fontSize,
+                isCurrentStatus: workOrder.clientStatus == 'To be Reviewed'),
+            _buildActionButton(workOrder, 'Approved', Icons.check_circle_rounded, AppColors.success, fontSize,
+                isCurrentStatus: workOrder.clientStatus == 'Approved'),
           ],
         ),
       );
     } else if (_isJVAlmacisUser) {
-      // JV Almacis users can update work order status with enhanced colorful dialog
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey[50],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      return _actionArea(
+        label: 'Update Status',
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            Text(
-              'Work Order Actions:',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-                color: Colors.blueGrey[800],
-                fontSize: fontSize,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Current Status: ${workOrder.status}',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w500,
-                color: _getWorkOrderStatusColor(workOrder.status),
-                fontSize: fontSize - 1,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildWorkOrderStatusButton(
-                  workOrder,
-                   'Open',
-                   Icons.radio_button_unchecked,
-                   Colors.blue[700]!,
-                   fontSize,
-                  isCurrentStatus: workOrder.status == 'Open',
-                ),
-                _buildWorkOrderStatusButton(
-                  workOrder,
-                   'In Progress',
-                   Icons.hourglass_empty,
-                   Colors.orange[700]!,
-                   fontSize,
-                  isCurrentStatus: workOrder.status == 'In Progress',
-                ),
-                _buildWorkOrderStatusButton(
-                  workOrder,
-                   'Completed',
-                   Icons.check_circle,
-                   Colors.green[700]!,
-                   fontSize,
-                  isCurrentStatus: workOrder.status == 'Completed',
-                ),
-              ],
-            ),
+            _buildWorkOrderStatusButton(workOrder, 'Open', Icons.radio_button_unchecked_rounded, AppColors.primary, fontSize,
+                isCurrentStatus: workOrder.status == 'Open'),
+            _buildWorkOrderStatusButton(workOrder, 'In Progress', Icons.pending_rounded, AppColors.warning, fontSize,
+                isCurrentStatus: workOrder.status == 'In Progress'),
+            _buildWorkOrderStatusButton(workOrder, 'Completed', Icons.check_circle_rounded, AppColors.success, fontSize,
+                isCurrentStatus: workOrder.status == 'Completed'),
           ],
         ),
       );
     } else {
-      // Client technicians can only view
       return const SizedBox.shrink();
     }
   }
 
+  Widget _actionArea({required String label, required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: context.surfaceAltColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary, fontSize: 12.5)),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
   Widget _buildActionButton(
     WorkOrder workOrder,
-     String action,
-     IconData icon,
-     Color color,
-     double fontSize, {
+    String action,
+    IconData icon,
+    Color color,
+    double fontSize, {
     bool isCurrentStatus = false,
   }) {
-    return ElevatedButton.icon(
+    return OutlinedButton.icon(
       onPressed: isCurrentStatus ? null : () => _showEnhancedClientActionDialog(workOrder, action, fontSize),
-      icon: Icon(icon, size: 16, color: Colors.white),
+      icon: Icon(icon, size: 15, color: isCurrentStatus ? color.withValues(alpha: 0.5) : color),
       label: Text(
-        action == 'To be Reviewed' ? 'Review' : action == 'Approved' ? 'Approve' : action,
-        style: GoogleFonts.poppins(
-          fontSize: fontSize - 1,
-          color: Colors.white,
-          fontWeight: isCurrentStatus ? FontWeight.bold : FontWeight.normal,
-        ),
+        action == 'To be Reviewed' ? 'Mark Review' : action == 'Approved' ? 'Approve' : action,
+        style: GoogleFonts.poppins(fontSize: 12.5, color: isCurrentStatus ? color.withValues(alpha: 0.5) : color, fontWeight: FontWeight.w600),
       ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isCurrentStatus ? color.withValues(alpha: 0.5) : color,
-        elevation: isCurrentStatus ? 1 : 3,
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: isCurrentStatus ? color.withValues(alpha: 0.3) : color.withValues(alpha: 0.6), width: 1.5),
+        backgroundColor: isCurrentStatus ? color.withValues(alpha: 0.08) : Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: isCurrentStatus
-             ? BorderSide(color: color, width: 2)
-            : BorderSide.none,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
       ),
     );
   }
 
   Widget _buildWorkOrderStatusButton(
     WorkOrder workOrder,
-     String status,
-     IconData icon,
-     Color color,
-     double fontSize, {
+    String status,
+    IconData icon,
+    Color color,
+    double fontSize, {
     bool isCurrentStatus = false,
   }) {
-    return ElevatedButton.icon(
+    return OutlinedButton.icon(
       onPressed: isCurrentStatus ? null : () => _showEnhancedUpdateStatusDialog(workOrder, status, fontSize),
-      icon: Icon(icon, size: 16, color: Colors.white),
+      icon: Icon(icon, size: 15, color: isCurrentStatus ? color.withValues(alpha: 0.5) : color),
       label: Text(
         status,
-        style: GoogleFonts.poppins(
-          fontSize: fontSize - 1,
-          color: Colors.white,
-          fontWeight: isCurrentStatus ? FontWeight.bold : FontWeight.normal,
-        ),
+        style: GoogleFonts.poppins(fontSize: 12.5, color: isCurrentStatus ? color.withValues(alpha: 0.5) : color, fontWeight: FontWeight.w600),
       ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isCurrentStatus ? color.withValues(alpha: 0.5) : color,
-        elevation: isCurrentStatus ? 1 : 3,
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: isCurrentStatus ? color.withValues(alpha: 0.3) : color.withValues(alpha: 0.6), width: 1.5),
+        backgroundColor: isCurrentStatus ? color.withValues(alpha: 0.08) : Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: isCurrentStatus
-             ? BorderSide(color: color, width: 2)
-            : BorderSide.none,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
       ),
     );
   }
@@ -1988,22 +1981,26 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
                   labelText: 'Comments (Optional)',
                   hintText: 'Add your comments about this ${action.toLowerCase()} action...',
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: Colors.grey[400]!),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    borderSide: BorderSide(color: context.surfaceAltColor),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    borderSide: BorderSide(color: context.surfaceAltColor),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                     borderSide: BorderSide(
                       color: action == 'Approved' ? Colors.green : Colors.orange,
                       width: 2,
                     ),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
-                  labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+                  fillColor: context.surfaceColor,
+                  labelStyle: GoogleFonts.poppins(color: context.textSecondary),
                   prefixIcon: Icon(
                     Icons.comment,
-                    color: Colors.grey[600],
+                    color: context.textSecondary,
                   ),
                 ),
                 style: GoogleFonts.poppins(fontSize: fontSize),
@@ -2099,11 +2096,7 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
         title: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.blueGrey[700]!, Colors.blueGrey[500]!],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            gradient: AppColors.primaryGradient,
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(16),
               topRight: Radius.circular(16),
@@ -2198,16 +2191,20 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
                   labelText: 'Notes (Optional)',
                   hintText: 'Add notes about this status update...',
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: Colors.grey[400]!),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    borderSide: BorderSide(color: context.surfaceAltColor),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    borderSide: BorderSide(color: context.surfaceAltColor),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: Colors.blueGrey[700]!, width: 2),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    borderSide: BorderSide(color: AppColors.primary, width: 2),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
-                  labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+                  fillColor: context.surfaceColor,
+                  labelStyle: GoogleFonts.poppins(color: context.textSecondary),
                   prefixIcon: Icon(
                     Icons.note_add,
                     color: Colors.grey[600],
@@ -2340,179 +2337,173 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
   Widget _buildWorkOrderForm(double padding, double fontSizeTitle, double fontSizeSubtitle) {
     final isMobile = MediaQuery.of(context).size.width <= 600;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.all(padding),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Create Work Order',
-                    style: GoogleFonts.poppins(
-                      fontSize: fontSizeTitle,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[900],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.blueGrey),
-                    onPressed: () => setState(() => _showForm = false),
-                  ),
-                ],
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: padding, vertical: 4),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [
+          BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Form header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: BoxDecoration(
+                color: context.surfaceColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+                border: Border(bottom: BorderSide(color: context.surfaceAltColor)),
               ),
-              const SizedBox(height: 16),
-              isMobile
-                  ? Column(
-                      children: [
-                        _buildRequestField(fontSizeSubtitle),
-                        const SizedBox(height: 16),
-                        _buildEquipmentField(fontSizeSubtitle),
-                        const SizedBox(height: 16),
-                        _buildTextField(_titleController, 'Title', fontSizeSubtitle, validator: (value) => value!.isEmpty ? 'Enter a title' : null),
-                        const SizedBox(height: 16),
-                        _buildTextField(_descriptionController, 'Description', fontSizeSubtitle, maxLines: 3),
-                        const SizedBox(height: 16),
-                        _buildTechnicianField(fontSizeSubtitle),
-                        const SizedBox(height: 16),
-                        _buildDropdown('Priority', _priority, ['Low', 'Medium', 'High'], (value) => setState(() => _priority = value!), fontSizeSubtitle),
-                        const SizedBox(height: 16),
-                        _buildTextField(_notesController, 'Notes', fontSizeSubtitle, maxLines: 2),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(child: _buildRequestField(fontSizeSubtitle)),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildTextField(_titleController, 'Title', fontSizeSubtitle, validator: (value) => value!.isEmpty ? 'Enter a title' : null)),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        _buildEquipmentField(fontSizeSubtitle),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(child: _buildTextField(_descriptionController, 'Description', fontSizeSubtitle, maxLines: 3)),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildTechnicianField(fontSizeSubtitle)),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(child: _buildDropdown('Priority', _priority, ['Low', 'Medium', 'High'], (value) => setState(() => _priority = value!), fontSizeSubtitle)),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildTextField(_notesController, 'Notes', fontSizeSubtitle, maxLines: 2)),
-                          ],
-                        ),
-                      ],
-                    ),
-              const SizedBox(height: 16),
-              // Separate buttons for image and document attachments
-              Row(
+              child: Row(
                 children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _uploadImageAttachment,
-                      icon: const Icon(Icons.image, color: Colors.white),
-                      label: Text('Add Image', style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSizeSubtitle)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[600],
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 4,
-                      ),
-                    ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: context.surfaceAltColor, borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    child: Icon(Icons.work_history_rounded, color: AppColors.primary, size: 20),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _uploadDocumentAttachment,
-                      icon: const Icon(Icons.attach_file, color: Colors.white),
-                      label: Text('Add Document', style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSizeSubtitle)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey[600],
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 4,
-                      ),
-                    ),
+                    child: Text('New Work Order', style: GoogleFonts.poppins(fontSize: fontSizeTitle, fontWeight: FontWeight.w700, color: context.textPrimary)),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: context.textSecondary),
+                    onPressed: () => setState(() => _showForm = false),
+                    tooltip: 'Close',
                   ),
                 ],
               ),
-              if (_attachmentUrls.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  children: _attachmentUrls
-                      .map((attachment) => Chip(
-                            avatar: Icon(
-                              _getFileIcon(attachment['name']!),
-                              size: 16,
-                              color: _getFileIconColor(attachment['name']!),
-                            ),
-                            label: Text(attachment['name']!, style: GoogleFonts.poppins(fontSize: fontSizeSubtitle - 2)),
-                            backgroundColor: Colors.blue[50],
-                            onDeleted: () {
-                              setState(() {
-                                _attachmentUrls.remove(attachment);
-                              });
-                            },
-                          ))
-                      .toList(),
-                ),
-              ],
-              const SizedBox(height: 24),
-              Row(
+            ),
+            Padding(
+              padding: EdgeInsets.all(padding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => setState(() => _showForm = false),
-                      child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontSize: fontSizeSubtitle)),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _addWorkOrder,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey[800],
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 4,
+                  if (isMobile) ...[
+                    _buildRequestField(fontSizeSubtitle),
+                    const SizedBox(height: 14),
+                    _buildEquipmentField(fontSizeSubtitle),
+                    const SizedBox(height: 14),
+                    _buildTextField(_titleController, 'Title', fontSizeSubtitle, validator: (v) => v!.isEmpty ? 'Enter a title' : null),
+                    const SizedBox(height: 14),
+                    _buildTextField(_descriptionController, 'Description', fontSizeSubtitle, maxLines: 3),
+                    const SizedBox(height: 14),
+                    _buildTechnicianField(fontSizeSubtitle),
+                    const SizedBox(height: 14),
+                    _buildDropdown('Priority', _priority, ['Low', 'Medium', 'High'], (v) => setState(() => _priority = v!), fontSizeSubtitle),
+                    const SizedBox(height: 14),
+                    _buildTextField(_notesController, 'Notes', fontSizeSubtitle, maxLines: 2),
+                  ] else ...[
+                    Row(children: [
+                      Expanded(child: _buildRequestField(fontSizeSubtitle)),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildTextField(_titleController, 'Title', fontSizeSubtitle, validator: (v) => v!.isEmpty ? 'Enter a title' : null)),
+                    ]),
+                    const SizedBox(height: 14),
+                    _buildEquipmentField(fontSizeSubtitle),
+                    const SizedBox(height: 14),
+                    Row(children: [
+                      Expanded(child: _buildTextField(_descriptionController, 'Description', fontSizeSubtitle, maxLines: 3)),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildTechnicianField(fontSizeSubtitle)),
+                    ]),
+                    const SizedBox(height: 14),
+                    Row(children: [
+                      Expanded(child: _buildDropdown('Priority', _priority, ['Low', 'Medium', 'High'], (v) => setState(() => _priority = v!), fontSizeSubtitle)),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildTextField(_notesController, 'Notes', fontSizeSubtitle, maxLines: 2)),
+                    ]),
+                  ],
+                  const SizedBox(height: 16),
+                  // Attachment buttons
+                  Row(children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _uploadImageAttachment,
+                        icon: Icon(Icons.image_rounded, size: 16, color: AppColors.success),
+                        label: Text('Add Image', style: GoogleFonts.poppins(fontSize: fontSizeSubtitle, color: AppColors.success, fontWeight: FontWeight.w600)),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: AppColors.success.withValues(alpha: 0.5)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                        ),
                       ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              'Create Work Order',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: fontSizeSubtitle,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _uploadDocumentAttachment,
+                        icon: Icon(Icons.attach_file_rounded, size: 16, color: AppColors.primary),
+                        label: Text('Add Document', style: GoogleFonts.poppins(fontSize: fontSizeSubtitle, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                        ),
+                      ),
+                    ),
+                  ]),
+                  if (_attachmentUrls.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: _attachmentUrls
+                          .map((att) => Chip(
+                                avatar: Icon(_getFileIcon(att['name']!), size: 14, color: _getFileIconColor(att['name']!)),
+                                label: Text(att['name']!, style: GoogleFonts.poppins(fontSize: fontSizeSubtitle - 2)),
+                                                                side: BorderSide(color: context.surfaceAltColor),
+                                onDeleted: () => setState(() => _attachmentUrls.remove(att)),
+                              ))
+                          .toList(),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  // Footer buttons
+                  Row(children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => setState(() => _showForm = false),
+                        child: Text('Cancel', style: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSizeSubtitle, fontWeight: FontWeight.w500)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                          boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 3))],
+                        ),
+                        child: ElevatedButton.icon(
+                          onPressed: _isSubmitting ? null : _addWorkOrder,
+                          icon: _isSubmitting
+                              ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.check_rounded, size: 18, color: Colors.white),
+                          label: Text(
+                            _isSubmitting ? 'Creating…' : 'Create Work Order',
+                            style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSizeSubtitle, fontWeight: FontWeight.w600),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -2529,36 +2520,34 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
 
   Widget _buildRequestField(double fontSize) {
     return TextFormField(
-      controller: TextEditingController(text: _selectedRequestId != null ? "Selected Request" : ""),
+      controller: TextEditingController(text: _selectedRequestId != null ? 'Selected Request' : ''),
       decoration: InputDecoration(
         labelText: 'Related Request (Optional)',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[400]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
         filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
         hintText: 'Tap to select from open requests',
-        hintStyle: GoogleFonts.poppins(color: Colors.grey),
+        hintStyle: GoogleFonts.poppins(color: context.textSecondary),
         suffixIcon: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_selectedRequestId != null)
               IconButton(
-                icon: Icon(Icons.visibility, color: Colors.blue[600]),
+                icon: Icon(Icons.visibility_rounded, color: AppColors.primary, size: 18),
                 onPressed: () => _showRequestDetails(_selectedRequestId!),
               ),
-            Icon(Icons.assignment, color: Colors.blueGrey[600]),
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Icon(Icons.assignment_rounded, color: context.textSecondary, size: 18),
+            ),
           ],
         ),
       ),
-      style: GoogleFonts.poppins(fontSize: fontSize),
+      style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
       readOnly: true,
       onTap: () => _showRequestSelectionDialog(fontSize),
     );
@@ -2726,15 +2715,19 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
       decoration: InputDecoration(
         labelText: 'Assign To (Optional)',
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[400]!),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: context.surfaceAltColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: context.surfaceAltColor),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: Colors.grey[100],
+        fillColor: context.surfaceColor,
         contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
         hintText: 'Select JV Almacis technician',
@@ -2886,20 +2879,16 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
       controller: controller,
       decoration: InputDecoration(
         labelText: labelText,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[400]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.error)),
         filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
       ),
-      style: GoogleFonts.poppins(fontSize: fontSize),
+      style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
       maxLines: maxLines,
       validator: validator,
     );
@@ -2917,28 +2906,23 @@ class _WorkOrderScreenState extends ConsumerState<WorkOrderScreen> with TickerPr
       items: items
           .map((item) => DropdownMenuItem(
                 value: item,
-                child: Text(item, style: GoogleFonts.poppins(color: Colors.blueGrey[900])),
+                child: Text(item, style: GoogleFonts.poppins(color: context.textPrimary)),
               ))
           .toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: labelText,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[400]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
         filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
       ),
-      style: GoogleFonts.poppins(color: Colors.blueGrey[900], fontSize: fontSize),
-      dropdownColor: Colors.white,
-      icon: Icon(Icons.arrow_drop_down, color: Colors.blueGrey[800]),
+      style: GoogleFonts.poppins(color: context.textPrimary, fontSize: fontSize),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 }
@@ -2959,7 +2943,7 @@ class ImageViewerScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(fileName, style: GoogleFonts.poppins(color: Colors.white)),
-        backgroundColor: Colors.blueGrey[800],
+        backgroundColor: AppColors.primary,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Center(

@@ -55,8 +55,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     );
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         title: Text('Notifications', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
         actions: [
@@ -200,7 +199,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     final selected = _filter == value;
     final displayLabel = count > 0 ? '$label ($count)' : label;
     return ChoiceChip(
-      label: Text(displayLabel, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : AppColors.textPrimary)),
+      label: Text(displayLabel, style: GoogleFonts.poppins(fontSize: 12.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : context.textPrimary)),
       selected: selected,
       onSelected: (_) => setState(() => _filter = value),
       selectedColor: AppColors.primary,
@@ -222,11 +221,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.notifications_off_rounded, size: 56, color: AppColors.textSecondary.withValues(alpha: 0.4)),
+                Icon(Icons.notifications_off_rounded, size: 56, color: context.textSecondary.withValues(alpha: 0.4)),
                 const SizedBox(height: 16),
                 Text(
                   hasItemsButFiltered ? 'No notifications match this filter' : 'No notifications',
-                  style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                  style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: context.textSecondary),
                 ),
                 if (hasItemsButFiltered) ...[
                   const SizedBox(height: 8),
@@ -340,7 +339,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(digest.title, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: digest.isRead ? FontWeight.w500 : FontWeight.w700, color: AppColors.textPrimary)),
+                      Text(digest.title, style: GoogleFonts.poppins(fontSize: 14.5, fontWeight: digest.isRead ? FontWeight.w500 : FontWeight.w700, color: context.textPrimary)),
                       const SizedBox(height: 3),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -348,9 +347,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         child: Text(digest.kind.label, style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w600, color: accent)),
                       ),
                       const SizedBox(height: 5),
-                      Text(digest.body, style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(digest.body, style: GoogleFonts.poppins(fontSize: 12.5, color: context.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 6),
-                      Text(DateFormat('MMM dd, yyyy · h:mm a').format(digest.createdAt), style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary.withValues(alpha: 0.8))),
+                      Text(DateFormat('MMM dd, yyyy · h:mm a').format(digest.createdAt), style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary.withValues(alpha: 0.8))),
                     ],
                   ),
                 ),

@@ -152,11 +152,11 @@ class _LocationPickerMapState extends State<LocationPickerMap> {
                 hintText: 'Search for an address...',
                 prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary),
                 filled: true,
-                fillColor: AppColors.card,
+                fillColor: context.cardColor,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppRadius.pill),
-                  borderSide: BorderSide(color: AppColors.textSecondary.withValues(alpha: 0.25)),
+                  borderSide: BorderSide(color: context.textSecondary.withValues(alpha: 0.25)),
                 ),
               ),
             ),
@@ -210,7 +210,7 @@ class _LocationPickerMapState extends State<LocationPickerMap> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, -4))],
       ),
       child: Row(
@@ -219,10 +219,10 @@ class _LocationPickerMapState extends State<LocationPickerMap> {
           const SizedBox(width: 10),
           Expanded(
             child: _resolving
-                ? Text('Resolving address...', style: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: 13))
+                ? Text('Resolving address...', style: GoogleFonts.poppins(color: context.textSecondary, fontSize: 13))
                 : Text(
                     _resolvedAddress ?? (_picked == null ? 'Tap the map or search to place a pin' : 'Location selected'),
-                    style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textPrimary),
+                    style: GoogleFonts.poppins(fontSize: 13.5, color: context.textPrimary),
                   ),
           ),
         ],
@@ -239,12 +239,12 @@ class _LocationPickerMapState extends State<LocationPickerMap> {
           AppCard(
             child: Row(
               children: [
-                const Icon(Icons.desktop_windows_rounded, color: AppColors.textSecondary),
+                Icon(Icons.desktop_windows_rounded, color: context.textSecondary),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'An interactive map isn\'t available on this platform. Search for an address to resolve its coordinates instead.',
-                    style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+                    style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
                   ),
                 ),
               ],
@@ -284,9 +284,9 @@ class _LocationPickerMapState extends State<LocationPickerMap> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Resolved location', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Text('Resolved location', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary)),
                   const SizedBox(height: 6),
-                  Text(_resolvedAddress ?? '${_picked!.latitude}, ${_picked!.longitude}', style: GoogleFonts.poppins(color: AppColors.textSecondary, fontSize: 13)),
+                  Text(_resolvedAddress ?? '${_picked!.latitude}, ${_picked!.longitude}', style: GoogleFonts.poppins(color: context.textSecondary, fontSize: 13)),
                 ],
               ),
             ),

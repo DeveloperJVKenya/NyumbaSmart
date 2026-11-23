@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:logger/logger.dart';
@@ -230,7 +230,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
         padding: const EdgeInsets.all(32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.auto_awesome_outlined, size: 64,
-              color: AppColors.textSecondary.withValues(alpha: 0.4)),
+              color: context.textSecondary.withValues(alpha: 0.4)),
           const SizedBox(height: 16),
           Text('No AI Analysis Yet',
               style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600)),
@@ -239,7 +239,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
             'If you have already imported a BIM model, tap below to run the AI analysis now.\n'
             'Otherwise, import a BIM model first from the BIM screen.',
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
+            style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary, height: 1.5),
           ),
           if (_canVerify) ...[
             const SizedBox(height: 24),
@@ -290,7 +290,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
             'personalised preventive maintenance schedules. This normally takes '
             '30 – 90 seconds depending on the number of assets.',
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary, height: 1.6),
+            style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary, height: 1.6),
           ),
           const SizedBox(height: 24),
           _stepIndicator(Icons.inventory_2_outlined, 'Reading equipment list from BIM data'),
@@ -299,7 +299,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
           _stepIndicator(Icons.checklist_outlined, 'Writing results to database'),
           const SizedBox(height: 8),
           Text('Do not close this screen.',
-              style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+              style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary)),
         ]),
       ),
     );
@@ -311,7 +311,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 16, color: AppColors.primary.withValues(alpha: 0.7)),
         const SizedBox(width: 8),
-        Text(label, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary)),
+        Text(label, style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary)),
       ]),
     );
   }
@@ -354,7 +354,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
                     ? 'All items are excluded from PM scheduling.'
                     : 'All items have been excluded. Toggle the filter above to view them.',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textSecondary),
+                style: GoogleFonts.poppins(fontSize: 13, color: context.textSecondary),
               ),
             ),
           )
@@ -444,7 +444,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
           }),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: AppColors.surfaceAlt,
+            color: context.surfaceAltColor,
             child: Row(children: [
               Container(
                 width: 28, height: 28,
@@ -463,13 +463,13 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
                 child: Text('${items.length}',
                     style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
               ),
               const SizedBox(width: 6),
-              Icon(isExpanded ? Icons.expand_less : Icons.expand_more, size: 20, color: AppColors.textSecondary),
+              Icon(isExpanded ? Icons.expand_less : Icons.expand_more, size: 20, color: context.textSecondary),
             ]),
           ),
         ),
@@ -489,7 +489,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
       final tableWidth = needsHScroll ? _tableMinWidth : box.maxWidth;
 
       final headerStyle = GoogleFonts.poppins(
-        fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary,
+        fontSize: 11, fontWeight: FontWeight.w600, color: context.textSecondary,
       );
 
       // Shared helper: a header cell with right separator + padding.
@@ -508,8 +508,8 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
           children: [
             // ── Header row ──────────────────────────────────────────────────
             Container(
-              decoration: const BoxDecoration(
-                color: AppColors.surfaceAlt,
+              decoration: BoxDecoration(
+                color: context.surfaceAltColor,
                 border: Border(
                   top: _colBorder,
                   bottom: BorderSide(color: Color(0xFFD1D5DB), width: 1),
@@ -534,9 +534,13 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
         ),
       );
 
-      return needsHScroll
+      // SelectionArea wraps the whole table so text is selectable without
+      // placing individual SelectableText widgets inside IntrinsicHeight rows,
+      // which triggers a window.dart layout assertion on Flutter web.
+      final scrollable = needsHScroll
           ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: table)
           : table;
+      return SelectionArea(child: scrollable);
     });
   }
 
@@ -550,13 +554,13 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
       fontSize: 12.5,
       fontWeight: FontWeight.w500,
       decoration: isExcluded ? TextDecoration.lineThrough : null,
-      color: isExcluded ? AppColors.textSecondary.withValues(alpha: 0.5) : null,
+      color: isExcluded ? context.textSecondary.withValues(alpha: 0.5) : null,
     );
     final subStyle = GoogleFonts.poppins(
       fontSize: 11.5,
       color: isExcluded
-          ? AppColors.textSecondary.withValues(alpha: 0.4)
-          : AppColors.textSecondary,
+          ? context.textSecondary.withValues(alpha: 0.4)
+          : context.textSecondary,
       decoration: isExcluded ? TextDecoration.lineThrough : null,
     );
 
@@ -616,7 +620,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
                   ),
                 ],
                 Expanded(
-                  child: SelectableText(
+                  child: Text(
                     item.typeName.isNotEmpty ? item.typeName : item.equipmentName,
                     style: textStyle,
                   ),
@@ -644,15 +648,15 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
               2,
             ),
             // Maintenance Interval
-            dCell(SelectableText(_frequencyLabel(item.frequencyMonths), style: subStyle), 2),
+            dCell(Text(_frequencyLabel(item.frequencyMonths), style: subStyle), 2),
             // Reason for Maintenance
             dCell(
-              SelectableText(item.reason, style: subStyle, maxLines: 3),
+              Text(item.reason, style: subStyle, maxLines: 3, overflow: TextOverflow.ellipsis),
               4,
             ),
             // Estimated Hours
             dCell(
-              SelectableText(
+              Text(
                 '${item.estimatedHours % 1 == 0 ? item.estimatedHours.toInt() : item.estimatedHours}h',
                 style: subStyle,
               ),
@@ -660,16 +664,17 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
             ),
             // Tools
             dCell(
-              SelectableText(
+              Text(
                 item.tools.isEmpty ? '—' : item.tools.join(', '),
                 style: subStyle,
                 maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
               2,
             ),
             if (_canVerify)
               PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, size: 18, color: AppColors.textSecondary),
+                icon: Icon(Icons.more_vert, size: 18, color: context.textSecondary),
                 tooltip: 'Actions',
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -758,7 +763,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
     final isPublished = meta?.publishedSowId != null;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         border: Border(top: BorderSide(color: AppColors.primary.withValues(alpha: 0.15))),
       ),
       child: SafeArea(
@@ -773,7 +778,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
               ),
             if (!isPublished)
               Expanded(child: Text('Review all items then publish to Scope of Work.',
-                  style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary))),
+                  style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary))),
             if (!isPublished)
               ElevatedButton.icon(
                 onPressed: _verifying ? null : _verifyAndPublish,
@@ -826,14 +831,23 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('AI values:  ${item.aiFrequencyMonths} months  •  ${item.aiReason}',
-                  style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+                  style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary)),
               const SizedBox(height: 14),
               Text('Category', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500)),
-              DropdownButton<String>(
+              DropdownButtonFormField<String>(
                 value: selectedCategory,
                 isExpanded: true,
-                isDense: true,
-                underline: Container(height: 1, color: Colors.grey.shade400),
+                dropdownColor: context.cardColor,
+                icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+                  filled: true,
+                  fillColor: context.surfaceColor,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
                 items: [..._categoryOrder.where((c) => c != 'Unknown'), 'Unknown'].map((c) =>
                     DropdownMenuItem(value: c, child: Text(c))).toList(),
                 onChanged: (v) => setState(() => selectedCategory = v ?? selectedCategory),
@@ -845,7 +859,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
                 Text('$freq', style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600)),
                 IconButton(icon: const Icon(Icons.add, size: 18), onPressed: freq < 60 ? () => setState(() => freq++) : null),
                 const SizedBox(width: 8),
-                Text(_frequencyLabel(freq), style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+                Text(_frequencyLabel(freq), style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary)),
               ]),
               const SizedBox(height: 10),
               Text('Est. Time (hours)', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500)),
@@ -931,6 +945,17 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
         title: Text('Assign Category', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
         content: DropdownButtonFormField<String>(
           hint: const Text('Select category'),
+          dropdownColor: context.cardColor,
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
+          decoration: InputDecoration(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+            filled: true,
+            fillColor: context.surfaceColor,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
           items: _categoryOrder.where((c) => c != 'Unknown').map((c) =>
               DropdownMenuItem(value: c, child: Text(c))).toList(),
           onChanged: (v) => picked = v,
@@ -1165,6 +1190,24 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
     await _triggerAnalysis();
   }
 
+  /// Batch-deletes all analysis item documents (everything except `_meta`).
+  /// Called before each analysis run to avoid stale rows from previous runs
+  /// accumulating alongside the new batch (the count=1920 anomaly).
+  Future<void> _clearAnalysisItems() async {
+    while (true) {
+      final snap = await _analysisRef
+          .where(FieldPath.documentId, isNotEqualTo: '_meta')
+          .limit(500)
+          .get();
+      if (snap.docs.isEmpty) break;
+      final batch = _db.batch();
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+  }
+
   Future<void> _triggerAnalysis() async {
     if (!mounted || _isTriggering) return;
     _log.i('triggerAnalysis: START facilityId=${widget.facilityId}');
@@ -1172,7 +1215,15 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
     // 1. Show spinner immediately — don't wait for the stream to pick up 'running'.
     setState(() => _isTriggering = true);
 
-    // 2. Write 'running' to Firestore right now so the status banner appears
+    // 2. Delete all stale item documents before the Cloud Function writes new ones.
+    //    This prevents the stream from briefly showing old + new items (count anomaly).
+    try {
+      await _clearAnalysisItems();
+    } catch (e) {
+      _log.w('triggerAnalysis: could not clear existing items: $e');
+    }
+
+    // 3. Write 'running' to Firestore right now so the status banner appears
     //    on this device before the Cloud Function even starts writing.
     try {
       await _analysisRef.doc('_meta').set(
@@ -1183,7 +1234,7 @@ class _AiPmAnalysisScreenState extends State<AiPmAnalysisScreen> {
       _log.w('triggerAnalysis: could not pre-write status=running: $e');
     }
 
-    // 3. Fire the Cloud Function WITHOUT awaiting — the Firestore streams
+    // 4. Fire the Cloud Function WITHOUT awaiting — the Firestore streams
     //    drive all subsequent UI updates as items arrive in real-time.
     _log.i('triggerAnalysis: calling Cloud Function (fire-and-forget)');
     FirebaseFunctions.instance

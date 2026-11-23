@@ -1,5 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
@@ -269,9 +270,9 @@ class _ReportScreenState extends State<ReportScreen> {
       organization: '-',
       floatingActionButton: FloatingActionButton(
         onPressed: _refreshData,
-        backgroundColor: Colors.blueGrey[900],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        child: const Icon(Icons.refresh, color: Colors.white),
+        backgroundColor: AppColors.primary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+        child: const Icon(Icons.refresh_rounded, color: Colors.white),
       ),
       child: _buildBody(),
     );
@@ -289,30 +290,23 @@ class _ReportScreenState extends State<ReportScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Error loading data',
-              style: GoogleFonts.poppins(
-                fontSize: fontSizeTitle,
-                fontWeight: FontWeight.bold,
-                color: Colors.red[700],
-              ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppRadius.md)),
+              child: Icon(Icons.error_outline_rounded, size: 48, color: AppColors.error),
             ),
+            const SizedBox(height: 16),
+            Text('Error loading data', style: GoogleFonts.poppins(fontSize: fontSizeTitle, fontWeight: FontWeight.bold, color: AppColors.error)),
             const SizedBox(height: 8),
-            Text(
-              _lastError!,
-              style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
-              textAlign: TextAlign.center,
-            ),
+            Text(_lastError!, style: GoogleFonts.poppins(fontSize: fontSize, color: context.textSecondary), textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _refreshData,
-              icon: const Icon(Icons.refresh),
-              label: Text('Retry', style: GoogleFonts.poppins()),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueGrey[800],
-                foregroundColor: Colors.white,
+            DecoratedBox(
+              decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(AppRadius.sm)),
+              child: ElevatedButton.icon(
+                onPressed: _refreshData,
+                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+                label: Text('Retry', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm))),
               ),
             ),
           ],
@@ -346,33 +340,43 @@ class _ReportScreenState extends State<ReportScreen> {
   Widget _buildFilterSection(double padding, {required double fontSizeTitle, required double fontSize}) {
     final isMobile = MediaQuery.of(context).size.width <= 720;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Report Filters',
-                  style: GoogleFonts.poppins(
-                    fontSize: fontSizeTitle,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey[900],
+    return Container(
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      padding: EdgeInsets.all(padding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    child: const Icon(Icons.filter_list_rounded, color: Colors.white, size: 18),
                   ),
+                  const SizedBox(width: 10),
+                  Text('Report Filters', style: GoogleFonts.poppins(fontSize: fontSizeTitle, fontWeight: FontWeight.bold, color: context.textPrimary)),
+                ],
+              ),
+              OutlinedButton.icon(
+                onPressed: _clearFilters,
+                icon: Icon(Icons.clear_rounded, size: 15, color: context.textSecondary),
+                label: Text('Clear', style: GoogleFonts.poppins(fontSize: fontSize - 1, color: context.textSecondary)),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: context.surfaceAltColor),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 ),
-                TextButton.icon(
-                  onPressed: _clearFilters,
-                  icon: const Icon(Icons.clear, size: 16, color: Colors.blueGrey),
-                  label: Text('Clear Filters', style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey)),
-                  style: TextButton.styleFrom(foregroundColor: Colors.blueGrey[700]),
-                ),
-              ],
-            ),
+              ),
+            ],
+          ),
             const SizedBox(height: 12),
             isMobile
                 ? Wrap(
@@ -459,7 +463,6 @@ class _ReportScreenState extends State<ReportScreen> {
                   ),
           ],
         ),
-      ),
     );
   }
 
@@ -470,24 +473,23 @@ class _ReportScreenState extends State<ReportScreen> {
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
         filled: true,
-        fillColor: Colors.grey[50],
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: context.textSecondary),
       ),
-      style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey[900], fontWeight: FontWeight.w500),
-      dropdownColor: Colors.white,
-      icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+      style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary, fontWeight: FontWeight.w500),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
   Widget _buildDateButton(String label, DateTime? date, double fontSize, bool isStart) {
-    return ElevatedButton.icon(
+    final bool hasDate = date != null;
+    return OutlinedButton.icon(
       onPressed: () async {
         final picked = await showDatePicker(
           context: context,
@@ -515,17 +517,16 @@ class _ReportScreenState extends State<ReportScreen> {
           _initializeDataStream();
         }
       },
-      icon: const Icon(Icons.calendar_today, size: 16, color: Colors.blueGrey),
+      icon: Icon(Icons.calendar_today_rounded, size: 16, color: hasDate ? AppColors.primary : context.textSecondary),
       label: Text(
         date == null ? label : DateFormat.yMMMd().format(date),
-        style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey[900]),
+        style: GoogleFonts.poppins(fontSize: fontSize, color: hasDate ? AppColors.primary : context.textSecondary, fontWeight: hasDate ? FontWeight.w600 : FontWeight.normal),
       ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.grey[50],
-        foregroundColor: Colors.blueGrey[900],
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        side: const BorderSide(color: Colors.blueGrey),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: hasDate ? AppColors.primary : AppColors.surfaceAlt, width: hasDate ? 1.5 : 1),
+        backgroundColor: hasDate ? AppColors.primary.withValues(alpha: 0.06) : AppColors.surface,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
       ),
     );
   }
@@ -545,42 +546,22 @@ class _ReportScreenState extends State<ReportScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: padding, vertical: padding / 2),
       decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.green[200]!),
+        color: AppColors.success.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.25)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.circle, color: Colors.green, size: 12),
+          Container(width: 8, height: 8, decoration: BoxDecoration(color: AppColors.success, shape: BoxShape.circle)),
           const SizedBox(width: 8),
-          Text(
-            'Live Data - $itemCount items found',
-            style: GoogleFonts.poppins(
-              fontSize: fontSize,
-              color: Colors.green[700],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          Text('Live — $itemCount items found', style: GoogleFonts.poppins(fontSize: fontSize, color: AppColors.success, fontWeight: FontWeight.w500)),
           const Spacer(),
           if (_isGenerating)
             Row(
               children: [
-                SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.green[700],
-                  ),
-                ),
+                SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.success)),
                 const SizedBox(width: 8),
-                Text(
-                  'Generating...',
-                  style: GoogleFonts.poppins(
-                    fontSize: fontSize,
-                    color: Colors.green[700],
-                  ),
-                ),
+                Text('Generating...', style: GoogleFonts.poppins(fontSize: fontSize, color: AppColors.success)),
               ],
             ),
         ],
@@ -591,36 +572,41 @@ class _ReportScreenState extends State<ReportScreen> {
   Widget _buildSummarySection(Map<String, dynamic> report, {required double fontSize, required double padding}) {
     final summary = report['summary'] as Map<String, dynamic>;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Report Summary',
-              style: GoogleFonts.poppins(
-                fontSize: fontSize + 2,
-                fontWeight: FontWeight.bold,
-                color: Colors.blueGrey[900],
+    return Container(
+      padding: EdgeInsets.all(padding),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppRadius.sm)),
+                child: Icon(Icons.summarize_rounded, color: AppColors.primary, size: fontSize + 2),
               ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildStatChip('Total Items', '${report['totalItems']}', Colors.blue, fontSize: fontSize),
-                if (summary['totalValue'] != null && summary['totalValue'] > 0)
-                  _buildStatChip('Total Value', '\$${summary['totalValue'].toStringAsFixed(2)}', Colors.green, fontSize: fontSize),
-                if (summary['totalQuantity'] != null && summary['totalQuantity'] > 0)
-                  _buildStatChip('Total Quantity', '${summary['totalQuantity']}', Colors.orange, fontSize: fontSize),
-              ],
-            ),
-          ],
-        ),
+              const SizedBox(width: 10),
+              Text('Report Summary', style: GoogleFonts.poppins(fontSize: fontSize + 2, fontWeight: FontWeight.bold, color: context.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildStatChip('Total Items', '${report['totalItems']}', AppColors.primary, fontSize: fontSize),
+              if (summary['totalValue'] != null && summary['totalValue'] > 0)
+                _buildStatChip('Total Value', '\$${summary['totalValue'].toStringAsFixed(2)}', AppColors.success, fontSize: fontSize),
+              if (summary['totalQuantity'] != null && summary['totalQuantity'] > 0)
+                _buildStatChip('Total Qty', '${summary['totalQuantity']}', AppColors.warning, fontSize: fontSize),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -661,24 +647,26 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Widget _buildDataList({required double fontSize, required double padding}) {
     if (_currentData.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.description_outlined,
-              size: 48,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'No data found for current filters',
-              style: GoogleFonts.poppins(
-                fontSize: fontSize,
-                color: Colors.grey[600],
+      return Container(
+        padding: const EdgeInsets.all(40),
+        decoration: BoxDecoration(
+          color: context.surfaceColor,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: context.surfaceAltColor),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(AppRadius.md)),
+                child: Icon(Icons.description_outlined, size: 40, color: AppColors.primary.withValues(alpha: 0.5)),
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              Text('No data found for current filters', style: GoogleFonts.poppins(fontSize: fontSize, color: context.textSecondary, fontWeight: FontWeight.w500)),
+            ],
+          ),
         ),
       );
     }
@@ -705,62 +693,65 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Widget _buildDataCard(Map<String, dynamic> item, int index, {required double fontSize, required double padding}) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.symmetric(vertical: padding / 4),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
+    final statusColor = _getStatusColor(item['status'] ?? 'Unknown');
+    final priority = item['priority'] as String?;
+    final priorityColor = priority == 'High' ? AppColors.error : priority == 'Medium' ? AppColors.warning : AppColors.success;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: IntrinsicHeight(
         child: Row(
           children: [
-            CircleAvatar(
-              backgroundColor: _getStatusColor(item['status'] ?? 'Unknown'),
-              radius: 16,
-              child: Text(
-                '${index + 1}',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: fontSize - 2,
+            Container(width: 5, color: statusColor),
+            Expanded(
+              child: Container(
+                margin: EdgeInsets.symmetric(vertical: padding / 4),
+                decoration: BoxDecoration(
+                  color: context.surfaceColor,
+                  borderRadius: const BorderRadius.only(topRight: Radius.circular(AppRadius.sm), bottomRight: Radius.circular(AppRadius.sm)),
+                  border: Border(
+                    top: BorderSide(color: context.surfaceAltColor),
+                    right: BorderSide(color: context.surfaceAltColor),
+                    bottom: BorderSide(color: context.surfaceAltColor),
+                  ),
+                ),
+                padding: EdgeInsets.all(padding),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: statusColor.withValues(alpha: 0.15),
+                      radius: 15,
+                      child: Text('${index + 1}', style: GoogleFonts.poppins(color: statusColor, fontWeight: FontWeight.bold, fontSize: fontSize - 2)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item['title'] ?? item['name'] ?? 'Item ${index + 1}',
+                            style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: fontSize, color: context.textPrimary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              _buildMiniChip(item['status'] ?? 'N/A', statusColor),
+                              if (priority != null) _buildMiniChip(priority, priorityColor),
+                              if (item['createdAt'] != null)
+                                _buildMiniChip(DateFormat.yMMMd().format((item['createdAt'] as Timestamp).toDate()), context.textSecondary),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: context.textSecondary.withValues(alpha: 0.5), size: 20),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item['title'] ?? item['name'] ?? 'Item ${index + 1}',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      fontSize: fontSize,
-                      color: Colors.blueGrey[900],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Status: ${item['status'] ?? 'N/A'}',
-                    style: GoogleFonts.poppins(fontSize: fontSize - 2, color: Colors.grey[600]),
-                  ),
-                  if (item['priority'] != null)
-                    Text(
-                      'Priority: ${item['priority']}',
-                      style: GoogleFonts.poppins(fontSize: fontSize - 2, color: Colors.grey[600]),
-                    ),
-                  Text(
-                    'Created: ${item['createdAt'] != null ? DateFormat.yMMMd().format((item['createdAt'] as Timestamp).toDate()) : 'N/A'}',
-                    style: GoogleFonts.poppins(fontSize: fontSize - 2, color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right,
-              color: Colors.grey[400],
-              size: 20,
             ),
           ],
         ),
@@ -768,16 +759,27 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
+  Widget _buildMiniChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(label, style: GoogleFonts.poppins(fontSize: 10, color: color, fontWeight: FontWeight.w500)),
+    );
+  }
+
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'open':
-        return Colors.blue.shade600;
+        return AppColors.primary;
       case 'in progress':
-        return Colors.orange.shade600;
+        return AppColors.warning;
       case 'closed':
-        return Colors.green.shade600;
+        return AppColors.success;
       default:
-        return Colors.grey.shade600;
+        return context.textSecondary;
     }
   }
 }

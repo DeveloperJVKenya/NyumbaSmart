@@ -78,7 +78,7 @@ class BrandFonts {
   static TextStyle body({
     double fontSize = 14,
     FontWeight fontWeight = FontWeight.w400,
-    Color color = AppColors.textPrimary,
+    Color? color,
     double height = 1.5,
     double letterSpacing = 0,
   }) =>
@@ -275,7 +275,7 @@ class _BrandCtaState extends State<BrandCta> {
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null && !widget.loading;
-    final fg = widget.primary ? AppColors.textPrimary : (widget.onDark ? Colors.white : AppColors.primary);
+    final fg = widget.primary ? context.textPrimary : (widget.onDark ? Colors.white : AppColors.primary);
     final content = Row(
       mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -515,8 +515,8 @@ class BrandSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = onDark ? Colors.white : AppColors.textPrimary;
-    final muted = onDark ? Colors.white.withValues(alpha: 0.6) : AppColors.textSecondary;
+    final fg = onDark ? Colors.white : context.textPrimary;
+    final muted = onDark ? Colors.white.withValues(alpha: 0.6) : context.textSecondary;
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: controller,
       builder: (context, value, _) => TextField(
@@ -630,7 +630,7 @@ class BrandStepper extends StatelessWidget {
               color: active ? AppColors.accent : (done ? AppColors.primaryLight : Colors.white.withValues(alpha: 0.08)),
               border: Border.all(color: active ? AppColors.accentLight : Colors.white.withValues(alpha: 0.25)),
             ),
-            child: Icon(done ? Icons.check_rounded : steps[i].icon, size: 14, color: active ? AppColors.textPrimary : Colors.white),
+            child: Icon(done ? Icons.check_rounded : steps[i].icon, size: 14, color: active ? context.textPrimary : Colors.white),
           ),
           if (!compact || active) ...[
             const SizedBox(width: 8),
@@ -674,10 +674,10 @@ class BrandSectionHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: BrandFonts.display(fontSize: 19, color: AppColors.textPrimary, letterSpacing: -0.3)),
+              Text(title, style: BrandFonts.display(fontSize: 19, color: context.textPrimary, letterSpacing: -0.3)),
               if (subtitle != null) ...[
                 const SizedBox(height: 2),
-                Text(subtitle!, style: BrandFonts.body(fontSize: 12.5, color: AppColors.textSecondary)),
+                Text(subtitle!, style: BrandFonts.body(fontSize: 12.5, color: context.textSecondary)),
               ],
             ],
           ),

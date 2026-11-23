@@ -38,8 +38,7 @@ class _AddCustomNotificationScreenState extends ConsumerState<AddCustomNotificat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         title: Text('New Notification', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
       ),
@@ -65,7 +64,7 @@ class _AddCustomNotificationScreenState extends ConsumerState<AddCustomNotificat
                   TextFormField(
                     controller: _bodyController,
                     maxLines: 4,
-                    style: GoogleFonts.poppins(color: AppColors.textPrimary),
+                    style: GoogleFonts.poppins(color: context.textPrimary),
                     decoration: const InputDecoration(labelText: 'Message', prefixIcon: Icon(Icons.notes_rounded, color: AppColors.primary)),
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Message is required' : null,
                   ),
@@ -108,17 +107,17 @@ class _AddCustomNotificationScreenState extends ConsumerState<AddCustomNotificat
   Widget _prioritySelector() {
     return Row(
       children: [
-        Text('Priority', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+        Text('Priority', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary)),
         const SizedBox(width: 16),
         ChoiceChip(
-          label: Text('Normal', style: GoogleFonts.poppins(fontSize: 12.5, color: _priority == 'normal' ? Colors.white : AppColors.textPrimary)),
+          label: Text('Normal', style: GoogleFonts.poppins(fontSize: 12.5, color: _priority == 'normal' ? Colors.white : context.textPrimary)),
           selected: _priority == 'normal',
           onSelected: (_) => setState(() => _priority = 'normal'),
           selectedColor: AppColors.primary,
         ),
         const SizedBox(width: 8),
         ChoiceChip(
-          label: Text('Urgent', style: GoogleFonts.poppins(fontSize: 12.5, color: _priority == 'urgent' ? Colors.white : AppColors.textPrimary)),
+          label: Text('Urgent', style: GoogleFonts.poppins(fontSize: 12.5, color: _priority == 'urgent' ? Colors.white : context.textPrimary)),
           selected: _priority == 'urgent',
           onSelected: (_) => setState(() => _priority = 'urgent'),
           selectedColor: AppColors.error,

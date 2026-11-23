@@ -35,8 +35,7 @@ class _TestNotificationScreenState extends ConsumerState<TestNotificationScreen>
     );
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         title: Text('Test Notification', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
         actions: [
@@ -54,7 +53,7 @@ class _TestNotificationScreenState extends ConsumerState<TestNotificationScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.surfaceAlt,
+              color: context.surfaceAltColor,
               borderRadius: BorderRadius.circular(AppRadius.md),
               border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
             ),
@@ -69,7 +68,7 @@ class _TestNotificationScreenState extends ConsumerState<TestNotificationScreen>
                     'Cloud Function delivery path as real maintenance notifications. On web, keep '
                     'this tab in the background (switch tabs) to see the OS-level push — a '
                     'foregrounded tab shows it as an in-app banner and in Notifications instead.',
-                    style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textPrimary),
+                    style: GoogleFonts.poppins(fontSize: 13, color: context.textPrimary),
                   ),
                 ),
               ],
@@ -100,7 +99,7 @@ class _TestNotificationScreenState extends ConsumerState<TestNotificationScreen>
           ],
           if (_lastRecipients != null) ...[
             const SizedBox(height: AppSpacing.md),
-            Text('Recipients', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            Text('Recipients', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: context.textPrimary)),
             const SizedBox(height: AppSpacing.sm),
             ..._lastRecipients!.map(_recipientTile),
           ],
@@ -123,7 +122,7 @@ class _TestNotificationScreenState extends ConsumerState<TestNotificationScreen>
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.sm),
         border: Border.all(color: (r.success ? AppColors.success : AppColors.error).withValues(alpha: 0.25)),
       ),
@@ -135,14 +134,14 @@ class _TestNotificationScreenState extends ConsumerState<TestNotificationScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(r.userName, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                Text(r.userName, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: context.textPrimary)),
                 if (!r.success && r.error != null)
                   Text(r.error!, style: GoogleFonts.poppins(fontSize: 11.5, color: AppColors.error)),
               ],
             ),
           ),
           if (r.platform != null)
-            Text(r.platform!, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
+            Text(r.platform!, style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary)),
         ],
       ),
     );

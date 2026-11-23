@@ -121,15 +121,17 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Enter your email address and we\'ll send you a reset link.',
-                style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textSecondary)),
+                style: GoogleFonts.poppins(
+                    fontSize: 13.5,
+                    color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.6))),
             const SizedBox(height: 16),
             TextField(
               controller: ctrl,
               keyboardType: TextInputType.emailAddress,
               decoration: InputDecoration(
                 labelText: 'Email address',
-                prefixIcon: const Icon(Icons.email_outlined),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                prefixIcon: Icon(Icons.email_outlined,
+                    color: Theme.of(ctx).colorScheme.primary),
               ),
             ),
           ],
@@ -236,13 +238,16 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
                           'Welcome Back',
                           style: GoogleFonts.plusJakartaSans(
                               fontSize: 26, fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary, letterSpacing: -0.5),
+                              color: Theme.of(context).colorScheme.onSurface,
+                              letterSpacing: -0.5),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 5),
                         Text(
                           'Sign in to NyumbaSmart CMMS',
-                          style: GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textSecondary),
+                          style: GoogleFonts.poppins(
+                              fontSize: 13.5,
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 30),
@@ -273,7 +278,7 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                              color: AppColors.textSecondary,
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                             ),
                             onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                           ),
@@ -312,7 +317,8 @@ class LoginScreenState extends ConsumerState<LoginScreen> {
                           children: [
                             Text("Don't have an account?",
                                 style: GoogleFonts.poppins(
-                                    fontSize: 13, color: AppColors.textSecondary)),
+                                    fontSize: 13,
+                                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6))),
                             TextButton(
                               onPressed: () => Navigator.push(context,
                                   MaterialPageRoute(builder: (_) => const RegistrationScreen())),

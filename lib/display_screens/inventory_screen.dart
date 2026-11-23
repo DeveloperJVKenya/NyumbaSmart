@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cmms/models/inventory.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
+import 'package:cmms/theme/app_theme.dart';
 
 class InventoryScreen extends StatefulWidget {
   final String facilityId;
@@ -172,13 +173,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
       organization: '-',
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => setState(() => _showForm = !_showForm),
-        backgroundColor: Colors.blueGrey[800],
-        icon: Icon(_showForm ? Icons.close : Icons.add, color: Colors.white),
+        backgroundColor: AppColors.primary,
+        icon: Icon(_showForm ? Icons.close_rounded : Icons.add_rounded, color: Colors.white),
         label: Text(
           _showForm ? 'Cancel' : 'New Item',
-          style: GoogleFonts.poppins(color: Colors.white),
+          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
       ),
       child: _buildBody(),
     );
@@ -204,9 +205,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
           Text(
             'Inventory List',
             style: GoogleFonts.poppins(
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w700,
               fontSize: fontSizeTitle,
-              color: Colors.blueGrey[900],
+              color: context.textPrimary,
             ),
           ),
           const SizedBox(height: 16),
@@ -278,134 +279,149 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Widget _buildFilterSection(double padding, double fontSize) {
     final isMobile = MediaQuery.of(context).size.width <= 600;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.all(padding),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
-        child: isMobile
-            ? Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  _buildFilterDropdown('Category', _categoryFilter, ['All', 'General', 'Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'Cleaning'], (value) => setState(() => _categoryFilter = value!), fontSize),
-                  _buildFilterDropdown('Stock', _stockFilter, ['All', 'Low Stock', 'In Stock', 'Out of Stock'], (value) => setState(() => _stockFilter = value!), fontSize),
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(child: _buildFilterDropdown('Category', _categoryFilter, ['All', 'General', 'Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'Cleaning'], (value) => setState(() => _categoryFilter = value!), fontSize)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildFilterDropdown('Stock', _stockFilter, ['All', 'Low Stock', 'In Stock', 'Out of Stock'], (value) => setState(() => _stockFilter = value!), fontSize)),
-                ],
-              ),
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: padding, vertical: 4),
+      padding: EdgeInsets.all(padding),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 3))],
       ),
+      child: isMobile
+          ? Wrap(spacing: 12, runSpacing: 12, children: [
+              _buildFilterDropdown('Category', _categoryFilter, ['All', 'General', 'Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'Cleaning'], (v) => setState(() => _categoryFilter = v!), fontSize),
+              _buildFilterDropdown('Stock', _stockFilter, ['All', 'Low Stock', 'In Stock', 'Out of Stock'], (v) => setState(() => _stockFilter = v!), fontSize),
+            ])
+          : Row(children: [
+              Expanded(child: _buildFilterDropdown('Category', _categoryFilter, ['All', 'General', 'Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'Cleaning'], (v) => setState(() => _categoryFilter = v!), fontSize)),
+              const SizedBox(width: 14),
+              Expanded(child: _buildFilterDropdown('Stock', _stockFilter, ['All', 'Low Stock', 'In Stock', 'Out of Stock'], (v) => setState(() => _stockFilter = v!), fontSize)),
+            ]),
     );
   }
 
   Widget _buildFilterDropdown(String label, String value, List<String> items, ValueChanged<String?> onChanged, double fontSize) {
     return DropdownButtonFormField<String>(
       initialValue: value,
-      items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize)))).toList(),
+      items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary)))).toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
         filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
       ),
-      style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
-      dropdownColor: Colors.white,
-      icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+      style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w500, fontSize: fontSize),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
   Widget _buildInventoryCard(InventoryItem item, bool isMobile, double fontSize) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    final stockColor = _getStockColor(item);
+    return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
-      color: item.isLowStock ? Colors.orange[50] : null,
-      child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: _getStockColor(item),
-          child: Icon(
-            _getStockIcon(item),
-            color: Colors.white,
-            size: 20,
-          ),
-        ),
-        title: Text(
-          item.itemName,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: Colors.blueGrey[900],
-            fontSize: fontSize,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Category: ${item.category} | Quantity: ${item.quantity}',
-              style: GoogleFonts.poppins(
-                fontSize: fontSize - 2,
-                color: Colors.grey[600],
-              ),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: item.isLowStock ? AppColors.warning.withValues(alpha: 0.4) : AppColors.surfaceAlt),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: Material(
+          color: Colors.transparent,
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: stockColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.sm)),
+              child: Icon(_getStockIcon(item), color: stockColor, size: 20),
             ),
-            if (item.isLowStock)
-              Text(
-                'LOW STOCK WARNING',
-                style: GoogleFonts.poppins(
-                  fontSize: fontSize - 3,
-                  color: Colors.orange[700],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-          ],
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            title: Row(
               children: [
-                _buildDetailRow('Reorder Point', '${item.reorderPoint}', fontSize),
-                _buildDetailRow('Location ID', item.locationId.isEmpty ? 'N/A' : item.locationId, fontSize),
-                _buildDetailRow('Created', item.createdAt != null ? DateFormat.yMMMd().format(item.createdAt!) : 'Unknown date', fontSize),
-                _buildDetailRow('Last Updated', item.lastUpdated != null ? DateFormat.yMMMd().format(item.lastUpdated!) : 'Never', fontSize),
-                if (item.notes.isNotEmpty) _buildDetailRow('Notes', item.notes, fontSize),
-                if (item.history.isNotEmpty) _buildHistorySection(item.history, fontSize),
-                const SizedBox(height: 12),
-                _buildActionButtons(item),
+                Expanded(
+                  child: Text(item.itemName, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: context.textPrimary, fontSize: fontSize)),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: stockColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                    border: Border.all(color: stockColor.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    'Qty: ${item.quantity}',
+                    style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.w700, color: stockColor),
+                  ),
+                ),
               ],
             ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Wrap(spacing: 10, children: [
+                _invChip(Icons.category_rounded, item.category, context.textSecondary),
+                if (item.isLowStock)
+                  _invChip(Icons.warning_amber_rounded, 'Low Stock', AppColors.warning),
+                if (item.quantity == 0)
+                  _invChip(Icons.remove_circle_rounded, 'Out of Stock', AppColors.error),
+              ]),
+            ),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Divider(color: context.surfaceAltColor, height: 16),
+                    _buildDetailRow('Reorder Point', '${item.reorderPoint}', fontSize),
+                    _buildDetailRow('Location', item.locationId.isEmpty ? 'N/A' : item.locationId, fontSize),
+                    _buildDetailRow('Created', item.createdAt != null ? DateFormat.yMMMd().format(item.createdAt!) : 'Unknown', fontSize),
+                    _buildDetailRow('Last Updated', item.lastUpdated != null ? DateFormat.yMMMd().format(item.lastUpdated!) : 'Never', fontSize),
+                    if (item.notes.isNotEmpty) _buildDetailRow('Notes', item.notes, fontSize),
+                    if (item.history.isNotEmpty) _buildHistorySection(item.history, fontSize),
+                    const SizedBox(height: 10),
+                    _buildActionButtons(item),
+                  ],
+                ),
+              ),
+            ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
 
+  Widget _invChip(IconData icon, String label, Color color) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: color),
+      const SizedBox(width: 3),
+      Text(label, style: GoogleFonts.poppins(fontSize: 11.5, color: color, fontWeight: FontWeight.w500)),
+    ]);
+  }
+
   Widget _buildDetailRow(String label, String value, double fontSize) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: const EdgeInsets.only(bottom: 6.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 100,
+            width: 110,
             child: Text(
               '$label:',
               style: GoogleFonts.poppins(
                 fontWeight: FontWeight.w500,
-                color: Colors.blueGrey[700],
+                color: context.textSecondary,
                 fontSize: fontSize - 2,
               ),
             ),
@@ -414,7 +430,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
             child: Text(
               value,
               style: GoogleFonts.poppins(
-                color: Colors.grey[800],
+                color: context.textPrimary,
                 fontSize: fontSize - 2,
               ),
             ),
@@ -434,7 +450,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
             'History:',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.w500,
-              color: Colors.blueGrey[700],
+              color: context.textSecondary,
               fontSize: fontSize - 2,
             ),
           ),
@@ -486,18 +502,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        TextButton.icon(
+        OutlinedButton.icon(
           onPressed: () => _showUpdateQuantityDialog(item),
-          icon: const Icon(Icons.edit, size: 16, color: Colors.blueGrey),
-          label: Text('Update Qty', style: GoogleFonts.poppins(color: Colors.blueGrey)),
-          style: TextButton.styleFrom(foregroundColor: Colors.blueGrey[700]),
+          icon: Icon(Icons.edit_rounded, size: 14, color: AppColors.primary),
+          label: Text('Update Qty', style: GoogleFonts.poppins(color: AppColors.primary, fontSize: 12.5, fontWeight: FontWeight.w600)),
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+          ),
         ),
         const SizedBox(width: 8),
-        TextButton.icon(
+        OutlinedButton.icon(
           onPressed: () => _showDeleteConfirmDialog(item),
-          icon: const Icon(Icons.delete, size: 16, color: Colors.red),
-          label: Text('Delete', style: GoogleFonts.poppins(color: Colors.red)),
-          style: TextButton.styleFrom(foregroundColor: Colors.red[700]),
+          icon: Icon(Icons.delete_rounded, size: 14, color: AppColors.error),
+          label: Text('Delete', style: GoogleFonts.poppins(color: AppColors.error, fontSize: 12.5, fontWeight: FontWeight.w600)),
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: AppColors.error.withValues(alpha: 0.5)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+          ),
         ),
       ],
     );
@@ -507,156 +531,124 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final isMobile = MediaQuery.of(context).size.width <= 600;
     final isTablet = MediaQuery.of(context).size.width > 600 && MediaQuery.of(context).size.width <= 900;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.all(padding),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: padding, vertical: 4),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: BoxDecoration(
+                color: context.surfaceColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+                border: Border(bottom: BorderSide(color: context.surfaceAltColor)),
+              ),
+              child: Row(
                 children: [
-                  Text(
-                    'Add New Inventory Item',
-                    style: GoogleFonts.poppins(
-                      fontSize: fontSizeTitle,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blueGrey[900],
-                    ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: context.surfaceAltColor, borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    child: Icon(Icons.inventory_2_rounded, color: AppColors.primary, size: 20),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.blueGrey),
-                    onPressed: () => setState(() => _showForm = false),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text('Add Inventory Item', style: GoogleFonts.poppins(fontSize: fontSizeTitle, fontWeight: FontWeight.w700, color: context.textPrimary))),
+                  IconButton(icon: Icon(Icons.close_rounded, color: context.textSecondary), onPressed: () => setState(() => _showForm = false)),
+                ],
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.all(padding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isMobile) ...[
+                    _buildTextField(_itemNameController, 'Item Name', fontSizeSubtitle, validator: (v) => v!.isEmpty ? 'Enter item name' : null),
+                    const SizedBox(height: 14),
+                    _buildTextField(_quantityController, 'Quantity', fontSizeSubtitle, keyboardType: TextInputType.number,
+                        validator: (v) { if (v!.isEmpty) return 'Enter quantity'; return int.tryParse(v) == null || int.parse(v) < 0 ? 'Enter valid quantity' : null; }),
+                    const SizedBox(height: 14),
+                    _buildTextField(_reorderPointController, 'Reorder Point (optional)', fontSizeSubtitle, keyboardType: TextInputType.number,
+                        validator: (v) { if (v!.isNotEmpty && (int.tryParse(v) == null || int.parse(v) < 0)) return 'Enter valid number'; return null; }),
+                    const SizedBox(height: 14),
+                    _buildCategoryDropdown(fontSizeSubtitle),
+                    const SizedBox(height: 14),
+                    _buildTextField(_locationController, 'Location (optional)', fontSizeSubtitle),
+                    const SizedBox(height: 14),
+                    _buildTextField(_notesController, 'Notes (optional)', fontSizeSubtitle, maxLines: 2),
+                  ] else if (isTablet) ...[
+                    Row(children: [
+                      Expanded(child: _buildTextField(_itemNameController, 'Item Name', fontSizeSubtitle, validator: (v) => v!.isEmpty ? 'Enter item name' : null)),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildTextField(_quantityController, 'Quantity', fontSizeSubtitle, keyboardType: TextInputType.number,
+                          validator: (v) { if (v!.isEmpty) return 'Enter quantity'; return int.tryParse(v) == null || int.parse(v) < 0 ? 'Enter valid quantity' : null; })),
+                    ]),
+                    const SizedBox(height: 14),
+                    Row(children: [
+                      Expanded(child: _buildTextField(_reorderPointController, 'Reorder Point (optional)', fontSizeSubtitle, keyboardType: TextInputType.number,
+                          validator: (v) { if (v!.isNotEmpty && (int.tryParse(v) == null || int.parse(v) < 0)) return 'Enter valid number'; return null; })),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildCategoryDropdown(fontSizeSubtitle)),
+                    ]),
+                    const SizedBox(height: 14),
+                    Row(children: [
+                      Expanded(child: _buildTextField(_locationController, 'Location (optional)', fontSizeSubtitle)),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildTextField(_notesController, 'Notes (optional)', fontSizeSubtitle, maxLines: 2)),
+                    ]),
+                  ] else ...[
+                    Row(children: [
+                      Expanded(child: _buildTextField(_itemNameController, 'Item Name', fontSizeSubtitle, validator: (v) => v!.isEmpty ? 'Enter item name' : null)),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildTextField(_quantityController, 'Quantity', fontSizeSubtitle, keyboardType: TextInputType.number,
+                          validator: (v) { if (v!.isEmpty) return 'Enter quantity'; return int.tryParse(v) == null || int.parse(v) < 0 ? 'Enter valid quantity' : null; })),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildTextField(_reorderPointController, 'Reorder Point (optional)', fontSizeSubtitle, keyboardType: TextInputType.number,
+                          validator: (v) { if (v!.isNotEmpty && (int.tryParse(v) == null || int.parse(v) < 0)) return 'Enter valid number'; return null; })),
+                    ]),
+                    const SizedBox(height: 14),
+                    Row(children: [
+                      Expanded(child: _buildCategoryDropdown(fontSizeSubtitle)),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildTextField(_locationController, 'Location (optional)', fontSizeSubtitle)),
+                      const SizedBox(width: 14),
+                      Expanded(child: _buildTextField(_notesController, 'Notes (optional)', fontSizeSubtitle, maxLines: 2)),
+                    ]),
+                  ],
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: AppColors.primaryGradient,
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 3))],
+                      ),
+                      child: ElevatedButton.icon(
+                        onPressed: _addItem,
+                        icon: const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                        label: Text('Add Inventory Item', style: GoogleFonts.poppins(color: Colors.white, fontSize: fontSizeSubtitle, fontWeight: FontWeight.w600)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              isMobile
-                  ? Column(
-                      children: [
-                        _buildTextField(_itemNameController, 'Item Name', fontSizeSubtitle, validator: (value) => value!.isEmpty ? 'Enter item name' : null),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          _quantityController,
-                          'Quantity',
-                          fontSizeSubtitle,
-                          keyboardType: TextInputType.number,
-                          validator: (value) {
-                            if (value!.isEmpty) return 'Enter quantity';
-                            final qty = int.tryParse(value);
-                            if (qty == null || qty < 0) return 'Enter a valid non-negative quantity';
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          _reorderPointController,
-                          'Reorder Point (optional)',
-                          fontSizeSubtitle,
-                          keyboardType: TextInputType.number,
-                          validator: (value) {
-                            if (value!.isNotEmpty) {
-                              final point = int.tryParse(value);
-                              if (point == null || point < 0) return 'Enter a valid non-negative number';
-                            }
-                            return null;
-                          },
-                        ),
-                      ],
-                    )
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _buildTextField(_itemNameController, 'Item Name', fontSizeSubtitle, validator: (value) => value!.isEmpty ? 'Enter item name' : null),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(
-                            _quantityController,
-                            'Quantity',
-                            fontSizeSubtitle,
-                            keyboardType: TextInputType.number,
-                            validator: (value) {
-                              if (value!.isEmpty) return 'Enter quantity';
-                              final qty = int.tryParse(value);
-                              if (qty == null || qty < 0) return 'Enter a valid non-negative quantity';
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(
-                            _reorderPointController,
-                            'Reorder Point (optional)',
-                            fontSizeSubtitle,
-                            keyboardType: TextInputType.number,
-                            validator: (value) {
-                              if (value!.isNotEmpty) {
-                                final point = int.tryParse(value);
-                                if (point == null || point < 0) return 'Enter a valid non-negative number';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-              const SizedBox(height: 16),
-              isMobile || isTablet
-                  ? Column(
-                      children: [
-                        _buildCategoryDropdown(fontSizeSubtitle),
-                        const SizedBox(height: 16),
-                        _buildTextField(_locationController, 'Location ID (optional)', fontSizeSubtitle),
-                        const SizedBox(height: 16),
-                        _buildTextField(_notesController, 'Notes (optional)', fontSizeSubtitle, maxLines: 2),
-                      ],
-                    )
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _buildCategoryDropdown(fontSizeSubtitle),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(_locationController, 'Location ID (optional)', fontSizeSubtitle),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(_notesController, 'Notes (optional)', fontSizeSubtitle, maxLines: 2),
-                        ),
-                      ],
-                    ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _addItem,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueGrey[800],
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: Text(
-                    'Add Inventory Item',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: fontSizeSubtitle,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -674,17 +666,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.error)),
         filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
       ),
-      style: GoogleFonts.poppins(fontSize: fontSize),
+      style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary),
       keyboardType: keyboardType,
       maxLines: maxLines ?? 1,
       validator: validator,
@@ -695,28 +686,22 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return DropdownButtonFormField<String>(
       initialValue: _category,
       items: ['General', 'Electrical', 'Mechanical', 'HVAC', 'Plumbing', 'Safety', 'Cleaning']
-          .map((category) => DropdownMenuItem(value: category, child: Text(category, style: GoogleFonts.poppins(fontSize: fontSize))))
+          .map((c) => DropdownMenuItem(value: c, child: Text(c, style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary))))
           .toList(),
-      onChanged: (value) {
-        setState(() {
-          _category = value!;
-        });
-      },
+      onChanged: (v) => setState(() => _category = v!),
       decoration: InputDecoration(
         labelText: 'Category',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
         filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        labelStyle: GoogleFonts.poppins(color: context.textSecondary, fontSize: fontSize),
       ),
-      style: GoogleFonts.poppins(color: Colors.blueGrey[800], fontWeight: FontWeight.w500),
-      dropdownColor: Colors.white,
-      icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+      style: GoogleFonts.poppins(color: context.textPrimary, fontWeight: FontWeight.w500, fontSize: fontSize),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
@@ -729,7 +714,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Update Quantity', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+        title: Row(children: [
+          Icon(Icons.edit_rounded, color: AppColors.primary, size: 20),
+          const SizedBox(width: 8),
+          Text('Update Quantity', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: context.textPrimary)),
+        ]),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -737,48 +727,33 @@ class _InventoryScreenState extends State<InventoryScreen> {
               controller: quantityController,
               decoration: InputDecoration(
                 labelText: 'New Quantity',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.grey[100],
-                labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+                filled: true, fillColor: context.surfaceColor,
+                labelStyle: GoogleFonts.poppins(color: context.textSecondary),
               ),
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.poppins(color: context.textPrimary),
               keyboardType: TextInputType.number,
-              validator: (value) {
-                if (value!.isEmpty) return 'Enter quantity';
-                final qty = int.tryParse(value);
-                if (qty == null || qty < 0) return 'Enter a valid non-negative quantity';
-                return null;
-              },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             TextFormField(
               controller: notesController,
               decoration: InputDecoration(
-                labelText: 'Update Notes (optional)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.grey[100],
-                labelStyle: GoogleFonts.poppins(color: Colors.grey[600]),
+                labelText: 'Notes (optional)',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
+                filled: true, fillColor: context.surfaceColor,
+                labelStyle: GoogleFonts.poppins(color: context.textSecondary),
               ),
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.poppins(color: context.textPrimary),
               maxLines: 2,
             ),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: GoogleFonts.poppins()),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: GoogleFonts.poppins(color: context.textSecondary))),
           ElevatedButton(
             onPressed: () {
               final newQuantity = int.tryParse(quantityController.text);
@@ -789,11 +764,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 _showSnackBar('Please enter a valid non-negative quantity');
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blueGrey[800],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            child: Text('Update', style: GoogleFonts.poppins(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm))),
+            child: Text('Update', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -806,26 +778,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete Item', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-        content: Text(
-          'Are you sure you want to delete "${item.itemName}"? This action cannot be undone.',
-          style: GoogleFonts.poppins(),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+        title: Row(children: [
+          Icon(Icons.delete_rounded, color: AppColors.error, size: 20),
+          const SizedBox(width: 8),
+          Text('Delete Item', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: context.textPrimary)),
+        ]),
+        content: Text('Delete "${item.itemName}"? This action cannot be undone.', style: GoogleFonts.poppins(color: context.textSecondary)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: GoogleFonts.poppins()),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: GoogleFonts.poppins(color: context.textSecondary))),
           ElevatedButton(
-            onPressed: () {
-              _deleteItem(item.id, item.itemName);
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red[700],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            child: Text('Delete', style: GoogleFonts.poppins(color: Colors.white)),
+            onPressed: () { _deleteItem(item.id, item.itemName); Navigator.pop(context); },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm))),
+            child: Text('Delete', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
       ),

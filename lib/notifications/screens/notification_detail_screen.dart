@@ -45,8 +45,7 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         title: Text('Notification', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.primaryGradient)),
         actions: [
@@ -72,7 +71,7 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
                 _summaryCard(),
                 const SizedBox(height: AppSpacing.lg),
                 if (_digest.facilities.isNotEmpty) ...[
-                  Text('Facilities', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                  Text('Facilities', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: context.textPrimary)),
                   const SizedBox(height: AppSpacing.sm),
                   ..._digest.facilities.map((f) => _facilityCard(context, f)),
                 ],
@@ -91,7 +90,7 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))],
       ),
@@ -107,7 +106,7 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(_digest.title, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                child: Text(_digest.title, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: context.textPrimary)),
               ),
             ],
           ),
@@ -129,7 +128,7 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: (_digest.isRead ? AppColors.success : AppColors.textSecondary).withValues(alpha: 0.1),
+                  color: (_digest.isRead ? AppColors.success : context.textSecondary).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
                 child: Text(
@@ -137,18 +136,18 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
                   style: GoogleFonts.poppins(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
-                    color: _digest.isRead ? AppColors.success : AppColors.textSecondary,
+                    color: _digest.isRead ? AppColors.success : context.textSecondary,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(_digest.body, style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textSecondary)),
+          Text(_digest.body, style: GoogleFonts.poppins(fontSize: 14, color: context.textSecondary)),
           const SizedBox(height: 12),
           Text(
             DateFormat('MMMM dd, yyyy · h:mm a').format(_digest.createdAt),
-            style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary.withValues(alpha: 0.8)),
+            style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary.withValues(alpha: 0.8)),
           ),
           if (_digest.readAt != null) ...[
             const SizedBox(height: 4),
@@ -163,9 +162,9 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.12)),
+        border: Border.all(color: context.textSecondary.withValues(alpha: 0.12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,7 +172,7 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
           ListTile(
             leading: const Icon(Icons.apartment_rounded, color: AppColors.primary),
             title: Text(facility.facilityName, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-            subtitle: Text('${facility.count} task${facility.count == 1 ? '' : 's'}', style: GoogleFonts.poppins(fontSize: 12.5, color: AppColors.textSecondary)),
+            subtitle: Text('${facility.count} task${facility.count == 1 ? '' : 's'}', style: GoogleFonts.poppins(fontSize: 12.5, color: context.textSecondary)),
             trailing: TextButton(
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => DashboardScreen(facilityId: facility.facilityId))),
               child: Text('Open', style: GoogleFonts.poppins(color: AppColors.primary, fontWeight: FontWeight.w600)),
@@ -186,14 +185,14 @@ class _NotificationDetailScreenState extends ConsumerState<NotificationDetailScr
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(item.isAlert ? Icons.priority_high_rounded : Icons.build_rounded, size: 16, color: item.isAlert ? AppColors.error : AppColors.textSecondary),
+                  Icon(item.isAlert ? Icons.priority_high_rounded : Icons.build_rounded, size: 16, color: item.isAlert ? AppColors.error : context.textSecondary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${item.category} — ${item.component}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                        Text(item.intervention, style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
+                        Text('${item.category} — ${item.component}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: context.textPrimary)),
+                        Text(item.intervention, style: GoogleFonts.poppins(fontSize: 12, color: context.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
                         if (item.dueDate != null) ...[
                           const SizedBox(height: 2),
                           Text(

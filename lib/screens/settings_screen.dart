@@ -1,4 +1,5 @@
-﻿import 'package:cmms/notifications/services/notification_service.dart';
+import 'package:cmms/notifications/services/notification_service.dart';
+import 'package:cmms/providers/app_preferences_provider.dart';
 import 'package:cmms/utils/module_usage_tracker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,14 +55,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _loadAllPrefs() async {
     try {
-      final enabled = await _notificationService.areNotificationsEnabled();
+      final results = await Future.wait([
+        _notificationService.areNotificationsEnabled(),
+        _notificationService.areEmailNotificationsEnabled(),
+        _notificationService.arePushNotificationsEnabled(),
+        _notificationService.areWorkOrderAlertsEnabled(),
+      ]);
       final prefs = await SharedPreferences.getInstance();
       if (mounted) {
         setState(() {
-          _notificationsEnabled = enabled;
-          _emailNotifications = prefs.getBool(_kEmailNotif) ?? true;
-          _pushNotifications = prefs.getBool(_kPushNotif) ?? true;
-          _workOrderAlerts = prefs.getBool(_kWOAlerts) ?? true;
+          _notificationsEnabled = results[0];
+          _emailNotifications = results[1];
+          _pushNotifications = results[2];
+          _workOrderAlerts = results[3];
           _selectedTheme = prefs.getString(_kTheme) ?? 'System';
           _selectedLanguage = prefs.getString(_kLanguage) ?? 'English';
           _selectedDateFormat = prefs.getString(_kDateFormat) ?? 'DD/MM/YYYY';
@@ -76,16 +82,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _setNotifications(bool v) async {
     await _notificationService.setNotificationsEnabled(v);
     if (mounted) setState(() => _notificationsEnabled = v);
-  }
-
-  Future<void> _setBoolPref(String key, bool v) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, v);
-  }
-
-  Future<void> _setStringPref(String key, String v) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(key, v);
   }
 
   @override
@@ -176,7 +172,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       enabled: _notificationsEnabled,
                       onChanged: (v) {
                         setState(() => _emailNotifications = v);
-                        _setBoolPref(_kEmailNotif, v);
+                        _notificationService.setEmailNotificationsEnabled(v);
                       },
                       showDivider: true,
                     ),
@@ -189,7 +185,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       enabled: _notificationsEnabled,
                       onChanged: (v) {
                         setState(() => _pushNotifications = v);
-                        _setBoolPref(_kPushNotif, v);
+                        _notificationService.setPushNotificationsEnabled(v);
                       },
                       showDivider: true,
                     ),
@@ -202,7 +198,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       enabled: _notificationsEnabled,
                       onChanged: (v) {
                         setState(() => _workOrderAlerts = v);
-                        _setBoolPref(_kWOAlerts, v);
+                        _notificationService.setWorkOrderAlertsEnabled(v);
                       },
                     ),
                   ],
@@ -225,7 +221,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   current: _selectedTheme,
                   onPick: (v) {
                     setState(() => _selectedTheme = v);
-                    _setStringPref(_kTheme, v);
+                    ref.read(themeModeProvider.notifier).setTheme(v);
                   },
                 ),
                 showDivider: true,
@@ -242,7 +238,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   current: _selectedLanguage,
                   onPick: (v) {
                     setState(() => _selectedLanguage = v);
-                    _setStringPref(_kLanguage, v);
+                    ref.read(localeProvider.notifier).setLanguage(v);
                   },
                 ),
                 showDivider: true,
@@ -259,7 +255,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   current: _selectedDateFormat,
                   onPick: (v) {
                     setState(() => _selectedDateFormat = v);
-                    _setStringPref(_kDateFormat, v);
+                    ref.read(dateFormatPrefProvider.notifier).setDateFormat(v);
                   },
                 ),
               ),
@@ -449,7 +445,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget _buildSignOutCard() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.error.withValues(alpha: 0.25)),
         boxShadow: [
@@ -660,6 +656,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 for (final k in keysToRemove) {
                   await prefs.remove(k);
                 }
+                ref.invalidate(themeModeProvider);
+                ref.invalidate(localeProvider);
+                ref.invalidate(dateFormatPrefProvider);
                 await _loadAllPrefs();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -728,8 +727,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textSecondary)),
-            Text(value, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            Text(label, style: GoogleFonts.poppins(fontSize: 11, color: context.textSecondary)),
+            Text(value, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: context.textPrimary)),
           ],
         ),
       ],
@@ -837,14 +836,14 @@ class _SettingSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: context.dividerColor),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2)),
+              color: AppColors.primary.withValues(alpha: 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -869,12 +868,12 @@ class _SettingSection extends StatelessWidget {
                   style: GoogleFonts.plusJakartaSans(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary),
+                      color: context.textPrimary),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFE5E7EB)),
+          Divider(height: 1, color: context.dividerColor),
           ClipRRect(
             borderRadius: const BorderRadius.only(
               bottomLeft: Radius.circular(AppRadius.lg),
@@ -914,7 +913,7 @@ class _SettingTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final titleColor =
-        isDestructive ? AppColors.error : AppColors.textPrimary;
+        isDestructive ? AppColors.error : context.textPrimary;
     return Column(
       children: [
         InkWell(
@@ -928,7 +927,7 @@ class _SettingTile extends StatelessWidget {
                   height: 38,
                   decoration: BoxDecoration(
                     color: iconColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                   child: Icon(icon, color: iconColor, size: 19),
                 ),
@@ -949,7 +948,7 @@ class _SettingTile extends StatelessWidget {
                       Text(
                         subtitle,
                         style: GoogleFonts.poppins(
-                            fontSize: 12, color: AppColors.textSecondary),
+                            fontSize: 12, color: context.textSecondary),
                       ),
                     ],
                   ),
@@ -1009,7 +1008,7 @@ class _SwitchTile extends StatelessWidget {
                 height: 38,
                 decoration: BoxDecoration(
                   color: effectiveColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: Icon(icon, color: effectiveColor, size: 19),
               ),
@@ -1024,14 +1023,14 @@ class _SwitchTile extends StatelessWidget {
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
                         color: enabled
-                            ? AppColors.textPrimary
-                            : AppColors.textSecondary,
+                            ? context.textPrimary
+                            : context.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 1),
                     Text(subtitle,
                         style: GoogleFonts.poppins(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                            fontSize: 12, color: context.textSecondary)),
                   ],
                 ),
               ),

@@ -1,5 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cmms/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:logger/logger.dart';
 import 'package:cmms/widgets/responsive_screen_wrapper.dart';
@@ -81,9 +82,8 @@ class _KpiScreenState extends State<KpiScreen> {
         .collection('inventory')
         .snapshots();
     final vendorStream = FirebaseFirestore.instance
-        .collection('facilities')
-        .doc(widget.facilityId)
-        .collection('vendors')
+        .collection('Vendors')
+        .where('facilityId', isEqualTo: widget.facilityId)
         .snapshots();
 
     _kpiStream = StreamGroup.merge([
@@ -167,9 +167,8 @@ class _KpiScreenState extends State<KpiScreen> {
       final inStockItems = inventory.docs.where((doc) => (doc['quantity'] as int? ?? 0) > 0).length;
 
       final vendors = await FirebaseFirestore.instance
-          .collection('facilities')
-          .doc(widget.facilityId)
-          .collection('vendors')
+          .collection('Vendors')
+          .where('facilityId', isEqualTo: widget.facilityId)
           .get();
       final totalVendors = vendors.docs.length;
       final activeVendors = vendors.docs.where((doc) => doc['status'] == 'Active').length;
@@ -268,9 +267,9 @@ class _KpiScreenState extends State<KpiScreen> {
       organization: '-',
       floatingActionButton: FloatingActionButton(
         onPressed: () => setState(() => _initializeKpiStream()),
-        backgroundColor: Colors.blueGrey[900],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        child: const Icon(Icons.refresh, color: Colors.white),
+        backgroundColor: AppColors.primary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+        child: const Icon(Icons.refresh_rounded, color: Colors.white),
       ),
       child: _buildBody(),
     );
@@ -431,49 +430,48 @@ class _KpiScreenState extends State<KpiScreen> {
   Widget _buildFilterSection({required double padding, required double fontSizeTitle, required double fontSize}) {
     final isMobile = MediaQuery.of(context).size.width <= 768;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: EdgeInsets.all(padding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'KPI Filters',
-                  style: GoogleFonts.poppins(
-                    fontSize: fontSizeTitle,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey[900],
+    return Container(
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: context.surfaceAltColor),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      padding: EdgeInsets.all(padding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(AppRadius.sm)),
+                    child: const Icon(Icons.tune_rounded, color: Colors.white, size: 18),
                   ),
+                  const SizedBox(width: 10),
+                  Text('KPI Filters', style: GoogleFonts.poppins(fontSize: fontSizeTitle, fontWeight: FontWeight.bold, color: context.textPrimary)),
+                ],
+              ),
+              OutlinedButton.icon(
+                onPressed: _clearFilter,
+                icon: Icon(Icons.clear_rounded, size: 15, color: context.textSecondary),
+                label: Text('Clear', style: GoogleFonts.poppins(fontSize: fontSize - 1, color: context.textSecondary)),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: context.surfaceAltColor),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 ),
-                TextButton.icon(
-                  onPressed: _clearFilter,
-                  icon: const Icon(Icons.clear, size: 16, color: Colors.blueGrey),
-                  label: Text('Clear Filter', style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey)),
-                  style: TextButton.styleFrom(foregroundColor: Colors.blueGrey[700]),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            isMobile
-                ? Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      _buildDropdown(fontSize: fontSize),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(child: _buildDropdown(fontSize: fontSize)),
-                    ],
-                  ),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          isMobile
+              ? _buildDropdown(fontSize: fontSize)
+              : Row(children: [Expanded(child: _buildDropdown(fontSize: fontSize))]),
+        ],
       ),
     );
   }
@@ -498,73 +496,61 @@ class _KpiScreenState extends State<KpiScreen> {
       },
       decoration: InputDecoration(
         labelText: 'Time Period',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.blueGrey, width: 2),
-        ),
+        prefixIcon: Icon(Icons.date_range_rounded, size: 18, color: context.textSecondary),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: context.surfaceAltColor)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.sm), borderSide: BorderSide(color: AppColors.primary, width: 2)),
         filled: true,
-        fillColor: Colors.grey[50],
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: Colors.grey[600]),
+        fillColor: context.surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        labelStyle: GoogleFonts.poppins(fontSize: fontSize, color: context.textSecondary),
       ),
-      style: GoogleFonts.poppins(fontSize: fontSize, color: Colors.blueGrey[900], fontWeight: FontWeight.w500),
-      dropdownColor: Colors.white,
-      icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+      style: GoogleFonts.poppins(fontSize: fontSize, color: context.textPrimary, fontWeight: FontWeight.w500),
+      dropdownColor: context.cardColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: context.textSecondary),
     );
   }
 
   Widget _buildLiveIndicator({required double padding, required double fontSize}) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: padding, vertical: padding / 2),
-        color: Colors.green[50],
-        child: Row(
-          children: [
-            const Icon(Icons.circle, color: Colors.green, size: 12),
-            const SizedBox(width: 8),
-            Text(
-              'Live Data - Auto-updating',
-              style: GoogleFonts.poppins(
-                fontSize: fontSize,
-                color: Colors.green[700],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: padding, vertical: padding * 0.6),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text('Live Data — Auto-updating', style: GoogleFonts.poppins(fontSize: fontSize, color: AppColors.success, fontWeight: FontWeight.w500)),
+        ],
       ),
     );
   }
 
   Widget _buildLastUpdated(String? lastUpdated, {required double padding, required double fontSize}) {
     if (lastUpdated == null) return const SizedBox.shrink();
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: EdgeInsets.all(padding),
-        decoration: BoxDecoration(
-          color: Colors.blue[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.blue),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.update, color: Colors.blue[700], size: 16),
-            const SizedBox(width: 8),
-            Text(
-              'Last updated: ${DateTime.parse(lastUpdated).toLocal().toString().split('.')[0]}',
-              style: GoogleFonts.poppins(
-                fontSize: fontSize,
-                color: Colors.blue[700],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: padding, vertical: padding * 0.6),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.update_rounded, color: AppColors.primary, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            'Last updated: ${DateTime.parse(lastUpdated).toLocal().toString().split('.')[0]}',
+            style: GoogleFonts.poppins(fontSize: fontSize, color: AppColors.primary, fontWeight: FontWeight.w500),
+          ),
+        ],
       ),
     );
   }
@@ -572,16 +558,13 @@ class _KpiScreenState extends State<KpiScreen> {
   Widget _buildSectionHeader(String title, IconData icon, {required double fontSize}) {
     return Row(
       children: [
-        Icon(icon, color: Colors.blueGrey[800], size: fontSize + 4),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: GoogleFonts.poppins(
-            fontSize: fontSize + 2,
-            fontWeight: FontWeight.bold,
-            color: Colors.blueGrey[900],
-          ),
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppRadius.sm)),
+          child: Icon(icon, color: AppColors.primary, size: fontSize + 2),
         ),
+        const SizedBox(width: 10),
+        Text(title, style: GoogleFonts.poppins(fontSize: fontSize + 2, fontWeight: FontWeight.bold, color: context.textPrimary)),
       ],
     );
   }
@@ -599,41 +582,27 @@ class _KpiScreenState extends State<KpiScreen> {
   }
 
   Widget _buildKpiCard(String title, String value, IconData icon, Color color, {required double fontSize}) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: fontSize + 8),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: GoogleFonts.poppins(
-                fontSize: fontSize + 4,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                fontSize: fontSize - 2,
-                color: Colors.blueGrey[700],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.sm)),
+            child: Icon(icon, color: color, size: fontSize + 6),
+          ),
+          const SizedBox(height: 10),
+          Text(value, style: GoogleFonts.poppins(fontSize: fontSize + 4, fontWeight: FontWeight.bold, color: color)),
+          const SizedBox(height: 4),
+          Text(title, textAlign: TextAlign.center, style: GoogleFonts.poppins(fontSize: fontSize - 2, color: context.textSecondary, fontWeight: FontWeight.w500)),
+        ],
       ),
     );
   }

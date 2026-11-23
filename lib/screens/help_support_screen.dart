@@ -8,18 +8,17 @@ class HelpSupportScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
+            appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          color: AppColors.textPrimary,
+          color: context.textPrimary,
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('Help & Support',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                fontSize: 18, fontWeight: FontWeight.w700, color: context.textPrimary)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
@@ -106,7 +105,7 @@ class HelpSupportScreen extends StatelessWidget {
                     Text(
                       'Found a bug or something not working as expected? Reach out and we\'ll investigate.',
                       style: GoogleFonts.poppins(
-                          fontSize: 13.5, color: AppColors.textSecondary, height: 1.6),
+                          fontSize: 13.5, color: context.textSecondary, height: 1.6),
                     ),
                     const SizedBox(height: 14),
                     _contactRow(Icons.email_rounded, AppColors.primary,
@@ -130,39 +129,41 @@ class HelpSupportScreen extends StatelessWidget {
     required String label,
     required String value,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(9),
+    return Builder(builder: (context) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardTheme.color,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(icon, color: color, size: 18),
             ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const SizedBox(height: 10),
-          Text(label,
-              style: GoogleFonts.poppins(
-                  fontSize: 11.5, color: AppColors.textSecondary)),
-          const SizedBox(height: 3),
-          Text(value,
-              style: GoogleFonts.poppins(
-                  fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-              overflow: TextOverflow.ellipsis),
-        ],
-      ),
-    );
+            const SizedBox(height: 10),
+            Text(label,
+                style: GoogleFonts.poppins(
+                    fontSize: 11.5, color: context.textSecondary)),
+            const SizedBox(height: 3),
+            Text(value,
+                style: GoogleFonts.poppins(
+                    fontSize: 12.5, fontWeight: FontWeight.w600, color: context.textPrimary),
+                overflow: TextOverflow.ellipsis),
+          ],
+        ),
+      );
+    });
   }
 
   static Widget _sectionCard({
@@ -171,61 +172,65 @@ class HelpSupportScreen extends StatelessWidget {
     required String title,
     required Widget child,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(9),
+    return Builder(builder: (context) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardTheme.color,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Icon(icon, color: color, size: 17),
                   ),
-                  child: Icon(icon, color: color, size: 17),
-                ),
-                const SizedBox(width: 10),
-                Text(title,
-                    style: GoogleFonts.plusJakartaSans(
-                        fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-              ],
+                  const SizedBox(width: 10),
+                  Text(title,
+                      style: GoogleFonts.plusJakartaSans(
+                          fontSize: 15, fontWeight: FontWeight.w700, color: context.textPrimary)),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1, color: Color(0xFFE5E7EB)),
-          child,
-        ],
-      ),
-    );
+            Divider(height: 1, color: Theme.of(context).dividerColor.withValues(alpha: 0.5)),
+            child,
+          ],
+        ),
+      );
+    });
   }
 
   static Widget _contactRow(IconData icon, Color color, String value) {
-    return Row(
-      children: [
-        Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
+    return Builder(builder: (context) {
+      return Row(
+        children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 16),
           ),
-          child: Icon(icon, color: color, size: 16),
-        ),
-        const SizedBox(width: 10),
-        Text(value,
-            style: GoogleFonts.poppins(
-                fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-      ],
-    );
+          const SizedBox(width: 10),
+          Text(value,
+              style: GoogleFonts.poppins(
+                  fontSize: 13.5, fontWeight: FontWeight.w600, color: context.textPrimary)),
+        ],
+      );
+    });
   }
 }
 
@@ -257,7 +262,7 @@ class _FaqTileState extends State<_FaqTile> {
                   child: Text(widget.q,
                       style: GoogleFonts.poppins(
                           fontSize: 13.5, fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary)),
+                          color: context.textPrimary)),
                 ),
                 const SizedBox(width: 8),
                 AnimatedRotation(
@@ -276,7 +281,7 @@ class _FaqTileState extends State<_FaqTile> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
             child: Text(widget.a,
                 style: GoogleFonts.poppins(
-                    fontSize: 13, color: AppColors.textSecondary, height: 1.6)),
+                    fontSize: 13, color: context.textSecondary, height: 1.6)),
           ),
           crossFadeState: _open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 200),
@@ -330,11 +335,11 @@ class _GuideTile extends StatelessWidget {
                     Text(title,
                         style: GoogleFonts.poppins(
                             fontSize: 13.5, fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary)),
+                            color: context.textPrimary)),
                     const SizedBox(height: 2),
                     Text(desc,
                         style: GoogleFonts.poppins(
-                            fontSize: 12.5, color: AppColors.textSecondary, height: 1.5)),
+                            fontSize: 12.5, color: context.textSecondary, height: 1.5)),
                   ],
                 ),
               ),
